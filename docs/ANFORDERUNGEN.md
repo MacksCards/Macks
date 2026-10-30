@@ -26,7 +26,7 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - D1 Waren werden in einem gemeinsamen Lager gesammelt (Kontor + Marktplätze, mit Kapazitätsgrenze).
 - D2 Warenketten mit mehreren Stufen, mindestens:
   - Holzfäller → Holz (braucht Wald in der Nähe)
-  - **Nahrung** aus mehreren Quellen: Fischerhütte (am Wasser), Jagdhütte (Wald), Schweinezucht, Rinderfarm → Rinder → Fleischerei, Getreidefarm → Getreide → Mühle → Mehl → Bäckerei
+  - **Nahrung** aus mehreren Quellen: Fischerhütte (am Wasser), Jagdhütte (Wald), Schweinezucht → Schweine → Fleischerei (statt Rinderfarm), Getreidefarm → Getreide → Mühle → Mehl → Bäckerei
   - Schaffarm → Wolle → Weberei → Stoff
   - Steinbruch → Stein (am Berg); Erzmine → Erz (am Berg) + Holz → Werkzeugschmiede → Werkzeug
   - Getreide → Brauerei → Bier

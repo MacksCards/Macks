@@ -103,15 +103,7 @@
    "building": "schweinezucht",
    "tier": 0,
    "size": 3,
-   "prompt": "Pig farm with a muddy fenced pen, small wooden barn with straw roof, feeding trough, haystack (no animals). Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, centered on a flat square ground plate, no terrain, no background, no text"
-  },
-  {
-   "id": "rinderfarm",
-   "art": "gebaeude",
-   "building": "rinderfarm",
-   "tier": 0,
-   "size": 3,
-   "prompt": "Cattle farm with a wooden barn, fenced green pasture, hay bales, water trough (no animals). Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, centered on a flat square ground plate, no terrain, no background, no text"
+   "prompt": "Pig farm with a large muddy fenced pen, wooden pigsty barn with straw roof, feeding troughs, straw bales, slop buckets (no animals). Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, centered on a flat square ground plate, no terrain, no background, no text"
   },
   {
    "id": "fleischerei",
@@ -248,11 +240,6 @@
    "id": "schwein",
    "art": "tier",
    "prompt": "Realistic pink farm pig, game asset, four-legged, neutral standing pose, no background"
-  },
-  {
-   "id": "rind",
-   "art": "tier",
-   "prompt": "Realistic brown and white dairy cow, game asset, four-legged, neutral standing pose, no background"
   },
   {
    "id": "hirsch",

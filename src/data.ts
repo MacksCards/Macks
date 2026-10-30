@@ -2,7 +2,7 @@
 
 export type GoodId =
   | 'holz' | 'werkzeug' | 'stein' | 'nahrung' | 'wolle' | 'stoff'
-  | 'erz' | 'getreide' | 'mehl' | 'rinder' | 'bier';
+  | 'erz' | 'getreide' | 'mehl' | 'schweine' | 'bier';
 
 export interface GoodDef { id: GoodId; name: string; icon: string }
 
@@ -16,14 +16,14 @@ export const GOODS: GoodDef[] = [
   { id: 'erz', name: 'Erz', icon: '🪨' },
   { id: 'getreide', name: 'Getreide', icon: '🌾' },
   { id: 'mehl', name: 'Mehl', icon: '🥣' },
-  { id: 'rinder', name: 'Rinder', icon: '🐄' },
+  { id: 'schweine', name: 'Schweine', icon: '🐖' },
   { id: 'bier', name: 'Bier', icon: '🍺' },
 ];
 export const GOOD: Record<GoodId, GoodDef> = Object.fromEntries(GOODS.map((g) => [g.id, g])) as Record<GoodId, GoodDef>;
 
 export type BuildingId =
   | 'weg' | 'kontor' | 'markt' | 'haus' | 'kapelle' | 'wirtshaus'
-  | 'holzfaeller' | 'fischer' | 'jagdhuette' | 'schweinezucht' | 'rinderfarm' | 'fleischerei'
+  | 'holzfaeller' | 'fischer' | 'jagdhuette' | 'schweinezucht' | 'fleischerei'
   | 'schaffarm' | 'weberei'
   | 'steinbruch' | 'erzmine' | 'schmiede'
   | 'getreidefarm' | 'muehle' | 'baeckerei' | 'brauerei';
@@ -73,12 +73,10 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     prod: { time: 16, output: 'nahrung' }, needs: 'wald',
     desc: 'Jäger erlegen Wild im Wald. Günstig, aber langsamer als der Fischer.' },
   schweinezucht: { id: 'schweinezucht', name: 'Schweinezucht', icon: '🐖', category: 'nahrung', size: 3, cost: { taler: 200, holz: 5, werkzeug: 2 }, upkeep: 7,
-    prod: { time: 11, output: 'nahrung' }, desc: 'Liefert Nahrung, egal ob Wald oder Wasser in der Nähe ist.' },
-  rinderfarm: { id: 'rinderfarm', name: 'Rinderfarm', icon: '🐄', category: 'nahrung', size: 3, cost: { taler: 250, holz: 5, werkzeug: 2 }, upkeep: 8,
-    prod: { time: 14, output: 'rinder' }, desc: 'Züchtet Rinder für die Fleischerei.' },
+    prod: { time: 14, output: 'schweine' }, desc: 'Züchtet Schweine für die Fleischerei.' },
   fleischerei: { id: 'fleischerei', name: 'Fleischerei', icon: '🔪', category: 'nahrung', size: 2, cost: { taler: 250, holz: 3, werkzeug: 2, stein: 3 }, upkeep: 8,
-    prod: { time: 10, input: { rinder: 1 }, output: 'nahrung', amount: 2 },
-    desc: 'Macht aus einem Rind zwei Ladungen Nahrung. Sehr ergiebig.' },
+    prod: { time: 10, input: { schweine: 1 }, output: 'nahrung', amount: 2 },
+    desc: 'Macht aus einem Schwein zwei Ladungen Nahrung. Sehr ergiebig.' },
   schaffarm: { id: 'schaffarm', name: 'Schaffarm', icon: '🐑', category: 'rohstoffe', size: 3, cost: { taler: 200, holz: 4, werkzeug: 1 }, upkeep: 8,
     prod: { time: 16, output: 'wolle' },
     desc: 'Liefert Wolle für die Weberei.' },

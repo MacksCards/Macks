@@ -14,7 +14,7 @@ function placeholder(id: BuildingId): ModelDef {
   const b = new Builder().ground(s, s, M.wiese);
   b.box(s * 0.55, 0.6, s * 0.45, M.putz, 0, 0, -0.1).roof(s * 0.55, 0.45, s * 0.45, M.ziegelRot, 0, 0.6, -0.1);
   b.door(0, 0, s * 0.45 / 2 - 0.1, 0);
-  if (id === 'schweinezucht' || id === 'rinderfarm') {
+  if (id === 'schweinezucht') {
     const h = s / 2 - 0.1;
     b.fence(-h, -h, h, -h).fence(h, -h, h, h).fence(h, h, -h, h).fence(-h, h, -h, -h);
   }

@@ -64,8 +64,7 @@ Schreibweise: **Gebäude** (Standort) → Ware.
 **Nahrung** (eine Ware, viele Quellen)
 - **Fischerhütte** (am Wasser) → Nahrung
 - **Jagdhütte** (Wald) → Nahrung
-- **Schweinezucht** (frei) → Nahrung (einfache Alternative)
-- **Rinderfarm** (Weide) → Rinder → **Fleischerei** → Nahrung (ergiebig)
+- **Schweinezucht** (Weide) → Schweine → **Fleischerei** → Nahrung (ergiebig; ersetzt die Rinderfarm des Originals)
 - **Getreidefarm** (fruchtbarer Boden) → Getreide → **Mühle** → Mehl → **Bäckerei** → Nahrung (ergiebig)
 
 **Alkohol** (eine Sammel-Ware: Bier, Rum und Wein zählen gleich)
@@ -107,8 +106,7 @@ Größe in Feldern (Breite × Tiefe). Freischaltung: „Start“ oder die Zahl d
 | | Kirche (3×3), Schule (3×3) | 100 Bürger |
 | | Badehaus (3×3), Theater (4×4), Hochschule (4×4) | 50 / 150 / 250 Kaufleute |
 | **Nahrung** | Fischerhütte (2×2), Jagdhütte (2×2) | Start |
-| | Schweinezucht (3×3) | 30 Pioniere |
-| | Rinderfarm (3×3), Fleischerei (2×2), Getreidefarm (3×3), Mühle (2×2), Bäckerei (2×2) | 50 Siedler |
+| | Schweinezucht (3×3), Fleischerei (2×2), Getreidefarm (3×3), Mühle (2×2), Bäckerei (2×2) | 50 Siedler |
 | **Rohstoffe** | Holzfäller (2×2) | Start |
 | | Steinbruch (2×2) | 50 Pioniere |
 | | Schaffarm (3×3) | 30 Pioniere |
@@ -215,7 +213,7 @@ Alles kostet einmalig Waffen und Taler und dann Unterhalt je Minute.
 
 | Etappe | Inhalt | Spielbar, weil … |
 |---|---|---|
-| **1** | **Eine Insel:** Pioniere bis Bürger. Nahrung (Fischer, Jäger, Schweine, Rinder+Fleischerei, Mühle+Bäckerei), Stoffe (Schaf+Weberei), Stein, Erz, Werkzeug (Erz+Holz direkt in der Schmiede, wie im Code), **Bier statt Alkohol**, Steuern, Feuer und Arzt. Baustoff „Stein“ zählt wie Ziegel. | Man kann die Insel voll ausbauen und bis Bürger spielen. |
+| **1** | **Eine Insel:** Pioniere bis Bürger. Nahrung (Fischer, Jäger, Schweinezucht+Fleischerei, Mühle+Bäckerei), Stoffe (Schaf+Weberei), Stein, Erz, Werkzeug (Erz+Holz direkt in der Schmiede, wie im Code), **Bier statt Alkohol**, Steuern, Feuer und Arzt. Baustoff „Stein“ zählt wie Ziegel. | Man kann die Insel voll ausbauen und bis Bürger spielen. |
 | **2** | **Schiffe und neue Inseln:** Kleine Werft, Kontor gründen, Südinseln mit Tabak, Gewürzen, Zuckerrohr, Kakao, Baumwolle; Steinmetz (echter Ziegel), Köhlerei, Erzschmelze, Rumbrennerei; **Kaufleute**; Ureinwohner. Entdecken, Aufbau auf mehreren Inseln. | Ohne Gegner, aber mit echtem Ziel: die Kaufleute-Stadt versorgen. |
 | **3** | **Kampf:** Piraten (inkl. Bestechen), Burg, Türme, Waffenwerkstätten, Truppen, Seeschlachten, Computergegner, Diplomatie. | Man kann Gegner besiegen oder sich verteidigen. |
 | **4** | **Handel und Spitze:** Handelsrouten, freie Händler, **Aristokraten**, Schmuck (Gold), Kleidung, Theater, Hochschule, Badehaus, Große Werft, Musketen, tiefe Erzmine. | Das Spiel ist vollständig. |
@@ -229,7 +227,7 @@ Alles kostet einmalig Waffen und Taler und dann Unterhalt je Minute.
 | Abwandlung | Begründung |
 |---|---|
 | Bier (Brauerei) als zusätzliche Alkohol-Quelle | Startinsel soll bis Bürger tragen, ohne fremde Pflanzen. |
-| Schweinezucht als einfache Nahrungsquelle | Passt zu „Nahrung“ aus mehreren Quellen und hilft kleinen Inseln. |
+| Schweinezucht statt Rinderfarm (Schweine → Fleischerei → Nahrung) | Wunsch des Nutzers; gleiche Kette wie im Original, nur mit Schweinen. |
 | Trupps statt Einzelfiguren | Finger-Bedienung: weniger Tippen, weniger Fehler. |
 | Waffen und Schiffsnamen eigen | Rechtlich sauber, keine Namen aus dem Original. |
 | Werkzeug in Etappe 1 ohne Erzschmelze | Kürzere Ketten am Anfang; Schmelze und Köhlerei kommen in Etappe 2 dazu. |
