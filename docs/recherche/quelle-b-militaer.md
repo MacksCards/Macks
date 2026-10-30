@@ -352,7 +352,7 @@ Die Endwertung folgt Charlies Berechnungen. Viele Faktoren sind nicht vollständ
 
 ### 6.1 Siedlungen und Bevölkerung
 
-Bevölkerung in Häusern, Ergebnis für einen Aristokraten-Stadtteil auf einer riesigen Insel:
+Bevölkerung in Häusern (Charlies Experiment: Aristokratenstadt auf einer riesigen Insel):
 
 | Bevölkerung | Punkte | Zuwachs |
 |---|---|---|
@@ -461,14 +461,14 @@ Die Quelle nennt nur die Titel. Die Ziele fehlen. Tim sagt, Ziele, Startressourc
 |---|---|---|---|
 | Schiffslimit | 33 Schiffe (Eric Lorah, Günter, Worker72) [Z-Schiff, TT] | 20 Schiffe in der UK-Version, "gilt auch für die deutsche Version" (AnnoDan1602) [Z-Schiff] | Unklar. Die 33 stehen in mehr Beiträgen. Ein Schiffslimit lässt sich über Kauf, Eroberung und Arch of Triumph erhöhen |
 | Zielpriorität des Turms | Schießt nur auf Kanonier, ignoriert Infanterie und Kavallerie (FrankB) [TT] | Schießt auf die erste Einheit in Reichweite, hier Kavallerie (Terry) [TT] | Widersprüchlich. Sir Henry schreibt "den nächsten" [TT] |
-| Kanonier pro Turm | 4 bis 6 (Robbie47), 6 bis 8 (FrankB), 7 (Terry), 8 bis 10 (Sir Henry), 10 bis 16 (Neferankh) [TT] | Unterschiedliche Risikobereitschaft, kein echter Widerspruch | Die Rechnung mit 8 Schüssen für einen Steinturm passt zu allen |
+| Kanonier pro Turm | 4 bis 6 (Robbie47), 6 bis 8 (FrankB), 7 (Terry), 8 bis 10 (Sir Henry), 10 bis 16 (Neferankh) [TT] | Unterschiedliche Risikobereitschaft, kein echter Widerspruch | Keine echte Gegensätzlichkeit, sondern unterschiedliche Verlustbereitschaft |
 | Anzahl Türme für Verteidigung | 1 bis 2 Türme plus Mauer (FrankB) [TT] | 2 bis 3 Türme (Zomby Woof) [TT] | Unterschiedlich. Keine Angabe zur Invasionsgröße |
 | Kavallerie | Nie trainieren, schwach gegen Türme (FrankB) [TE] | 10 Kavalleristen gehalten (night hawk), gut gegen Kanonen (MWHC) [TE, TT] | Abhängig von Strategie |
 | Musketier | Nie trainieren (FrankB) [TE] | 1 Musketier als Turmschutz (Robitoby) [TE] | Abhängig von Strategie |
 | Kavallerie-Stärke | Muke09: "0,8 mehr Angriff als Schwertkämpfer" [TT] | Tabelle: 1.6 gegen 1.0, also 0,6 Unterschied [TM] | Der Wert des Spielers passt nicht zur Tabelle. Vermutlich ältere Werte |
 | Kosten im Zitat "Zomby Woof" | Turm "kostet 5", Kanonier "14" [TT] | Tabelle: Turm 300 Geld, Kanonier keine Geldkosten. Unterhalt: Turm 5, Kanonier 14 [TM] | Zomby meint den Unterhalt, nicht die Baukosten |
 | Kanonen-Spalte bei Schiffen | Tabelle: Kanonen als Baukosten (10 / 14 / 6 / 8) [TM] | Neue Schiffe werden nicht automatisch bestückt (3.8.7) [Z-Schiff] | Unklar. Vermutlich Bestückungskapazität |
-| Statuen-Punkte | Feste Werte 700, 600, 400, 400, 300, 300, 270 (Charlie) [TS] | Wert sinkt langsam ab etwa 500 und nie auf null (Terry) [TS] | Widersprüchlich. Terry sagt, die Tabelle stimme für die US-Version nicht |
+| Statuen-Punkte | Feste Werte 700, 600, 400, 400, 300, 300, 270 (Charlie) [TS] | Wert sinkt langsam ab etwa 500 und nie auf null (Terry) [TS] | Widersprüchlich. Terry vermutet eine andere Version (vermutlich US) |
 | Mehrspieler-Spielerzahl | Bis zu 4 Netzwerk, 2 Modem (annoinfo) [D-AI] | Internet und LAN ohne Zahl (Wikipedia) [D-Wiki]; keine Zahl bei Tim [TMP] | Nicht geklärt |
 | Anzahl Szenarien | 17 Einträge (4.1 bis 4.17) plus NINA (Tim) [TSz] | Mehr als 40 neue Szenarien bei NINA, über 100 Missionen bei der Königs-Edition (annoinfo) [D-AI] | Unterschiedliche Zählung. Tim zählt nur Titel des Basisspiels |
 | Namensvarianten | "Kleine Burg" im Kostenteil, "Burg" im Freischaltungsteil (D-Giga) [D-Giga] | Tim: "Castle" 200 Siedler, "Large castle" 400 Kaufleute, "Fort" 600 Aristokraten | Gleiches Gebäude, zwei deutsche Bezeichnungen |
@@ -514,5 +514,5 @@ Diese Angaben sollten nicht übernommen werden.
 - **Kosten der Triumphbögen** fehlen.
 - **Währung** ist nicht einheitlich. "Taler" ist in den Quellen nicht belegt.
 - **Kanonen-Spalte der Schiffe** ist unklar (siehe Abschnitt 9).
-- **Die 3 Zusatzdateien** (Z-Schiff, Z-Pir, Z-Hand, Z-Kol, Z-Ket, Z-Geb) sind nicht komplett gelesen, nur die militärisch relevanten Stellen. Es gibt weitere Passagen, die hier nicht berücksichtigt sind.
-- **Keine Angaben zu Kampf-Heilung durch Arzt außerhalb von Burgen**, und keine zu Ausbildung in NINA-Szenarien.
+- **Zusatzdateien** (Z-Schiff, Z-Pir, Z-Hand, Z-Kol, Z-Ket, Z-Geb) sind nur an den militärisch relevanten Stellen gelesen. Weitere Passagen sind nicht ausgewertet.
+- **Heilung** ist nur über Arzt und Werft beschrieben. Militär in NINA-Szenarien ist nicht dokumentiert.
