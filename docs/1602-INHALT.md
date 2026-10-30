@@ -266,6 +266,8 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 - Ausbildung in Burg (200 s), großer Burg (140 s), Festung (100 s).
 - Eroberung: Truppen per Schiff übersetzen, gegnerische Gebäude angreifen; Gebiet anderer Spieler übernimmt man nur, indem man deren **Marktplätze/Kontor** einnimmt bzw. zerstört. Kanonen setzen Gebäude in Brand. Details: `docs/recherche/quelle-b-militaer.md`.
 - Nach dem Sieg über einen Gegner: **Triumphbogen** baubar.
+- Zahlenbeispiel: Ein Steinturm fällt nach ca. 8 Kanonier-Treffern, ein Holzturm nach ca. 6. Ausrüstungsketten kosten komplett ca. 1 700 (Schwerter), 1 900 (Musketen), 2 050 Taler (Kanonen).
+- **Endwertung/Punkte** und alle Einheitentabellen: `docs/recherche/quelle-b-militaer.md`.
 
 ## 10. Handel, Diplomatie, Gegner
 - **Freie Händler** kaufen/verkaufen nach den am Kontor eingestellten Aufträgen (Ware, Menge, Preis); sie können nicht angegriffen werden. Werkzeug am Anfang beim Händler kaufen. Direkt mit der KI zu handeln ist meist günstiger.

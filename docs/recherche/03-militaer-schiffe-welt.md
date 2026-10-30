@@ -1,5 +1,7 @@
 # Recherche 1602: Militär, Schiffe, Handel, Gegner, Welt (Stand 30.10.2026)
 
+> **Veraltet:** Diese frühe Notiz stammt aus Suchschnipseln und enthält falsche Freischaltungen. Maßgeblich sind `docs/1602-INHALT.md` und `quelle-b-militaer.md`.
+
 Quelle: Suchtreffer-Ausschnitte (Hauptseiten gesperrt). Alles **unsicher**, bis gegen Wiki/Fan-Guide geprüft.
 
 - Militär: Kavallerie und Kanonen sicher belegt (GameStar-Vergleich zu 1503); Musketiere widersprüchlich. Schwertschmiede ab 150 Bürgern, Kanonengießerei ab 250 Kaufleuten, Musketenbauer und große Burg ab 500 Kaufleuten (GameStar Tipps 06/1998).
