@@ -8,6 +8,7 @@ import { buildingModel } from './models';
 import { LAND_Y, Terrain } from './terrain';
 import { Vegetation, windTime } from './vegetation';
 import { ModelLibrary } from './glb';
+import { ShipLayer } from './ships';
 import { buildingMaterial } from './materials';
 import { ModelDef } from './kit';
 
@@ -22,6 +23,10 @@ export class View {
 
   private g: Game;
   private terrain!: Terrain;
+  ships!: ShipLayer;
+  private seenTex!: THREE.DataTexture;
+  private seenCount: number[] = [];
+  private border: THREE.LineSegments | null = null;
   private veg!: Vegetation;
   private water!: THREE.Mesh;
   private waterUniforms: Record<string, THREE.IUniform> = { uTime: { value: 0 } };
@@ -120,9 +125,9 @@ export class View {
     this.g = g;
     for (const v of this.views.values()) { this.scene.remove(v.mesh, v.icon); }
     this.views.clear();
-    for (const o of [this.terrain?.mesh, this.water]) {
-      if (o) { this.scene.remove(o); o.geometry.dispose(); }
-    }
+    if (this.terrain) { this.scene.remove(this.terrain.group); this.terrain.dispose(); }
+    if (this.water) { this.scene.remove(this.water); this.water.geometry.dispose(); }
+    this.ships?.setGame(g);
     if (this.veg) { this.scene.remove(this.veg.group); this.veg.dispose(); }
     this.buildWorld();
   }
@@ -130,13 +135,19 @@ export class View {
   private buildWorld() {
     const g = this.g;
     const k = g.kontor();
+    const ship = g.myShips()[0];
     if (k) { const [cx, cy] = g.center(k); this.rig.tx = cx; this.rig.tz = cy + 3; }
+    else if (ship) { this.rig.tx = ship.x + 4; this.rig.tz = ship.y - 4; this.rig.dist = 34; }
     this.terrain = new Terrain(g);
-    this.scene.add(this.terrain.mesh);
+    this.scene.add(this.terrain.group);
+    if (!this.ships) { this.ships = new ShipLayer(g); this.scene.add(this.ships.group); }
+    this.seenCount = g.islands.map(() => -1);
     this.areaShown = false;
     this.buildWater();
     this.veg = new Vegetation(g, this.terrain);
     this.scene.add(this.veg.group);
+    this.onSeen();
+    this.onTerritory();
     this.buildRoads();
     for (const b of g.buildings) this.addBuilding(b);
   }
@@ -182,6 +193,10 @@ export class View {
     });
     const uni = this.waterUniforms as Record<string, THREE.IUniform>;
     uni.uDepth = { value: depthTex };
+    this.seenTex = new THREE.DataTexture(new Uint8Array(N * N * 4), N, N);
+    this.seenTex.magFilter = THREE.LinearFilter;
+    this.seenTex.minFilter = THREE.LinearFilter;
+    uni.uSeen = { value: this.seenTex };
     uni.uN = { value: N };
     mat.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, uni);
@@ -207,6 +222,7 @@ vW = wp;`)
         .replace('#include <common>', `#include <common>
 uniform float uTime;
 uniform sampler2D uDepth;
+uniform sampler2D uSeen;
 uniform float uN;
 varying vec3 vW;
 float wh(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -230,7 +246,13 @@ float waves = smoothstep(0.55, 1.0, sin(d * 70.0 - uTime * 2.2 + n * 3.0) * 0.5 
 float foam = clamp(shore * smoothstep(0.35, 0.75, n + 0.25) + waves * 0.8, 0.0, 1.0);
 col = mix(col, vec3(0.85, 0.9, 0.9), foam * 0.6);
 diffuseColor.rgb = col;
-diffuseColor.a = mix(0.62, 0.97, smoothstep(0.0, 0.35, d)) + foam * 0.3;`);
+diffuseColor.a = mix(0.62, 0.97, smoothstep(0.0, 0.35, d)) + foam * 0.3;
+// Nebel über Unentdecktem
+float seenV = (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) ? 0.0 : texture2D(uSeen, uvc).r;
+float cl = wn(vW.xz * 0.12 + uTime * 0.02) * 0.6 + wn(vW.xz * 0.45 - uTime * 0.03) * 0.4;
+vec3 mist = mix(vec3(0.36, 0.42, 0.50), vec3(0.62, 0.67, 0.73), cl);
+diffuseColor.rgb = mix(mist, diffuseColor.rgb, smoothstep(0.0, 1.0, seenV));
+diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     };
     mat.customProgramCacheKey = () => 'wasser-v2';
     this.water = new THREE.Mesh(geo, mat);
@@ -241,6 +263,43 @@ diffuseColor.a = mix(0.62, 0.97, smoothstep(0.0, 0.35, d)) + foam * 0.3;`);
     this.water.renderOrder = 1;
     this.water.receiveShadow = true;
     this.scene.add(this.water);
+  }
+
+  /** Grenze des eigenen Gebiets als Linie in Spielerfarbe */
+  onTerritory() {
+    const g = this.g, N = g.size;
+    if (this.border) { this.scene.remove(this.border); this.border.geometry.dispose(); }
+    const pts: number[] = [];
+    const y = (x: number, z: number) => Math.max(this.terrain.heightAt(x, z), 0.05) + 0.07;
+    const mine = (x: number, z: number) => x >= 0 && z >= 0 && x < N && z < N && g.own[z * N + x] === 0;
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      if (!mine(x, z) || g.tiles[z * N + x] === 0) continue;
+      if (!mine(x, z - 1)) pts.push(x, y(x, z), z, x + 1, y(x + 1, z), z);
+      if (!mine(x, z + 1)) pts.push(x, y(x, z + 1), z + 1, x + 1, y(x + 1, z + 1), z + 1);
+      if (!mine(x - 1, z)) pts.push(x, y(x, z), z, x, y(x, z + 1), z + 1);
+      if (!mine(x + 1, z)) pts.push(x + 1, y(x + 1, z), z, x + 1, y(x + 1, z + 1), z + 1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    this.border = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x8fc0ff, transparent: true, opacity: 0.85, depthWrite: false }));
+    this.border.renderOrder = 3;
+    this.scene.add(this.border);
+  }
+
+  /** Neu entdeckte Gebiete: Nebel lichten, Pflanzen zeigen */
+  onSeen() {
+    const g = this.g, N = g.size;
+    const data = this.seenTex.image.data as Uint8Array;
+    for (let i = 0; i < N * N; i++) { const v = g.seen[i] ? 255 : 0; data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; }
+    this.seenTex.needsUpdate = true;
+    this.terrain.updateFog();
+    const changed: number[] = [];
+    g.islands.forEach((isl, id) => {
+      let n = 0;
+      for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) if (g.seen[y * N + x]) n++;
+      if (n !== this.seenCount[id]) { this.seenCount[id] = n; changed.push(id); }
+    });
+    if (changed.length) this.veg.refresh(changed);
   }
 
   onTreesChanged() {
@@ -467,11 +526,11 @@ diffuseColor.a = mix(0.62, 0.97, smoothstep(0.0, 0.35, d)) + foam * 0.3;`);
   updateCamera() {
     const r = this.rig;
     const N = this.g.size;
-    r.tx = Math.min(N - 4, Math.max(4, r.tx));
-    r.tz = Math.min(N - 4, Math.max(4, r.tz));
-    r.dist = Math.min(70, Math.max(7, r.dist));
+    r.tx = Math.min(N - 2, Math.max(2, r.tx));
+    r.tz = Math.min(N - 2, Math.max(2, r.tz));
+    r.dist = Math.min(110, Math.max(7, r.dist));
     // Je näher, desto flacher der Blick
-    r.pitch = 0.62 + (r.dist - 7) / 63 * 0.5;
+    r.pitch = Math.min(1.3, 0.62 + (r.dist - 7) / 63 * 0.5);
     const cp = Math.cos(r.pitch), sp = Math.sin(r.pitch);
     this.camera.position.set(
       r.tx + Math.sin(r.yaw) * cp * r.dist,
@@ -520,7 +579,16 @@ diffuseColor.a = mix(0.62, 0.97, smoothstep(0.0, 0.35, d)) + foam * 0.3;`);
     return this.raycaster.ray.intersectPlane(this.groundPlane, p) ? p : null;
   }
 
+  /** Schiff unter dem Finger */
+  pickShip(clientX: number, clientY: number) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(ndc, this.camera);
+    return this.ships.pick(this.raycaster);
+  }
+
   frame(t: number, gameDt: number) {
+    this.ships.update(t);
     this.waterUniforms.uTime.value = t;
     windTime.value = t;
     for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;

@@ -185,3 +185,17 @@ body.paused .top { border-bottom-color: var(--gold); }
 @media (orientation: portrait) and (max-width: 700px) { #rotate { display: flex; } }
 
 @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* ---------- Schiff, Insel, Weltkarte ---------- */
+.stat.island { font: 15px var(--display); color: var(--gold); max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.slots { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.slot { border: 1px solid var(--rand); border-radius: 6px; min-height: 42px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(0, 0, 0, .25); font-variant-numeric: tabular-nums; }
+.slot span { font-size: 18px; line-height: 1; }
+.slot small { color: var(--pergament-2); font-size: 11px; }
+.loadrow { display: flex; flex-wrap: wrap; gap: 4px; }
+.loadrow .btn { min-height: 36px; padding: 4px 8px; font-size: 13px; }
+.info h3.small { font-size: 17px; }
+.info .ok.wide { margin-top: 8px; }
+.card.next { opacity: .75; border-style: dashed; cursor: default; }
+.modal .box.map { width: min(560px, 100%); align-items: center; }
+.modal .box.map canvas { width: min(100%, calc(100vh - 150px)); aspect-ratio: 1; border-radius: 8px; border: 1px solid var(--rand); image-rendering: pixelated; touch-action: manipulation; }

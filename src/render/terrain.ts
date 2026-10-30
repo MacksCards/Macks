@@ -5,7 +5,7 @@ import { Game } from '../game';
 import { T } from '../world';
 
 export const LAND_Y = 0.3;
-const RES = 4; // Gitterpunkte pro Kachel
+const RES = 2; // Gitterpunkte pro Kachel
 
 function blur(src: Float32Array, N: number, passes: number): Float32Array {
   let a = src;
@@ -83,14 +83,23 @@ vec3 terrainColor(vec3 p, vec4 w) {
 }
 `;
 
-export class Terrain {
+interface Chunk {
+  island: number;
   mesh: THREE.Mesh;
+  i0: number; j0: number; w: number; h: number; // Gitterausschnitt (Punkte)
+  splat: Float32Array;
+  dim: Float32Array;
+  fog: Float32Array;
+}
+
+export class Terrain {
+  group = new THREE.Group();
+  chunks: Chunk[] = [];
   private N: number;
-  private W: number; // Punkte pro Zeile
+  private W: number; // Punkte pro Zeile der ganzen Welt
   private H: Float32Array;
-  private splat: Float32Array;
-  private dim: Float32Array;
   private bergB: Float32Array;
+  private mat: THREE.MeshStandardMaterial;
 
   constructor(private g: Game) {
     const N = (this.N = g.size);
@@ -118,10 +127,12 @@ export class Terrain {
     for (let i = 0; i < N * N; i++) distF[i] = Math.min(dist[i], 8) / 8;
     const depthB = blur(distF, N, 2);
 
-    const pos = new Float32Array(W * W * 3);
-    this.H = new Float32Array(W * W);
-    for (let j = 0; j < W; j++) {
-      for (let i = 0; i < W; i++) {
+    // Höhen für die ganze Welt (Meeresboden fern der Inseln ist flach und tief)
+    this.H = new Float32Array(W * W).fill(-2.3);
+    for (const isl of g.islands) {
+      const i0 = Math.max(0, (isl.x0 - 4) * RES), i1 = Math.min(W - 1, (isl.x1 + 5) * RES);
+      const j0 = Math.max(0, (isl.y0 - 4) * RES), j1 = Math.min(W - 1, (isl.y1 + 5) * RES);
+      for (let j = j0; j <= j1; j++) for (let i = i0; i <= i1; i++) {
         const x = i / RES, z = j / RES;
         const L = sample(landB, N, x, z);
         const D = sample(depthB, N, x, z);
@@ -139,83 +150,126 @@ export class Terrain {
           h += Math.pow(Mb, 1.3) * (1.0 + 2.6 * ridged) + Mb * fbm(x * 3, z * 3, g.seed + 5) * 0.3;
         }
         this.H[j * W + i] = h;
-        pos.set([x, h, z], (j * W + i) * 3);
       }
     }
-    const idx: number[] = [];
-    for (let j = 0; j < W - 1; j++) for (let i = 0; i < W - 1; i++) {
-      const a = j * W + i, b = a + 1, c = a + W, d = c + 1;
-      idx.push(a, c, b, b, c, d);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setIndex(idx);
-    geo.computeVertexNormals();
-    this.splat = new Float32Array(W * W * 4);
-    this.dim = new Float32Array(W * W).fill(1);
-    geo.setAttribute('splat', new THREE.BufferAttribute(this.splat, 4));
-    geo.setAttribute('dim', new THREE.BufferAttribute(this.dim, 1));
-    this.updateSplat(geo);
 
-    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
-    mat.onBeforeCompile = (sh) => {
+    this.mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.95, metalness: 0 });
+    this.mat.onBeforeCompile = (sh) => {
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', `#include <common>
 attribute vec4 splat;
 attribute float dim;
+attribute float fog;
 varying vec4 vSplat;
 varying float vDim;
+varying float vFog;
 varying vec3 vTW;`)
         .replace('#include <begin_vertex>', `#include <begin_vertex>
-vSplat = splat; vDim = dim; vTW = (modelMatrix * vec4(position, 1.0)).xyz;`);
+vSplat = splat; vDim = dim; vFog = fog; vTW = (modelMatrix * vec4(position, 1.0)).xyz;`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
+varying float vFog;
 ${TERRAIN_GLSL}`)
         .replace('#include <color_fragment>', `#include <color_fragment>
-diffuseColor.rgb = terrainColor(vTW, vSplat) * vDim;`);
+diffuseColor.rgb = terrainColor(vTW, vSplat) * vDim;`)
+        .replace('#include <dithering_fragment>', `#include <dithering_fragment>
+{
+  float cl = tf(vTW.xz * 0.15) * 0.7 + tf(vTW.xz * 0.6) * 0.3;
+  vec3 mist = mix(vec3(0.55, 0.60, 0.66), vec3(0.80, 0.83, 0.87), cl);
+  gl_FragColor.rgb = mix(mist, gl_FragColor.rgb, smoothstep(0.0, 1.0, vFog));
+}`);
     };
-    mat.customProgramCacheKey = () => 'terrain-v2';
-    this.mesh = new THREE.Mesh(geo, mat);
-    this.mesh.receiveShadow = true;
-    this.mesh.castShadow = true;
+    this.mat.customProgramCacheKey = () => 'terrain-welt-v1';
+
+    for (const isl of g.islands) {
+      const i0 = Math.max(0, (isl.x0 - 3) * RES), i1 = Math.min(W - 1, (isl.x1 + 4) * RES);
+      const j0 = Math.max(0, (isl.y0 - 3) * RES), j1 = Math.min(W - 1, (isl.y1 + 4) * RES);
+      const w = i1 - i0 + 1, h = j1 - j0 + 1;
+      const pos = new Float32Array(w * h * 3);
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+        const gi = i0 + i, gj = j0 + j;
+        pos.set([gi / RES, this.H[gj * W + gi], gj / RES], (j * w + i) * 3);
+      }
+      const idx: number[] = [];
+      for (let j = 0; j < h - 1; j++) for (let i = 0; i < w - 1; i++) {
+        const a = j * w + i, b = a + 1, c = a + w, d = c + 1;
+        idx.push(a, c, b, b, c, d);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setIndex(idx);
+      geo.computeVertexNormals();
+      const ch: Chunk = { island: isl.id, mesh: new THREE.Mesh(geo, this.mat), i0, j0, w, h,
+        splat: new Float32Array(w * h * 4), dim: new Float32Array(w * h).fill(1), fog: new Float32Array(w * h) };
+      geo.setAttribute('splat', new THREE.BufferAttribute(ch.splat, 4));
+      geo.setAttribute('dim', new THREE.BufferAttribute(ch.dim, 1));
+      geo.setAttribute('fog', new THREE.BufferAttribute(ch.fog, 1));
+      ch.mesh.receiveShadow = true;
+      ch.mesh.castShadow = true;
+      ch.mesh.visible = false;
+      this.chunks.push(ch);
+      this.group.add(ch.mesh);
+    }
+    this.updateSplat();
+    this.updateFog();
   }
 
   /** Oberflächen neu mischen (z. B. wenn Wald gerodet wurde) */
-  updateSplat(geo = this.mesh.geometry) {
-    const g = this.g, N = this.N, W = this.W;
+  updateSplat() {
+    const g = this.g, N = this.N;
     const forest = new Float32Array(N * N), sand = new Float32Array(N * N);
     for (let i = 0; i < N * N; i++) {
       forest[i] = g.tiles[i] === T.Wald ? 1 : 0;
       sand[i] = g.tiles[i] === T.Sand || g.tiles[i] === T.Wasser ? 1 : 0;
     }
     const fB = blur(forest, N, 1), sB = blur(sand, N, 1);
-    const nrm = geo.attributes.normal as THREE.BufferAttribute;
-    for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) {
-      const k = j * W + i;
-      const x = i / RES, z = j / RES;
-      const h = this.H[k];
-      const slope = 1 - nrm.getY(k);
-      let rock = Math.min(1, sample(this.bergB, N, x, z) * 1.6 + Math.max(0, slope - 0.25) * 3);
-      let s = h < LAND_Y - 0.02 ? 1 : Math.min(1, sample(sB, N, x, z) * 1.3);
-      let f = sample(fB, N, x, z);
-      rock = Math.max(0, rock);
-      s *= 1 - rock;
-      f *= (1 - rock) * (1 - s);
-      const gr = Math.max(0, 1 - rock - s - f);
-      this.splat.set([gr, f, s, rock], k * 4);
+    for (const ch of this.chunks) {
+      const nrm = ch.mesh.geometry.attributes.normal as THREE.BufferAttribute;
+      for (let j = 0; j < ch.h; j++) for (let i = 0; i < ch.w; i++) {
+        const k = j * ch.w + i;
+        const x = (ch.i0 + i) / RES, z = (ch.j0 + j) / RES;
+        const hgt = this.H[(ch.j0 + j) * this.W + ch.i0 + i];
+        const slope = 1 - nrm.getY(k);
+        let rock = Math.min(1, sample(this.bergB, N, x, z) * 1.6 + Math.max(0, slope - 0.25) * 3);
+        let sd = hgt < LAND_Y - 0.02 ? 1 : Math.min(1, sample(sB, N, x, z) * 1.3);
+        let f = sample(fB, N, x, z);
+        rock = Math.max(0, rock);
+        sd *= 1 - rock;
+        f *= (1 - rock) * (1 - sd);
+        ch.splat.set([Math.max(0, 1 - rock - sd - f), f, sd, rock], k * 4);
+      }
+      (ch.mesh.geometry.attributes.splat as THREE.BufferAttribute).needsUpdate = true;
     }
-    (geo.attributes.splat as THREE.BufferAttribute).needsUpdate = true;
   }
 
-  /** Gebiet außerhalb des Baubereichs abdunkeln */
-  showArea(on: boolean) {
-    const g = this.g, N = this.N, W = this.W;
-    for (let j = 0; j < W; j++) for (let i = 0; i < W; i++) {
-      const tx = Math.min(N - 1, Math.floor(i / RES)), ty = Math.min(N - 1, Math.floor(j / RES));
-      const t = ty * N + tx;
-      this.dim[j * W + i] = on && !g.area[t] && g.tiles[t] !== T.Wasser ? 0.5 : 1;
+  /** Nebel über Unentdecktem; Inseln erst zeigen, wenn ein Teil entdeckt ist */
+  updateFog() {
+    const g = this.g, N = this.N;
+    const seenF = new Float32Array(N * N);
+    for (let i = 0; i < N * N; i++) seenF[i] = g.seen[i];
+    for (const ch of this.chunks) {
+      let any = false;
+      for (let j = 0; j < ch.h; j++) for (let i = 0; i < ch.w; i++) {
+        const v = sample(seenF, N, (ch.i0 + i) / RES, (ch.j0 + j) / RES);
+        ch.fog[j * ch.w + i] = v;
+        if (v > 0.5) any = true;
+      }
+      ch.mesh.visible = any;
+      (ch.mesh.geometry.attributes.fog as THREE.BufferAttribute).needsUpdate = true;
     }
-    (this.mesh.geometry.attributes.dim as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  /** Gebiet außerhalb des eigenen Baubereichs abdunkeln */
+  showArea(on: boolean) {
+    const g = this.g, N = this.N;
+    for (const ch of this.chunks) {
+      for (let j = 0; j < ch.h; j++) for (let i = 0; i < ch.w; i++) {
+        const tx = Math.min(N - 1, Math.floor((ch.i0 + i) / RES)), ty = Math.min(N - 1, Math.floor((ch.j0 + j) / RES));
+        const t = ty * N + tx;
+        ch.dim[j * ch.w + i] = on && !g.area[t] && g.tiles[t] !== T.Wasser ? 0.5 : 1;
+      }
+      (ch.mesh.geometry.attributes.dim as THREE.BufferAttribute).needsUpdate = true;
+    }
   }
 
   heightAt(x: number, z: number): number {
@@ -233,5 +287,9 @@ diffuseColor.rgb = terrainColor(vTW, vSplat) * vDim;`);
     let h = -5;
     for (let j = 0; j <= s * RES; j++) for (let i = 0; i <= s * RES; i++) h = Math.max(h, this.heightAt(x + i / RES, y + j / RES));
     return Math.min(Math.max(h, 0.05), LAND_Y + 0.15);
+  }
+
+  dispose() {
+    for (const ch of this.chunks) ch.mesh.geometry.dispose();
   }
 }

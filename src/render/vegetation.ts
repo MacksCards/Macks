@@ -109,84 +109,106 @@ uniform float uWind;`)
   return m;
 }
 
+interface IslandVeg { conifers: THREE.InstancedMesh[]; broad: THREE.InstancedMesh; grass: THREE.InstancedMesh }
+
 export class Vegetation {
   group = new THREE.Group();
-  private conifers: THREE.InstancedMesh[] = [];
-  private broad: THREE.InstancedMesh;
-  private grass: THREE.InstancedMesh;
+  private per = new Map<number, IslandVeg>();
+  private geoC = [conifer(1), conifer(8)];
+  private geoB = broadleaf(3);
+  private geoG = tuft();
+  private treeMat = windMaterial({}, 0.06, 'baum-wind');
+  private grassMat = windMaterial({ side: THREE.DoubleSide }, 3.5, 'gras-wind');
 
   constructor(private g: Game, private terrain: Terrain) {
-    const treeMat = windMaterial({}, 0.06, 'baum-wind');
-    const N = g.size;
-    for (let v = 0; v < 2; v++) {
-      const m = new THREE.InstancedMesh(conifer(v * 7 + 1), treeMat, N * N * 2);
-      m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false;
-      this.conifers.push(m);
-      this.group.add(m);
-    }
-    this.broad = new THREE.InstancedMesh(broadleaf(3), treeMat, N * N);
-    this.broad.castShadow = true; this.broad.receiveShadow = true; this.broad.frustumCulled = false;
-    this.group.add(this.broad);
-    this.grass = new THREE.InstancedMesh(tuft(), windMaterial({ side: THREE.DoubleSide }, 3.5, 'gras-wind'), N * N * 3);
-    this.grass.frustumCulled = false;
-    this.grass.receiveShadow = true;
-    this.group.add(this.grass);
     this.refresh();
   }
 
-  /** Alles neu platzieren (nach Roden, Bauen, Wegen) */
-  refresh() {
+  private veg(id: number): IslandVeg {
+    let v = this.per.get(id);
+    if (v) return v;
+    const isl = this.g.islands[id];
+    const tiles = (isl.x1 - isl.x0 + 1) * (isl.y1 - isl.y0 + 1);
+    const mk = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number, shadow: boolean) => {
+      const m = new THREE.InstancedMesh(geo, mat, Math.max(1, n));
+      m.castShadow = shadow; m.receiveShadow = true; m.count = 0;
+      this.group.add(m);
+      return m;
+    };
+    v = {
+      conifers: [mk(this.geoC[0], this.treeMat, tiles * 2, true), mk(this.geoC[1], this.treeMat, tiles * 2, true)],
+      broad: mk(this.geoB, this.treeMat, tiles, true),
+      grass: mk(this.geoG, this.grassMat, tiles * 3, false),
+    };
+    this.per.set(id, v);
+    return v;
+  }
+
+  /** Pflanzen neu setzen – alle Inseln oder nur bestimmte */
+  refresh(only?: number[]) {
     const g = this.g, N = g.size;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
-    const counts = [0, 0];
-    let nb = 0, ng = 0;
     const tint = new THREE.Color();
-    for (let i = 0; i < N * N; i++) {
-      const t = g.tiles[i];
-      if (t === T.Wasser || t === T.Berg) continue;
-      const x = i % N, y = (i / N) | 0;
-      const free = !g.occ[i] && !g.roads[i];
-      let a = Math.sin(i * 12.9898 + g.seed) * 43758.5453;
-      const rnd = () => { a = Math.sin(a) * 43758.5453; return a - Math.floor(a); };
-      if (t === T.Wald) {
-        const n = 2 + (rnd() < 0.5 ? 1 : 0);
-        for (let k = 0; k < n; k++) {
-          const px = x + 0.15 + rnd() * 0.7, pz = y + 0.15 + rnd() * 0.7;
-          const s = 1.1 + rnd() * 0.9;
-          q.setFromAxisAngle(up, rnd() * 6.28);
-          m.compose(new THREE.Vector3(px, this.terrain.heightAt(px, pz) - 0.02, pz), q, new THREE.Vector3(s, s * (0.9 + rnd() * 0.4), s));
-          tint.setRGB(0.85 + rnd() * 0.3, 0.85 + rnd() * 0.3, 0.8 + rnd() * 0.3);
-          if (rnd() < 0.78) {
-            const v = rnd() < 0.5 ? 0 : 1;
-            this.conifers[v].setMatrixAt(counts[v], m); this.conifers[v].setColorAt(counts[v], tint); counts[v]++;
-          } else { this.broad.setMatrixAt(nb, m); this.broad.setColorAt(nb, tint); nb++; }
-        }
-      } else if (free) {
-        if (t === T.Gras && rnd() < 0.035) {
-          const px = x + 0.5, pz = y + 0.5, s = 1.0 + rnd() * 0.6;
-          q.setFromAxisAngle(up, rnd() * 6.28);
-          m.compose(new THREE.Vector3(px, this.terrain.heightAt(px, pz) - 0.02, pz), q, new THREE.Vector3(s, s, s));
-          tint.setRGB(1, 1, 1);
-          this.broad.setMatrixAt(nb, m); this.broad.setColorAt(nb, tint); nb++;
-        }
-        const tufts = t === T.Sand ? (rnd() < 0.3 ? 1 : 0) : 3;
-        for (let k = 0; k < tufts; k++) {
-          const px = x + rnd(), pz = y + rnd(), s = 0.7 + rnd() * 0.8;
-          q.setFromAxisAngle(up, rnd() * 6.28);
-          m.compose(new THREE.Vector3(px, this.terrain.heightAt(px, pz), pz), q, new THREE.Vector3(s, s * (0.7 + rnd() * 0.6), s));
-          const dry = t === T.Sand ? 0.25 : rnd() * 0.15;
-          tint.setRGB(1 + dry, 1 + dry * 0.6, 1 - dry * 0.3);
-          this.grass.setMatrixAt(ng, m); this.grass.setColorAt(ng, tint); ng++;
+    for (const isl of g.islands) {
+      if (only && !only.includes(isl.id)) continue;
+      const v = this.veg(isl.id);
+      const counts = [0, 0];
+      let nb = 0, ng = 0;
+      for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) {
+        const i = y * N + x;
+        if (g.islandOf[i] !== isl.id || !g.seen[i]) continue;
+        const t = g.tiles[i];
+        if (t === T.Wasser || t === T.Berg) continue;
+        const free = !g.occ[i] && !g.roads[i];
+        let a = Math.sin(i * 12.9898 + g.seed) * 43758.5453;
+        const rnd = () => { a = Math.sin(a) * 43758.5453; return a - Math.floor(a); };
+        if (t === T.Wald) {
+          const n = 2 + (rnd() < 0.5 ? 1 : 0);
+          for (let k = 0; k < n; k++) {
+            const px = x + 0.15 + rnd() * 0.7, pz = y + 0.15 + rnd() * 0.7;
+            const s = 1.1 + rnd() * 0.9;
+            q.setFromAxisAngle(up, rnd() * 6.28);
+            m.compose(new THREE.Vector3(px, this.terrain.heightAt(px, pz) - 0.02, pz), q, new THREE.Vector3(s, s * (0.9 + rnd() * 0.4), s));
+            tint.setRGB(0.85 + rnd() * 0.3, 0.85 + rnd() * 0.3, 0.8 + rnd() * 0.3);
+            if (rnd() < 0.78) {
+              const c = rnd() < 0.5 ? 0 : 1;
+              v.conifers[c].setMatrixAt(counts[c], m); v.conifers[c].setColorAt(counts[c], tint); counts[c]++;
+            } else { v.broad.setMatrixAt(nb, m); v.broad.setColorAt(nb, tint); nb++; }
+          }
+        } else if (free) {
+          if (t === T.Gras && rnd() < 0.035) {
+            const px = x + 0.5, pz = y + 0.5, s = 1.0 + rnd() * 0.6;
+            q.setFromAxisAngle(up, rnd() * 6.28);
+            m.compose(new THREE.Vector3(px, this.terrain.heightAt(px, pz) - 0.02, pz), q, new THREE.Vector3(s, s, s));
+            tint.setRGB(1, 1, 1);
+            v.broad.setMatrixAt(nb, m); v.broad.setColorAt(nb, tint); nb++;
+          }
+          const tufts = t === T.Sand ? (rnd() < 0.3 ? 1 : 0) : 3;
+          for (let k = 0; k < tufts; k++) {
+            const px = x + rnd(), pz = y + rnd(), s = 0.7 + rnd() * 0.8;
+            q.setFromAxisAngle(up, rnd() * 6.28);
+            m.compose(new THREE.Vector3(px, this.terrain.heightAt(px, pz), pz), q, new THREE.Vector3(s, s * (0.7 + rnd() * 0.6), s));
+            const dry = t === T.Sand ? 0.25 : rnd() * 0.15;
+            tint.setRGB(1 + dry, 1 + dry * 0.6, 1 - dry * 0.3);
+            v.grass.setMatrixAt(ng, m); v.grass.setColorAt(ng, tint); ng++;
+          }
         }
       }
-    }
-    this.conifers.forEach((c, v) => { c.count = counts[v]; c.instanceMatrix.needsUpdate = true; if (c.instanceColor) c.instanceColor.needsUpdate = true; });
-    for (const [mesh, n] of [[this.broad, nb], [this.grass, ng]] as const) {
-      mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+      const fin = (mesh: THREE.InstancedMesh, n: number) => {
+        mesh.count = n;
+        mesh.instanceMatrix.needsUpdate = true;
+        if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+        mesh.computeBoundingSphere();
+        mesh.visible = n > 0;
+      };
+      v.conifers.forEach((c, k) => fin(c, counts[k]));
+      fin(v.broad, nb);
+      fin(v.grass, ng);
     }
   }
 
   dispose() {
-    for (const c of [...this.conifers, this.broad, this.grass]) c.geometry.dispose();
+    for (const v of this.per.values()) for (const m of [...v.conifers, v.broad, v.grass]) this.group.remove(m);
+    this.per.clear();
   }
 }

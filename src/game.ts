@@ -1,8 +1,10 @@
-// Spiellogik: Zustand, Bauen, Wirtschaftssimulation, Speichern.
+// Spiellogik: Inselwelt, Spieler, Schiffe, Bauen, Wirtschaft, Speichern.
+// Wie im Vorbild hat jede Insel ihr eigenes Lager (je Spieler); Geld ist global.
 import {
-  BUILDINGS, BuildingDef, BuildingId, Cost, GOOD, GOODS, GoodId, START_GOODS, START_MONEY, TIERS,
+  BUILDINGS, BuildingDef, BuildingId, Cost, GOOD, GOODS, GoodId, SLOT_CAP, START_CARGO, START_MONEY, TIERS,
 } from './data';
-import { MAP_SIZE, T, generateIsland, rng } from './world';
+import { findSeaPath } from './path';
+import { Island, T, WORLD_SIZE, generateWorld, rng } from './world';
 
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen';
 
@@ -11,14 +13,14 @@ export interface Building {
   type: BuildingId;
   x: number;
   y: number;
-  // Produktion
+  owner: number;
+  island: number;
   progress: number;
   loaded: boolean;
   eff: number;
   status: Status;
   missing: GoodId[];
   active: number;
-  // Wohnhaus
   tier: number;
   residents: number;
   need: Partial<Record<GoodId, number>>;
@@ -29,18 +31,37 @@ export interface Building {
   upT: number;
 }
 
+export interface Slot { g: GoodId | null; n: number }
+
+export interface Ship {
+  id: number;
+  owner: number;
+  name: string;
+  x: number;
+  y: number;
+  dir: number;
+  path: [number, number][];
+  slots: Slot[];
+}
+
+export interface Player { id: number; name: string; color: number; ai: boolean; money: number }
+
+type Goods = Record<GoodId, number>;
+
 export interface SaveData {
-  v: 1;
+  v: 3;
   seed: number;
-  size: number;
   tiles: string;
   roads: string;
+  seen: string;
   buildings: Building[];
+  ships: Ship[];
+  players: Player[];
+  lager: Record<string, Goods>;
   nextId: number;
-  money: number;
-  goods: Record<GoodId, number>;
   time: number;
   quest: number;
+  unlocked?: BuildingId[];
 }
 
 export interface GameEvents {
@@ -49,73 +70,100 @@ export interface GameEvents {
   changed(b: Building): void;
   roads(): void;
   trees(): void;
+  seen(): void;
   message(text: string, kind?: 'info' | 'good' | 'bad'): void;
 }
 
 export interface Check { ok: boolean; reason?: string }
 
 const LAGER: BuildingId[] = ['kontor', 'markt'];
-const SAVE_KEY = 'neue-ufer-save-v2';
+const SAVE_KEY = 'neue-ufer-save-v3';
+export const HUMAN = 0;
+const SHIP_SPEED = 3.2; // Kacheln pro Spielsekunde
+const SHIP_SIGHT = 9;
+export const DOCK_RANGE = 5; // so nah muss ein Schiff am Kontor/Bauplatz sein
+
+const enc = (a: ArrayLike<number>) => { let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i] + 48); return s; };
+const zeroGoods = (): Goods => Object.fromEntries(GOODS.map((g) => [g.id, 0])) as Goods;
+const EMPTY: Goods = Object.freeze(zeroGoods()) as Goods;
 
 export class Game {
   seed = 1;
-  size = MAP_SIZE;
+  size = WORLD_SIZE;
   tiles: Uint8Array = new Uint8Array(0);
+  islandOf: Int16Array = new Int16Array(0);
+  islands: Island[] = [];
+  starts: [number, number][] = [];
   roads: Uint8Array = new Uint8Array(0);
-  occ = new Int32Array(0); // Gebäude-ID pro Kachel (0 = frei)
+  seen: Uint8Array = new Uint8Array(0);
+  occ = new Int32Array(0);
   buildings: Building[] = [];
   byId = new Map<number, Building>();
+  ships: Ship[] = [];
+  players: Player[] = [];
+  lager: Record<string, Goods> = {};
   nextId = 1;
-  money = 0;
-  goods = {} as Record<GoodId, number>;
   time = 0;
   quest = 0;
-  speed = 1;
+  /** Insel, deren Lager die Oberfläche gerade zeigt (-1 = keine) */
+  focus = -1;
 
-  // abgeleitete Werte (werden bei Änderungen neu berechnet)
-  area: Uint8Array = new Uint8Array(0);
+  // abgeleitete Werte
+  own: Int8Array = new Int8Array(0); // Besitzer je Kachel (-1 = frei)
+  area: Uint8Array = new Uint8Array(0); // Baugebiet des menschlichen Spielers
   roadLinked: Uint8Array = new Uint8Array(0);
   linked = new Set<number>();
   coverage = new Map<number, Set<BuildingId>>();
-  capacity = 0;
+  cap = new Map<string, number>();
+  private seenDirty = false;
+  private sightT = 0;
+  /** Bereits freigeschaltete Gebäude (bleiben freigeschaltet) */
+  unlocked = new Set<BuildingId>();
+  private unlockT = 0;
 
-  ev: GameEvents = {
-    added() {}, removed() {}, changed() {}, roads() {}, trees() {}, message() {},
-  };
+  ev: GameEvents = { added() {}, removed() {}, changed() {}, roads() {}, trees() {}, seen() {}, message() {} };
 
   // ---------- Erstellen / Laden ----------
 
+  private setupWorld(seed: number) {
+    const w = generateWorld(seed);
+    this.seed = seed;
+    this.size = w.size;
+    this.tiles = w.tiles;
+    this.islandOf = w.island;
+    this.islands = w.islands;
+    this.starts = w.starts;
+    const N = this.size * this.size;
+    this.roads = new Uint8Array(N);
+    this.seen = new Uint8Array(N);
+    this.occ = new Int32Array(N);
+  }
+
   static create(seed: number): Game {
     const g = new Game();
-    let s = seed;
-    for (let attempt = 0; attempt < 30; attempt++, s++) {
-      const tiles = generateIsland(s);
-      let berg = 0, wald = 0, land = 0;
-      for (const t of tiles) { if (t === T.Berg) berg++; if (t === T.Wald) wald++; if (t !== T.Wasser) land++; }
-      if (berg >= 6 && wald >= 80 && land >= 900) { g.tiles = tiles; break; }
-      g.tiles = tiles;
-    }
-    g.seed = s;
-    g.roads = new Uint8Array(g.size * g.size);
-    g.occ = new Int32Array(g.size * g.size);
-    g.money = START_MONEY;
-    for (const gd of GOODS) g.goods[gd.id] = START_GOODS[gd.id] ?? 0;
-    g.placeKontor();
+    g.setupWorld(seed);
+    g.players = [{ id: HUMAN, name: 'Du', color: 0x2f6fd0, ai: false, money: START_MONEY }];
+    const [sx, sy] = g.starts[HUMAN];
+    const ship: Ship = { id: g.nextId++, owner: HUMAN, name: 'Morgenstern', x: sx + 0.5, y: sy + 0.5, dir: -Math.PI / 4, path: [], slots: [] };
+    for (let i = 0; i < 4; i++) ship.slots.push(START_CARGO[i] ? { g: START_CARGO[i][0], n: START_CARGO[i][1] } : { g: null, n: 0 });
+    g.ships.push(ship);
+    g.reveal(sx, sy, SHIP_SIGHT + 2);
     g.recompute();
+    g.checkUnlocks(true);
     return g;
   }
 
   static fromSave(d: SaveData): Game {
     const g = new Game();
-    g.seed = d.seed;
-    g.size = d.size;
+    g.setupWorld(d.seed);
     g.tiles = Uint8Array.from(d.tiles, (c) => c.charCodeAt(0) - 48);
     g.roads = Uint8Array.from(d.roads, (c) => c.charCodeAt(0) - 48);
-    g.occ = new Int32Array(g.size * g.size);
+    g.seen = Uint8Array.from(d.seen, (c) => c.charCodeAt(0) - 48);
+    g.players = d.players;
+    g.ships = d.ships;
+    g.lager = d.lager;
+    for (const k of Object.keys(g.lager)) g.lager[k] = { ...zeroGoods(), ...g.lager[k] };
     g.nextId = d.nextId;
-    g.money = d.money;
-    g.goods = {} as Record<GoodId, number>;
-    for (const gd of GOODS) g.goods[gd.id] = d.goods[gd.id] ?? 0;
     g.time = d.time;
     g.quest = d.quest;
     for (const b of d.buildings) {
@@ -125,26 +173,21 @@ export class Game {
       g.stamp(b, b.id);
     }
     g.recompute();
+    for (const t of d.unlocked ?? []) if (BUILDINGS[t]) g.unlocked.add(t);
+    g.checkUnlocks(true);
     return g;
   }
 
   serialize(): SaveData {
     return {
-      v: 1, seed: this.seed, size: this.size,
-      tiles: String.fromCharCode(...Array.from(this.tiles, (t) => t + 48)),
-      roads: String.fromCharCode(...Array.from(this.roads, (t) => t + 48)),
-      buildings: this.buildings, nextId: this.nextId, money: this.money,
-      goods: this.goods, time: this.time, quest: this.quest,
+      v: 3, seed: this.seed, tiles: enc(this.tiles), roads: enc(this.roads), seen: enc(this.seen),
+      buildings: this.buildings, ships: this.ships, players: this.players, lager: this.lager,
+      nextId: this.nextId, time: this.time, quest: this.quest, unlocked: [...this.unlocked],
     };
   }
 
   save(): boolean {
-    try {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(this.serialize()));
-      return true;
-    } catch {
-      return false;
-    }
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.serialize())); return true; } catch { return false; }
   }
 
   static load(): Game | null {
@@ -152,8 +195,7 @@ export class Game {
       const raw = localStorage.getItem(SAVE_KEY);
       if (!raw) return null;
       const d = JSON.parse(raw) as SaveData;
-      if (d.v !== 1) return null;
-      return Game.fromSave(d);
+      return d.v === 3 ? Game.fromSave(d) : null;
     } catch {
       return null;
     }
@@ -168,22 +210,35 @@ export class Game {
   idx(x: number, y: number) { return y * this.size + x; }
   inMap(x: number, y: number) { return x >= 0 && y >= 0 && x < this.size && y < this.size; }
   tile(x: number, y: number) { return this.inMap(x, y) ? this.tiles[this.idx(x, y)] : T.Wasser; }
+  isWater = (k: number) => this.tiles[k] === T.Wasser;
   def(b: Building): BuildingDef { return BUILDINGS[b.type]; }
-  center(b: Building): [number, number] { const s = BUILDINGS[b.type].size; return [b.x + s / 2, b.y + s / 2]; }
+  center(b: { type: BuildingId; x: number; y: number }): [number, number] { const s = BUILDINGS[b.type].size; return [b.x + s / 2, b.y + s / 2]; }
+  island(id: number): Island | undefined { return this.islands[id]; }
+
+  get money() { return this.players[HUMAN].money; }
+  set money(v: number) { this.players[HUMAN].money = v; }
+
+  /** Lager eines Spielers auf einer Insel (nur vorhanden, wenn er dort ein Kontor hat) */
+  lagerOf(owner: number, island: number): Goods | null { return this.lager[`${owner}:${island}`] ?? null; }
+  capOf(owner: number, island: number): number { return this.cap.get(`${owner}:${island}`) ?? 0; }
+  /** Lager der Insel im Fokus (für die Oberfläche) */
+  get goods(): Goods { return this.lagerOf(HUMAN, this.focus) ?? EMPTY; }
+  get capacity(): number { return this.capOf(HUMAN, this.focus); }
+
   count(type: BuildingId, onlyLinked = false) {
     let n = 0;
-    for (const b of this.buildings) if (b.type === type && (!onlyLinked || this.linked.has(b.id))) n++;
+    for (const b of this.buildings) if (b.owner === HUMAN && b.type === type && (!onlyLinked || this.linked.has(b.id))) n++;
     return n;
   }
-  population() { let n = 0; for (const b of this.buildings) if (b.type === 'haus') n += b.residents; return n; }
+  population() { let n = 0; for (const b of this.buildings) if (b.owner === HUMAN && b.type === 'haus') n += b.residents; return n; }
   popByTier(): number[] {
-    const r = [0, 0, 0];
-    for (const b of this.buildings) if (b.type === 'haus') r[b.tier] += b.residents;
+    const r = TIERS.map(() => 0);
+    for (const b of this.buildings) if (b.owner === HUMAN && b.type === 'haus') r[b.tier] += b.residents;
     return r;
   }
   housesByTier(): number[] {
-    const r = [0, 0, 0];
-    for (const b of this.buildings) if (b.type === 'haus') r[b.tier]++;
+    const r = TIERS.map(() => 0);
+    for (const b of this.buildings) if (b.owner === HUMAN && b.type === 'haus') r[b.tier]++;
     return r;
   }
   buildingAt(x: number, y: number): Building | undefined {
@@ -191,89 +246,104 @@ export class Game {
     const id = this.occ[this.idx(x, y)];
     return id ? this.byId.get(id) : undefined;
   }
+  kontor(owner = HUMAN, island = -1): Building | undefined {
+    return this.buildings.find((b) => b.type === 'kontor' && b.owner === owner && (island < 0 || b.island === island));
+  }
+  myShips() { return this.ships.filter((s) => s.owner === HUMAN); }
 
   private stamp(b: Building, val: number) {
     const s = BUILDINGS[b.type].size;
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) this.occ[this.idx(b.x + i, b.y + j)] = val;
   }
 
-  private newBuilding(type: BuildingId, x: number, y: number): Building {
+  private newBuilding(type: BuildingId, x: number, y: number, owner: number): Building {
     return {
-      id: this.nextId++, type, x, y, progress: 0, loaded: false, eff: 1, status: 'ok', missing: [], active: 0,
+      id: this.nextId++, type, x, y, owner, island: this.islandOf[this.idx(x, y)],
+      progress: 0, loaded: false, eff: 1, status: 'ok', missing: [], active: 0,
       tier: 0, residents: type === 'haus' ? 1 : 0, need: { nahrung: 1 }, demand: {}, short: {}, happy: 0.7, growT: 0, upT: 0,
     };
   }
 
-  private placeKontor() {
-    const s = 3;
-    let best: [number, number] | null = null;
-    let bestScore = -1;
-    for (let y = 3; y < this.size - 6; y++) {
-      for (let x = 3; x < this.size - 6; x++) {
-        let ok = true;
-        for (let j = 0; j < s && ok; j++) for (let i = 0; i < s && ok; i++) {
-          const t = this.tile(x + i, y + j);
-          if (t === T.Wasser || t === T.Berg) ok = false;
-        }
-        if (!ok) continue;
-        let water = 0;
-        for (let k = 0; k < s; k++) {
-          if (this.tile(x + k, y - 1) === T.Wasser) water++;
-          if (this.tile(x + k, y + s) === T.Wasser) water++;
-          if (this.tile(x - 1, y + k) === T.Wasser) water++;
-          if (this.tile(x + s, y + k) === T.Wasser) water++;
-        }
-        if (water < 3) continue;
-        let land = 0;
-        const cx = x + 1.5, cy = y + 1.5;
-        for (let j = -11; j <= 11; j++) for (let i = -11; i <= 11; i++) {
-          if (i * i + j * j > 121) continue;
-          const t = this.tile(Math.floor(cx + i), Math.floor(cy + j));
-          if (t === T.Gras || t === T.Wald || t === T.Sand) land++;
-        }
-        if (land > bestScore) { bestScore = land; best = [x, y]; }
-      }
-    }
-    const [x, y] = best ?? [this.size / 2, this.size / 2];
-    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
-      const k = this.idx(x + i, y + j);
-      if (this.tiles[k] === T.Wald || this.tiles[k] === T.Wasser) this.tiles[k] = T.Sand;
-    }
-    const b = this.newBuilding('kontor', x, y);
-    b.residents = 0;
-    this.buildings.push(b);
-    this.byId.set(b.id, b);
-    this.stamp(b, b.id);
+  // ---------- Freischaltungen (wie im Vorbild nach Einwohnerzahl) ----------
+
+  /** Größte Einwohnerzahl mindestens der Stufe tier auf einer einzelnen Insel */
+  maxPop(tier: number): number {
+    const per = new Map<number, number>();
+    for (const b of this.buildings) if (b.owner === HUMAN && b.type === 'haus' && b.tier >= tier) per.set(b.island, (per.get(b.island) ?? 0) + b.residents);
+    return Math.max(0, ...per.values());
   }
 
-  kontor(): Building | undefined { return this.buildings.find((b) => b.type === 'kontor'); }
+  isUnlocked(type: BuildingId): boolean {
+    if (this.unlocked.has(type)) return true;
+    const u = BUILDINGS[type].unlock;
+    return !u || this.maxPop(u.tier) >= u.n;
+  }
+
+  checkUnlocks(silent = false) {
+    const fresh: BuildingId[] = [];
+    for (const d of Object.values(BUILDINGS)) {
+      if (!d.category || this.unlocked.has(d.id)) continue;
+      const u = d.unlock;
+      if (!u || this.maxPop(u.tier) >= u.n) { this.unlocked.add(d.id); if (u) fresh.push(d.id); }
+    }
+    if (!silent && fresh.length) this.ev.message(`Neu freigeschaltet: ${fresh.map((t) => `${BUILDINGS[t].icon} ${BUILDINGS[t].name}`).join(', ')}`, 'good');
+  }
+
+  /** Nächste Freischaltung in einer Kategorie (für Hinweise) */
+  nextUnlock(cat: string): { type: BuildingId; tier: number; n: number } | null {
+    let best: { type: BuildingId; tier: number; n: number } | null = null;
+    for (const d of Object.values(BUILDINGS)) {
+      if (d.category !== cat || this.unlocked.has(d.id) || !d.unlock) continue;
+      if (!best || d.unlock.tier < best.tier || (d.unlock.tier === best.tier && d.unlock.n < best.n)) best = { type: d.id, ...d.unlock };
+    }
+    return best;
+  }
+
+  // ---------- Erkundung ----------
+
+  reveal(cx: number, cy: number, r: number) {
+    for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+      if (!this.inMap(x, y)) continue;
+      if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 > r * r) continue;
+      const k = this.idx(x, y);
+      if (!this.seen[k]) { this.seen[k] = 1; this.seenDirty = true; }
+    }
+  }
+
+  /** Ist eine Insel (teilweise) entdeckt? */
+  islandSeen(id: number): boolean {
+    const i = this.islands[id];
+    for (let y = i.y0; y <= i.y1; y++) for (let x = i.x0; x <= i.x1; x++) if (this.seen[this.idx(x, y)] && this.islandOf[this.idx(x, y)] === id) return true;
+    return false;
+  }
 
   // ---------- abgeleitete Werte ----------
 
   recompute() {
     const N = this.size;
-    // Baubereich
-    this.area = new Uint8Array(N * N);
-    this.capacity = 0;
-    for (const b of this.buildings) {
+    // Besitz: Kontore/Marktplätze beanspruchen Land ihrer Insel (wer zuerst baut, dem gehört es)
+    this.own = new Int8Array(N * N).fill(-1);
+    this.cap.clear();
+    const claimers = this.buildings.filter((b) => LAGER.includes(b.type)).sort((a, b) => a.id - b.id);
+    for (const b of claimers) {
       const d = this.def(b);
-      if (d.storage) this.capacity += d.storage;
-      if (!LAGER.includes(b.type) || !d.radius) continue;
+      const key = `${b.owner}:${b.island}`;
+      this.cap.set(key, (this.cap.get(key) ?? 0) + (d.storage ?? 0));
       const [cx, cy] = this.center(b);
-      const r = d.radius;
-      for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
-        for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
-          if (!this.inMap(x, y)) continue;
-          const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
-          if (dx * dx + dy * dy <= r * r) this.area[this.idx(x, y)] = 1;
-        }
+      const r = d.radius ?? 0;
+      for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+        if (!this.inMap(x, y)) continue;
+        const k = this.idx(x, y);
+        if (this.islandOf[k] !== b.island || this.own[k] >= 0) continue;
+        if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r) this.own[k] = b.owner;
       }
     }
+    this.area = new Uint8Array(N * N);
+    for (let k = 0; k < N * N; k++) if (this.own[k] === HUMAN) this.area[k] = 1;
     // Wegnetz ab Kontor/Markt
     this.roadLinked = new Uint8Array(N * N);
     const stack: number[] = [];
-    for (const b of this.buildings) {
-      if (!LAGER.includes(b.type)) continue;
+    for (const b of claimers) {
       for (const [x, y] of this.ring(b)) {
         if (!this.inMap(x, y)) continue;
         const k = this.idx(x, y);
@@ -297,7 +367,7 @@ export class Game {
         if (!this.inMap(x, y)) continue;
         const k = this.idx(x, y);
         const other = this.occ[k] ? this.byId.get(this.occ[k]) : undefined;
-        if (this.roadLinked[k] || (other && LAGER.includes(other.type))) { this.linked.add(b.id); break; }
+        if (this.roadLinked[k] || (other && LAGER.includes(other.type) && other.owner === b.owner)) { this.linked.add(b.id); break; }
       }
     }
     // Versorgung der Wohnhäuser
@@ -308,23 +378,20 @@ export class Game {
       const set = new Set<BuildingId>();
       const [hx, hy] = this.center(h);
       for (const s of services) {
+        if (s.owner !== h.owner) continue;
         const [sx, sy] = this.center(s);
         const r = this.def(s).radius ?? 0;
         if ((hx - sx) ** 2 + (hy - sy) ** 2 <= r * r) set.add(s.type);
       }
       this.coverage.set(h.id, set);
     }
-    // Standort-Effizienz
     for (const b of this.buildings) b.eff = this.siteEfficiency(b.type, b.x, b.y);
   }
 
-  /** Kacheln direkt rund um ein Gebäude (ohne Ecken) */
   ring(b: { type: BuildingId; x: number; y: number }): [number, number][] {
     const s = BUILDINGS[b.type].size;
     const out: [number, number][] = [];
-    for (let k = 0; k < s; k++) {
-      out.push([b.x + k, b.y - 1], [b.x + k, b.y + s], [b.x - 1, b.y + k], [b.x + s, b.y + k]);
-    }
+    for (let k = 0; k < s; k++) out.push([b.x + k, b.y - 1], [b.x + k, b.y + s], [b.x - 1, b.y + k], [b.x + s, b.y + k]);
     return out;
   }
 
@@ -348,33 +415,158 @@ export class Game {
     return Math.min(1, n / full);
   }
 
+  // ---------- Schiffe ----------
+
+  shipCargo(s: Ship, g: GoodId): number { return s.slots.reduce((n, sl) => n + (sl.g === g ? sl.n : 0), 0); }
+
+  /** Ware ins Schiff laden; gibt geladene Menge zurück */
+  shipAdd(s: Ship, g: GoodId, n: number): number {
+    let left = n;
+    for (const sl of s.slots) if (sl.g === g && left > 0) { const t = Math.min(left, SLOT_CAP - sl.n); sl.n += t; left -= t; }
+    for (const sl of s.slots) if (!sl.g && left > 0) { const t = Math.min(left, SLOT_CAP); sl.g = g; sl.n = t; left -= t; }
+    return n - left;
+  }
+
+  shipTake(s: Ship, g: GoodId, n: number): number {
+    let left = n;
+    for (const sl of s.slots) if (sl.g === g && left > 0) { const t = Math.min(left, sl.n); sl.n -= t; left -= t; if (!sl.n) sl.g = null; }
+    return n - left;
+  }
+
+  /** Kontor des Schiffsbesitzers in Reichweite des Schiffs */
+  shipDock(s: Ship): Building | undefined {
+    return this.buildings.find((b) => b.type === 'kontor' && b.owner === s.owner && Math.hypot(this.center(b)[0] - s.x, this.center(b)[1] - s.y) <= DOCK_RANGE + 1.5);
+  }
+
+  /** Alles aus dem Schiff ins Kontor laden (soweit Platz ist); gibt Tonnen zurück */
+  unloadAll(s: Ship): number {
+    const k = this.shipDock(s);
+    if (!k) return 0;
+    const l = this.lagerOf(s.owner, k.island)!;
+    const cap = this.capOf(s.owner, k.island);
+    let moved = 0;
+    for (const sl of s.slots) {
+      if (!sl.g) continue;
+      const t = Math.max(0, Math.min(sl.n, cap - l[sl.g]));
+      l[sl.g] += t; sl.n -= t; moved += t;
+      if (!sl.n) sl.g = null;
+    }
+    return moved;
+  }
+
+  /** Ware vom Kontor aufs Schiff laden */
+  loadGood(s: Ship, g: GoodId, n: number): number {
+    const k = this.shipDock(s);
+    if (!k) return 0;
+    const l = this.lagerOf(s.owner, k.island)!;
+    const t = this.shipAdd(s, g, Math.min(n, Math.floor(l[g])));
+    l[g] -= t;
+    return t;
+  }
+
+  /** Insel, an deren Küste das Schiff gerade liegt (-1 = keine) */
+  shipNearIsland(s: Ship): number {
+    let best = -1, bd = DOCK_RANGE + 1;
+    const r = Math.ceil(DOCK_RANGE);
+    for (let y = Math.floor(s.y) - r; y <= Math.floor(s.y) + r; y++) for (let x = Math.floor(s.x) - r; x <= Math.floor(s.x) + r; x++) {
+      if (!this.inMap(x, y)) continue;
+      const id = this.islandOf[this.idx(x, y)];
+      if (id < 0) continue;
+      const d = Math.hypot(x + 0.5 - s.x, y + 0.5 - s.y);
+      if (d < bd) { bd = d; best = id; }
+    }
+    return best;
+  }
+
+  moveShip(s: Ship, tx: number, ty: number): boolean {
+    let gx = Math.floor(tx), gy = Math.floor(ty);
+    const clamp = (v: number) => Math.min(this.size - 1, Math.max(0, v));
+    gx = clamp(gx); gy = clamp(gy);
+    // Ziel an Land → nächstes Wasserfeld suchen
+    if (!this.isWater(this.idx(gx, gy))) {
+      let best: [number, number] | null = null, bd = 1e9;
+      for (let r = 1; r < 10 && !best; r++) for (let y = gy - r; y <= gy + r; y++) for (let x = gx - r; x <= gx + r; x++) {
+        if (!this.inMap(x, y) || !this.isWater(this.idx(x, y))) continue;
+        const d = Math.hypot(x - gx, y - gy);
+        if (d < bd) { bd = d; best = [x, y]; }
+      }
+      if (!best) return false;
+      [gx, gy] = best;
+    }
+    const p = findSeaPath(this.size, this.isWater, Math.floor(s.x), Math.floor(s.y), gx, gy);
+    if (!p) return false;
+    s.path = p;
+    return true;
+  }
+
+  private tickShip(s: Ship, dt: number) {
+    let step = SHIP_SPEED * dt;
+    while (step > 0 && s.path.length) {
+      const [tx, ty] = s.path[0];
+      const dx = tx - s.x, dy = ty - s.y;
+      const d = Math.hypot(dx, dy);
+      if (d < 1e-3) { s.path.shift(); continue; }
+      const m = Math.min(step, d);
+      s.x += (dx / d) * m; s.y += (dy / d) * m;
+      s.dir = Math.atan2(dx, dy);
+      step -= m;
+      if (m >= d) s.path.shift();
+    }
+  }
+
   // ---------- Bauen ----------
 
-  canAfford(c: Cost): Check {
-    if ((c.taler ?? 0) > this.money) return { ok: false, reason: 'Zu wenig Taler' };
-    for (const k of ['holz', 'werkzeug', 'stein'] as const) {
-      if ((c[k] ?? 0) > this.goods[k]) return { ok: false, reason: `Zu wenig ${GOOD[k].name}` };
-    }
+  canAfford(c: Cost, owner = HUMAN, island = this.focus): Check {
+    if ((c.taler ?? 0) > this.players[owner].money) return { ok: false, reason: 'Zu wenig Taler' };
+    const l = this.lagerOf(owner, island) ?? EMPTY;
+    for (const k of ['holz', 'werkzeug', 'stein'] as const) if ((c[k] ?? 0) > l[k]) return { ok: false, reason: `Zu wenig ${GOOD[k].name}` };
     return { ok: true };
   }
 
-  private pay(c: Cost, factor = 1) {
-    this.money -= (c.taler ?? 0) * factor;
-    for (const k of ['holz', 'werkzeug', 'stein'] as const) this.goods[k] -= (c[k] ?? 0) * factor;
+  private pay(c: Cost, owner: number, island: number) {
+    this.players[owner].money -= c.taler ?? 0;
+    const l = this.lagerOf(owner, island);
+    if (l) for (const k of ['holz', 'werkzeug', 'stein'] as const) l[k] -= c[k] ?? 0;
   }
 
-  canPlace(type: BuildingId, x: number, y: number): Check {
+  /** Schiff des Spielers, das nahe genug an einem Bauplatz liegt */
+  shipNear(owner: number, cx: number, cy: number): Ship | undefined {
+    return this.ships.filter((s) => s.owner === owner).sort((a, b) => Math.hypot(a.x - cx, a.y - cy) - Math.hypot(b.x - cx, b.y - cy))
+      .find((s) => Math.hypot(s.x - cx, s.y - cy) <= DOCK_RANGE + 2);
+  }
+
+  canPlace(type: BuildingId, x: number, y: number, owner = HUMAN): Check {
     const d = BUILDINGS[type];
     const s = d.size;
+    let isl = -2;
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
       const tx = x + i, ty = y + j;
       if (!this.inMap(tx, ty)) return { ok: false, reason: 'Außerhalb der Karte' };
       const t = this.tile(tx, ty);
       const k = this.idx(tx, ty);
+      if (owner === HUMAN && !this.seen[k]) return { ok: false, reason: 'Noch unentdeckt' };
       if (t === T.Wasser) return { ok: false, reason: 'Nicht auf dem Wasser' };
       if (t === T.Berg) return { ok: false, reason: 'Nicht auf dem Berg' };
       if (this.occ[k] || this.roads[k]) return { ok: false, reason: 'Platz ist belegt' };
-      if (!this.area[k]) return { ok: false, reason: 'Außerhalb deines Gebiets – baue einen Marktplatz' };
+      if (isl === -2) isl = this.islandOf[k];
+      if (type === 'kontor') {
+        if (this.own[k] >= 0 && this.own[k] !== owner) return { ok: false, reason: 'Das Land gehört schon jemand anderem' };
+      } else if (this.own[k] !== owner) return { ok: false, reason: 'Außerhalb deines Gebiets – baue einen Marktplatz' };
+    }
+    if (owner === HUMAN && d.category && !this.isUnlocked(type)) {
+      const u = d.unlock!;
+      return { ok: false, reason: `Erst ab ${u.n} ${TIERS[u.tier].name}` };
+    }
+    if (type === 'kontor') {
+      if (this.kontor(owner, isl)) return { ok: false, reason: 'Auf dieser Insel hast du schon ein Kontor' };
+      let w = 0;
+      for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Wasser) w++;
+      if (w < 2) return { ok: false, reason: 'Das Kontor muss direkt an der Küste stehen' };
+      const ship = this.shipNear(owner, x + s / 2, y + s / 2);
+      if (!ship) return { ok: false, reason: 'Ein Schiff muss in der Nähe liegen' };
+      if ((d.cost.taler ?? 0) > this.players[owner].money) return { ok: false, reason: 'Zu wenig Taler' };
+      for (const k of ['holz', 'werkzeug'] as const) if (this.shipCargo(ship, k) < (d.cost[k] ?? 0)) return { ok: false, reason: `Zu wenig ${GOOD[k].name} an Bord` };
+      return { ok: true };
     }
     if (d.needs === 'wasser') {
       let w = 0;
@@ -382,26 +574,40 @@ export class Game {
       if (w < 2) return { ok: false, reason: 'Muss direkt am Wasser stehen' };
     }
     if (d.needs === 'berg' && this.siteEfficiency(type, x, y) === 0) return { ok: false, reason: 'Muss direkt am Berg stehen' };
-    return this.canAfford(d.cost);
+    return this.canAfford(d.cost, owner, isl);
   }
 
-  place(type: BuildingId, x: number, y: number): Check {
-    const c = this.canPlace(type, x, y);
+  place(type: BuildingId, x: number, y: number, owner = HUMAN): Check {
+    const c = this.canPlace(type, x, y, owner);
     if (!c.ok) return c;
     const d = BUILDINGS[type];
-    this.pay(d.cost);
+    const b = this.newBuilding(type, x, y, owner);
+    if (type === 'kontor') {
+      const ship = this.shipNear(owner, x + d.size / 2, y + d.size / 2)!;
+      this.players[owner].money -= d.cost.taler ?? 0;
+      for (const k of ['holz', 'werkzeug'] as const) this.shipTake(ship, k, d.cost[k] ?? 0);
+      this.lager[`${owner}:${b.island}`] ??= zeroGoods();
+    } else this.pay(d.cost, owner, b.island);
     let treesChanged = false;
     for (let j = 0; j < d.size; j++) for (let i = 0; i < d.size; i++) {
       const k = this.idx(x + i, y + j);
       if (this.tiles[k] === T.Wald) { this.tiles[k] = T.Gras; treesChanged = true; }
     }
-    const b = this.newBuilding(type, x, y);
     this.buildings.push(b);
     this.byId.set(b.id, b);
     this.stamp(b, b.id);
     this.recompute();
+    if (LAGER.includes(type) && owner === HUMAN) {
+      const [cx, cy] = this.center(b);
+      this.reveal(cx, cy, (d.radius ?? 8) + 3);
+      if (this.seenDirty) { this.seenDirty = false; this.ev.seen(); }
+    }
     if (treesChanged) this.ev.trees();
     this.ev.added(b);
+    if (type === 'kontor' && owner === HUMAN) {
+      this.focus = b.island;
+      this.ev.message(`Kontor auf ${this.islands[b.island].name} gegründet! Lade jetzt die Waren aus dem Schiff.`, 'good');
+    }
     return { ok: true };
   }
 
@@ -416,11 +622,8 @@ export class Game {
     return { ok: true };
   }
 
-  /** Baut Wege auf allen gültigen Feldern; gibt Anzahl zurück */
   placeRoads(cells: [number, number][]): number {
-    let n = 0;
-    let trees = false;
-    let lastReason = '';
+    let n = 0, trees = false, lastReason = '';
     for (const [x, y] of cells) {
       const c = this.canRoad(x, y);
       if (!c.ok) { lastReason = c.reason ?? ''; continue; }
@@ -439,14 +642,9 @@ export class Game {
   demolish(x: number, y: number): boolean {
     if (!this.inMap(x, y)) return false;
     const k = this.idx(x, y);
-    if (this.roads[k]) {
-      this.roads[k] = 0;
-      this.recompute();
-      this.ev.roads();
-      return true;
-    }
+    if (this.roads[k] && this.area[k]) { this.roads[k] = 0; this.recompute(); this.ev.roads(); return true; }
     const b = this.buildingAt(x, y);
-    if (!b) return false;
+    if (!b || b.owner !== HUMAN) return false;
     if (b.type === 'kontor') { this.ev.message('Das Kontor kann nicht abgerissen werden', 'bad'); return false; }
     this.removeBuilding(b);
     return true;
@@ -455,10 +653,9 @@ export class Game {
   removeBuilding(b: Building) {
     if (b.type === 'kontor') return;
     const d = this.def(b);
-    // Hälfte des Baumaterials zurück
-    for (const k of ['holz', 'werkzeug', 'stein'] as const) {
-      this.goods[k] = Math.min(this.goods[k] + Math.floor((d.cost[k] ?? 0) / 2), Math.max(this.capacity, this.goods[k]));
-    }
+    const l = this.lagerOf(b.owner, b.island);
+    const cap = this.capOf(b.owner, b.island);
+    if (l) for (const k of ['holz', 'werkzeug', 'stein'] as const) l[k] = Math.min(l[k] + Math.floor((d.cost[k] ?? 0) / 2), Math.max(cap, l[k]));
     this.stamp(b, 0);
     this.buildings = this.buildings.filter((o) => o !== b);
     this.byId.delete(b.id);
@@ -468,9 +665,10 @@ export class Game {
 
   // ---------- Simulation ----------
 
-  incomePerMinute(): { tax: number; upkeep: number } {
+  incomePerMinute(owner = HUMAN): { tax: number; upkeep: number } {
     let tax = 0, upkeep = 0;
     for (const b of this.buildings) {
+      if (b.owner !== owner) continue;
       upkeep += this.def(b).upkeep;
       if (b.type === 'haus') tax += b.residents * TIERS[b.tier].tax * (0.4 + 0.6 * b.happy);
     }
@@ -479,28 +677,41 @@ export class Game {
 
   tick(dt: number) {
     this.time += dt;
+    for (const s of this.ships) this.tickShip(s, dt);
+    this.sightT += dt;
+    if (this.sightT > 0.5) {
+      this.sightT = 0;
+      for (const s of this.myShips()) this.reveal(s.x, s.y, SHIP_SIGHT);
+      if (this.seenDirty) { this.seenDirty = false; this.ev.seen(); }
+    }
     for (const b of this.buildings) {
       if (b.type === 'haus') this.tickHouse(b, dt);
       else if (this.def(b).prod) this.tickProduction(b, dt);
     }
-    const { tax, upkeep } = this.incomePerMinute();
-    this.money += ((tax - upkeep) / 60) * dt;
+    for (const p of this.players) {
+      const { tax, upkeep } = this.incomePerMinute(p.id);
+      p.money += ((tax - upkeep) / 60) * dt;
+    }
+    this.unlockT += dt;
+    if (this.unlockT > 1) { this.unlockT = 0; this.checkUnlocks(); }
     this.checkQuest();
   }
 
   private tickProduction(b: Building, dt: number) {
     const p = this.def(b).prod!;
+    const l = this.lagerOf(b.owner, b.island);
+    const cap = this.capOf(b.owner, b.island);
     let working = false;
     b.missing = [];
-    if (!this.linked.has(b.id)) b.status = 'keinWeg';
+    if (!l || !this.linked.has(b.id)) b.status = 'keinWeg';
     else if (b.eff <= 0) b.status = this.def(b).needs === 'wasser' ? 'keinWasser' : 'keinWald';
-    else if (this.goods[p.output] >= this.capacity) b.status = 'lagerVoll';
+    else if (l[p.output] >= cap) b.status = 'lagerVoll';
     else {
       if (!b.loaded) {
         const inp = p.input ?? {};
-        for (const [g, n] of Object.entries(inp) as [GoodId, number][]) if (this.goods[g] < n) b.missing.push(g);
+        for (const [g, n] of Object.entries(inp) as [GoodId, number][]) if (l[g] < n) b.missing.push(g);
         if (!b.missing.length) {
-          for (const [g, n] of Object.entries(inp) as [GoodId, number][]) this.goods[g] -= n;
+          for (const [g, n] of Object.entries(inp) as [GoodId, number][]) l[g] -= n;
           b.loaded = true;
         }
       }
@@ -511,7 +722,7 @@ export class Game {
         if (b.progress >= p.time) {
           b.progress = 0;
           b.loaded = false;
-          this.goods[p.output] = Math.min(this.capacity, this.goods[p.output] + (p.amount ?? 1));
+          l[p.output] = Math.min(cap, l[p.output] + (p.amount ?? 1));
         }
       } else b.status = 'rohstoff';
     }
@@ -520,12 +731,13 @@ export class Game {
 
   private tickHouse(h: Building, dt: number) {
     const tier = TIERS[h.tier];
+    const l = this.lagerOf(h.owner, h.island);
     h.status = 'wohnen';
     let goodsSum = 0, goodsN = 0;
     for (const [g, rate] of Object.entries(tier.consumes) as [GoodId, number][]) {
       h.demand[g] = Math.min(2, (h.demand[g] ?? 0) + (h.residents * rate * dt) / 60);
       while ((h.demand[g] ?? 0) >= 1) {
-        if (this.goods[g] >= 1) { this.goods[g] -= 1; h.demand[g]! -= 1; h.short[g] = false; }
+        if (l && l[g] >= 1) { l[g] -= 1; h.demand[g]! -= 1; h.short[g] = false; }
         else { h.short[g] = true; break; }
       }
       const target = h.short[g] ? 0 : 1;
@@ -552,17 +764,16 @@ export class Game {
     if (!block) {
       h.upT += dt;
       if (h.upT >= 10) {
-        this.pay(TIERS[h.tier + 1].upgradeCost);
+        this.pay(TIERS[h.tier + 1].upgradeCost, h.owner, h.island);
         h.tier++;
         h.upT = 0;
         for (const g of Object.keys(TIERS[h.tier].consumes) as GoodId[]) if (h.need[g] === undefined) h.need[g] = 1;
         this.ev.changed(h);
-        if (this.housesByTier()[h.tier] === 1) this.ev.message(`Deine ersten ${TIERS[h.tier].name} sind eingezogen! 🎉`, 'good');
+        if (h.owner === HUMAN && this.housesByTier()[h.tier] === 1) this.ev.message(`Deine ersten ${TIERS[h.tier].name} sind eingezogen! 🎉`, 'good');
       }
     } else h.upT = 0;
   }
 
-  /** Warum steigt dieses Haus (noch) nicht auf? null = es steigt gerade auf */
   upgradeBlocker(h: Building): string | null {
     if (h.tier >= TIERS.length - 1) return 'Höchste Stufe erreicht';
     const tier = TIERS[h.tier];
@@ -571,10 +782,9 @@ export class Game {
     if (h.happy < 0.9) return 'Bewohner noch nicht zufrieden genug';
     const cov = this.coverage.get(h.id) ?? new Set();
     for (const s of next.services) if (!cov.has(s)) return `${BUILDINGS[s].name} in der Nähe fehlt`;
-    for (const g of Object.keys(next.consumes) as GoodId[]) {
-      if (!(g in tier.consumes) && this.goods[g] < 1) return `${GOOD[g].name} fehlt im Lager`;
-    }
-    const c = this.canAfford(next.upgradeCost);
+    const l = this.lagerOf(h.owner, h.island) ?? EMPTY;
+    for (const g of Object.keys(next.consumes) as GoodId[]) if (!(g in tier.consumes) && l[g] < 1) return `${GOOD[g].name} fehlt im Lager`;
+    const c = this.canAfford(next.upgradeCost, h.owner, h.island);
     if (!c.ok) return `${c.reason} zum Ausbau`;
     return null;
   }
@@ -593,11 +803,15 @@ export class Game {
 export interface Quest { title: string; hint: string; done(g: Game): boolean; progress(g: Game): string; reward: number }
 
 const cnt = (g: Game, t: BuildingId, need: number) => `${Math.min(g.count(t, true), need)}/${need}`;
-
 const linkedAny = (g: Game, types: BuildingId[]) => types.reduce((n, t) => n + g.count(t, true), 0);
 const done = (g: Game, types: BuildingId[]) => types.filter((t) => g.count(t, true) >= 1).length;
+const stored = (g: Game) => { const k = g.kontor(); const l = k ? g.lagerOf(HUMAN, k.island) : null; return l ? Object.values(l).reduce((a, b) => a + b, 0) : 0; };
 
 export const QUESTS: Quest[] = [
+  { title: 'Neues Land', hint: 'Tippe dein Schiff an, dann aufs Meer, um loszusegeln. Erkunde die Inseln und gründe an der Küste einer guten Insel ein Kontor (Schiff antippen → „Kontor bauen“).',
+    done: (g) => g.count('kontor') >= 1, progress: (g) => `${Math.min(1, g.count('kontor'))}/1`, reward: 300 },
+  { title: 'Ladung löschen', hint: 'Lade Werkzeug, Holz und Nahrung aus dem Schiff ins Kontor (Schiff antippen → „Alles ausladen“).',
+    done: (g) => stored(g) >= 40, progress: (g) => `${Math.min(40, Math.floor(stored(g)))}/40 t`, reward: 100 },
   { title: 'Holz für den Aufbau', hint: 'Baue einen Holzfäller nahe am Wald und verbinde ihn mit einem Feldweg mit dem Kontor ⚓.',
     done: (g) => g.count('holzfaeller', true) >= 1, progress: (g) => cnt(g, 'holzfaeller', 1), reward: 200 },
   { title: 'Nahrung', hint: 'Baue eine Fischerhütte direkt am Wasser oder eine Jagdhütte am Wald und verbinde sie per Weg.',
@@ -617,8 +831,7 @@ export const QUESTS: Quest[] = [
   { title: 'Stein und Eisen', hint: 'Baue Steinbruch und Erzmine direkt am Berg, dazu eine Werkzeugschmiede.',
     done: (g) => done(g, ['steinbruch', 'erzmine', 'schmiede']) === 3, progress: (g) => `${done(g, ['steinbruch', 'erzmine', 'schmiede'])}/3`, reward: 800 },
   { title: 'Bessere Nahrung', hint: 'Schweinezucht → Fleischerei liefert viel mehr Nahrung als Fischer und Jäger.',
-    done: (g) => done(g, ['schweinezucht', 'fleischerei']) === 2,
-    progress: (g) => `${done(g, ['schweinezucht', 'fleischerei'])}/2`, reward: 600 },
+    done: (g) => done(g, ['schweinezucht', 'fleischerei']) === 2, progress: (g) => `${done(g, ['schweinezucht', 'fleischerei'])}/2`, reward: 600 },
   { title: 'Brot backen', hint: 'Getreidefarm → Mühle → Bäckerei: Aus 1 Mehl backt die Bäckerei 2 Nahrung.',
     done: (g) => done(g, ['getreidefarm', 'muehle', 'baeckerei']) === 3, progress: (g) => `${done(g, ['getreidefarm', 'muehle', 'baeckerei'])}/3`, reward: 700 },
   { title: 'Bier für die Bürger', hint: 'Bürger wollen Bier und ein Wirtshaus: Getreidefarm → Brauerei, dazu ein Wirtshaus.',

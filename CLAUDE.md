@@ -9,6 +9,8 @@ Arbeitstitel: **Neue Ufer** – ein Aufbau-Strategiespiel, inhaltlich so nah wie
 4. **Inhaltlich so nah wie möglich an 1602.** Der Nutzer will „theoretisch 1602 spielen können, nur in neuem Kleid“: fünf Stufen (Pioniere, Siedler, Bürger, Kaufleute, Aristokraten), Rohstoffvorkommen (Stein und Erz am Berg, seltenes Gold), Inseln mit unterschiedlichen Pflanzen, Militär mit Soldaten und Gefechten, Schiffe, Handel. Abwandlungen nur, wo sie rechtlich nötig oder klar besser sind – nicht alles anders machen. *(Korrektur vom 30.10.2026)*
 5. **Keine Fachwörter ohne Erklärung.** Der Nutzer ist kein Entwickler. Begriffe wie „Low Poly“, „Shader“, „Mesh“ vermeiden oder in einfachen Worten erklären. *(Korrektur vom 30.10.2026)*
 6. **Realistischer Grafikstil wie die modernen Anno-Teile**, nicht comichaft oder niedlich: echte Materialien (Holz, Stein, Ziegel), realistisches Licht und Wasser, natürliche Landschaft mit echten Bergen. Modelle von Meshy im Stil „realistic“ mit echten Oberflächen. *(Korrektur vom 30.10.2026)*
+7. **Kernablauf wie 1602:** zufällige Inselwelt (viele Inseln, Formen, Größen, Klima, Fruchtbarkeit, Rohstoffe), am Anfang unentdeckt; Start mit einem Schiff, Erkunden, Insel wählen, Kontor an der Küste bauen; KI-Konkurrenten suchen und besiedeln ebenfalls Inseln; Einflussbereich von Kontor/Marktplatz sichtbar (Baugebiet + Warenabholung), Marktplätze erweitern ihn; Betriebe haben Arbeitsradien; Marktkarren holen Waren sichtbar über Wege ab. Reverse Engineering ist nicht nötig – die Zahlen stehen in docs/1602-INHALT.md. *(Korrektur vom 30.10.2026)*
+8. **Schritt für Schritt statt alles auf einmal:** Die Oberfläche zeigt nur, was der Spieler gerade nutzen kann (wie 1602). Nicht freigeschaltete Gebäude, Kategorien und Waren sind ausgeblendet; neue Möglichkeiten werden angekündigt, und es gibt Hinweise, was als Nächstes kommt. Intuitiv, ohne Suchen und Durchklicken. *(Korrektur vom 30.10.2026)*
 
 ## Feste Projektentscheidungen
 - Ziel: zuerst ein Spiel für den Nutzer selbst, Launch später möglich.
@@ -16,7 +18,7 @@ Arbeitstitel: **Neue Ufer** – ein Aufbau-Strategiespiel, inhaltlich so nah wie
 - Grafik: realistisches, detailreiches 3D. Modelle (Gebäude, Menschen, Tiere, Schiffe) erzeugt der KI-Dienst **Meshy** (Nutzer zahlt den Plan); Landschaft, Wasser, Licht und Effekte programmiert Claude. Details: docs/GRAFIK.md.
 - Bedienung: iPhone im Querformat, Touch zuerst (Maus nur fürs Testen).
 - Zeit: Echtzeit mit Pause und Tempo 1x/2x/4x, Spiel friert ein, wenn die App zu ist. Automatisches Speichern.
-- Etappen: 1) Insel-Aufbau + Warenketten → 2) Schiffe + neue Inseln → 3) Kampf (Piraten, dann KI-Gegner) → 4) Handel.
+- Etappen (neu): 1) Kernablauf – Inselwelt, Schiff, Kontor, Einfluss, Wege, Marktkarren, Original-Ketten und Freischaltungen, KI-Konkurrenten siedeln → 2) alle fünf Stufen, Handel mit Händlern/Ureinwohnern, Piraten → 3) Kampf (Militär, Seeschlachten, Eroberung) → 4) Feinschliff, Szenarien, Endwertung.
 - Sprache im Spiel und in der Kommunikation: Deutsch, einfach und ohne Fachchinesisch.
 
 ## Arbeitsweise
