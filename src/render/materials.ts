@@ -82,8 +82,8 @@ diffuseColor.rgb *= patternShade(vPat, vWPos) * vAO;`);
   mat.customProgramCacheKey = () => 'neue-ufer-pattern-v1';
 }
 
-export function buildingMaterial(opts: THREE.MeshLambertMaterialParameters = {}): THREE.MeshLambertMaterial {
-  const m = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, ...opts });
+export function buildingMaterial(opts: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.82, metalness: 0, ...opts });
   patch(m);
   return m;
 }

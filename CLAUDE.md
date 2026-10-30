@@ -8,11 +8,12 @@ Arbeitstitel: **Neue Ufer** – ein Aufbau-Strategiespiel, inhaltlich so nah wie
 3. **Bedürfnisse wie in Anno 1602 zusammenfassen:** Bewohner wollen „Nahrung“, nicht einzelne Lebensmittel. Nahrung kommt aus mehreren Quellen (einfach: Fischerhütte, Jagdhütte; später besser: Schweinezucht, Rinderfarm → Fleischerei, Getreide → Mühle → Bäckerei). Abwandlungen sind erlaubt, aber das Spiel soll sich sehr nah an 1602 orientieren. *(Korrektur vom 30.10.2026)*
 4. **Inhaltlich so nah wie möglich an 1602.** Der Nutzer will „theoretisch 1602 spielen können, nur in neuem Kleid“: fünf Stufen (Pioniere, Siedler, Bürger, Kaufleute, Aristokraten), Rohstoffvorkommen (Stein und Erz am Berg, seltenes Gold), Inseln mit unterschiedlichen Pflanzen, Militär mit Soldaten und Gefechten, Schiffe, Handel. Abwandlungen nur, wo sie rechtlich nötig oder klar besser sind – nicht alles anders machen. *(Korrektur vom 30.10.2026)*
 5. **Keine Fachwörter ohne Erklärung.** Der Nutzer ist kein Entwickler. Begriffe wie „Low Poly“, „Shader“, „Mesh“ vermeiden oder in einfachen Worten erklären. *(Korrektur vom 30.10.2026)*
+6. **Realistischer Grafikstil wie die modernen Anno-Teile**, nicht comichaft oder niedlich: echte Materialien (Holz, Stein, Ziegel), realistisches Licht und Wasser, natürliche Landschaft mit echten Bergen. Modelle von Meshy im Stil „realistic“ mit echten Oberflächen. *(Korrektur vom 30.10.2026)*
 
 ## Feste Projektentscheidungen
 - Ziel: zuerst ein Spiel für den Nutzer selbst, Launch später möglich.
 - Rechtlich sauber: **kein** Code, keine Grafiken, Sounds, Texte oder Namen aus Anno 1602 oder Reverse-Engineering-Projekten. Nur allgemeine Spielmechaniken (nicht geschützt) als Inspiration. Das Wort „Anno“ kommt im Spiel nicht vor.
-- Grafik: hochwertiges 3D, detailreich. Woher die Modelle kommen (selbst erzeugt, KI-Dienst oder freie Pakete), ist noch offen – siehe docs/GRAFIK.md, sobald entschieden.
+- Grafik: realistisches, detailreiches 3D. Modelle (Gebäude, Menschen, Tiere, Schiffe) erzeugt der KI-Dienst **Meshy** (Nutzer zahlt den Plan); Landschaft, Wasser, Licht und Effekte programmiert Claude. Details: docs/GRAFIK.md.
 - Bedienung: iPhone im Querformat, Touch zuerst (Maus nur fürs Testen).
 - Zeit: Echtzeit mit Pause und Tempo 1x/2x/4x, Spiel friert ein, wenn die App zu ist. Automatisches Speichern.
 - Etappen: 1) Insel-Aufbau + Warenketten → 2) Schiffe + neue Inseln → 3) Kampf (Piraten, dann KI-Gegner) → 4) Handel.

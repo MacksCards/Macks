@@ -4,7 +4,7 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 
 ## Rahmen
 - A1 Spielbar im Safari-Browser auf dem iPhone, **Querformat**. Bei Hochformat erscheint ein Hinweis „Bitte drehen“.
-- A2 Grafik: **3D Low-Poly**, eigener Stil, alles prozedural erzeugt, aber **detailreich wie bei Anno**: Fenster, Türen, Fachwerk, Dachstrukturen, Schornsteine mit Rauch, Zäune, Fässer, Kisten, Tiere, Pflanzen, sichtbares Leben.
+- A2 Grafik: **hochwertiges, detailreiches 3D, schöner als das Original von 1602** (kein vereinfachter „Low-Poly“-Look). Modelle kommen von einem KI-Dienst (Meshy) plus eigener Programmierung für Insel, Wasser, Licht, Effekte. Details wie bei Anno: Fenster, Türen, Fachwerk, Dachstrukturen, Schornsteine mit Rauch, Zäune, Fässer, Kisten, Tiere, Pflanzen, sichtbares Leben.
 - A3 Setting: **Segelzeitalter um 1600**: Insel, Siedlung, Kontor am Meer.
 - A4 Keine Inhalte aus Anno 1602 (Code, Grafik, Namen, Texte). Das Wort „Anno“ kommt im Spiel nicht vor.
 - A5 Oberfläche komplett auf Deutsch, verständlich für Laien.
@@ -51,7 +51,7 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 
 ## Technik
 - G1 Läuft flüssig auf aktuellen iPhones (Ziel 60 FPS bei normaler Siedlungsgröße).
-- G2 Eine einzelne HTML-Datei als Ergebnis (leicht zu verteilen und vorzuschauen).
+- G2 Das Spiel ist eine Webseite plus Modell-Dateien (models/*.glb), leicht zu verteilen und vorzuschauen.
 - G3 Fehler im Speicher (z. B. privater Modus) bringen das Spiel nicht zum Absturz.
 
 ## Später (nicht Etappe 1, aber fest eingeplant)

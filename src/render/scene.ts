@@ -2,30 +2,29 @@
 import * as THREE from 'three';
 import { BUILDINGS, BuildingId, GOOD } from '../data';
 import { Building, Game } from '../game';
-import { T, rng } from '../world';
-import { mountainGeometry, treeGeometry } from './models_old';
+import { T } from '../world';
+import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { buildingModel } from './models';
+import { LAND_Y, Terrain } from './terrain';
+import { Vegetation, windTime } from './vegetation';
+import { ModelLibrary } from './glb';
 import { buildingMaterial } from './materials';
 import { ModelDef } from './kit';
 
-const LAND_Y = 0.3;
 
-interface BView { mesh: THREE.Mesh; spin: { m: THREE.Mesh; axis: 'x' | 'z'; speed: number }[]; icon: THREE.Sprite; iconKey: string; tier: number }
+interface BView { mesh: THREE.Object3D; spin: { m: THREE.Mesh; axis: 'x' | 'z'; speed: number }[]; icon: THREE.Sprite; iconKey: string; tier: number }
 
 export class View {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(38, 1, 0.5, 400);
+  camera = new THREE.PerspectiveCamera(38, 1, 0.5, 900);
   rig = { tx: 32, tz: 32, dist: 30, yaw: Math.PI * 0.25, pitch: 0.95 };
 
   private g: Game;
-  private terrain!: THREE.Mesh;
-  private terrainColors!: Float32Array;
-  private baseColors!: Float32Array;
+  private terrain!: Terrain;
+  private veg!: Vegetation;
   private water!: THREE.Mesh;
   private waterUniforms: Record<string, THREE.IUniform> = { uTime: { value: 0 } };
-  private trees!: THREE.InstancedMesh;
-  private mountains!: THREE.InstancedMesh;
   private roadMesh!: THREE.InstancedMesh;
   private previewRoads!: THREE.InstancedMesh;
   private views = new Map<number, BView>();
@@ -37,7 +36,6 @@ export class View {
   private footprint: THREE.Mesh;
   private radiusRing: THREE.Mesh;
   private selectRing: THREE.Mesh;
-  private heights!: Float32Array;
   private iconTex = new Map<string, THREE.Texture>();
   private raycaster = new THREE.Raycaster();
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y);
@@ -51,12 +49,9 @@ export class View {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
-    this.scene.background = this.skyTexture();
-    this.scene.fog = new THREE.Fog(0xb7dcef, 70, 170);
-
-    this.scene.add(new THREE.HemisphereLight(0xdcefff, 0x6b5a3a, 1.6));
-    const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
+    this.renderer.toneMappingExposure = 0.82;
+    this.scene.fog = new THREE.Fog(0xc9dbe6, 90, 260);
+    const sun = new THREE.DirectionalLight(0xffe9cf, 2.6);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera;
@@ -65,6 +60,10 @@ export class View {
     sun.shadow.normalBias = 0.02;
     this.scene.add(sun, sun.target);
     this.sun = sun;
+    this.setupSky();
+    // Meshy-Modelle laden; sobald da, alle Gebäude neu darstellen
+    this.lib.onLoaded = () => { for (const b of this.g.buildings) { this.removeBuilding(b); this.addBuilding(b); } };
+    void this.lib.load();
 
     const fpMat = new THREE.MeshBasicMaterial({ color: 0x55ff55, transparent: true, opacity: 0.35, depthWrite: false });
     this.footprint = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), fpMat);
@@ -91,29 +90,40 @@ export class View {
     this.buildWorld();
   }
 
-  private skyTexture(): THREE.Texture {
-    const cv = document.createElement('canvas');
-    cv.width = 4; cv.height = 256;
-    const ctx = cv.getContext('2d')!;
-    const gr = ctx.createLinearGradient(0, 0, 0, 256);
-    gr.addColorStop(0, '#4f9fd8');
-    gr.addColorStop(0.55, '#9fd0ee');
-    gr.addColorStop(1, '#e6f2f2');
-    ctx.fillStyle = gr;
-    ctx.fillRect(0, 0, 4, 256);
-    const t = new THREE.CanvasTexture(cv);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
+  /** Physikalischer Himmel: färbt Hintergrund und beleuchtet die Szene (Spiegelungen, Umgebungslicht) */
+  private sunDir = new THREE.Vector3();
+  private setupSky() {
+    const sky = new Sky();
+    sky.scale.setScalar(800);
+    const u = sky.material.uniforms;
+    u.turbidity.value = 3.5;
+    u.rayleigh.value = 1.2;
+    u.mieCoefficient.value = 0.004;
+    u.mieDirectionalG.value = 0.82;
+    const elevation = 38, azimuth = 215;
+    this.sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elevation), THREE.MathUtils.degToRad(azimuth));
+    u.sunPosition.value.copy(this.sunDir);
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    const envScene = new THREE.Scene();
+    envScene.add(sky.clone());
+    this.scene.environment = pm.fromScene(envScene, 0.02).texture;
+    this.scene.environmentIntensity = 0.6;
+    pm.dispose();
+    this.sky = sky;
+    this.scene.add(sky);
   }
+  private sky!: Sky;
+  lib = new ModelLibrary();
 
   /** Alles (neu) aufbauen – z. B. nach "Neues Spiel" */
   setGame(g: Game) {
     this.g = g;
     for (const v of this.views.values()) { this.scene.remove(v.mesh, v.icon); }
     this.views.clear();
-    for (const o of [this.terrain, this.water, this.trees, this.mountains, this.roadMesh, this.previewRoads]) {
+    for (const o of [this.terrain?.mesh, this.water]) {
       if (o) { this.scene.remove(o); o.geometry.dispose(); }
     }
+    if (this.veg) { this.scene.remove(this.veg.group); this.veg.dispose(); }
     this.buildWorld();
   }
 
@@ -121,121 +131,22 @@ export class View {
     const g = this.g;
     const k = g.kontor();
     if (k) { const [cx, cy] = g.center(k); this.rig.tx = cx; this.rig.tz = cy + 3; }
-    this.buildTerrain();
+    this.terrain = new Terrain(g);
+    this.scene.add(this.terrain.mesh);
+    this.areaShown = false;
     this.buildWater();
-    this.buildMountains();
-    this.buildTrees();
+    this.veg = new Vegetation(g, this.terrain);
+    this.scene.add(this.veg.group);
     this.buildRoads();
     for (const b of g.buildings) this.addBuilding(b);
   }
 
   // ---------- Gelände ----------
 
-  private buildTerrain() {
-    const g = this.g;
-    const N = g.size;
-    // Abstand jeder Wasserkachel zum Land (für Wassertiefe)
-    const dist = new Float32Array(N * N).fill(99);
-    const q: number[] = [];
-    for (let i = 0; i < N * N; i++) if (g.tiles[i] !== T.Wasser) { dist[i] = 0; q.push(i); }
-    for (let h = 0; h < q.length; h++) {
-      const i = q[h];
-      const x = i % N, y = (i / N) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
-        const ni = ny * N + nx;
-        if (dist[ni] > dist[i] + 1) { dist[ni] = dist[i] + 1; q.push(ni); }
-      }
-    }
-    const r = rng(g.seed + 5);
-    // Höhe der Eckpunkte
-    const H = new Float32Array((N + 1) * (N + 1));
-    for (let y = 0; y <= N; y++) {
-      for (let x = 0; x <= N; x++) {
-        let land = 0, tot = 0, dmin = 99;
-        for (const [dx, dy] of [[-1, -1], [0, -1], [-1, 0], [0, 0]]) {
-          const tx = x + dx, ty = y + dy;
-          if (tx < 0 || ty < 0 || tx >= N || ty >= N) { tot++; continue; }
-          tot++;
-          if (g.tiles[ty * N + tx] !== T.Wasser) land++;
-          dmin = Math.min(dmin, dist[ty * N + tx]);
-        }
-        let h: number;
-        if (land === tot) h = LAND_Y;
-        else if (land > 0) h = 0.04 + (land / tot) * 0.1;
-        else h = -0.35 - Math.min(dmin, 8) * 0.22 - r() * 0.08;
-        H[y * (N + 1) + x] = h;
-      }
-    }
-    this.heights = H;
-    const pos: number[] = [];
-    const col: number[] = [];
-    const c = new THREE.Color();
-    const tileColor = (t: number, d: number): number => {
-      switch (t) {
-        case T.Sand: return 0xe6d398;
-        case T.Gras: return 0x86b84c;
-        case T.Wald: return 0x5f9338;
-        case T.Berg: return 0x8f8677;
-        default: return d <= 1 ? 0xd9c487 : d <= 3 ? 0x6fa7a8 : 0x2f6a8c;
-      }
-    };
-    for (let y = 0; y < N; y++) {
-      for (let x = 0; x < N; x++) {
-        const i = y * N + x;
-        const h00 = H[y * (N + 1) + x], h10 = H[y * (N + 1) + x + 1];
-        const h01 = H[(y + 1) * (N + 1) + x], h11 = H[(y + 1) * (N + 1) + x + 1];
-        // zwei Dreiecke (gegen den Uhrzeigersinn von oben)
-        pos.push(x, h00, y, x, h01, y + 1, x + 1, h10, y);
-        pos.push(x + 1, h10, y, x, h01, y + 1, x + 1, h11, y + 1);
-        c.setHex(tileColor(g.tiles[i], dist[i]));
-        const j = 0.93 + r() * 0.12;
-        for (let v = 0; v < 6; v++) col.push(c.r * j, c.g * j, c.b * j);
-      }
-    }
-    // Meeresboden außerhalb der Karte
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    this.terrainColors = new Float32Array(col);
-    this.baseColors = new Float32Array(col);
-    geo.setAttribute('color', new THREE.BufferAttribute(this.terrainColors, 3));
-    geo.computeVertexNormals();
-    this.terrain = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }));
-    this.terrain.receiveShadow = true;
-    this.scene.add(this.terrain);
-    this.areaShown = false;
-  }
-
   /** Bereiche außerhalb des Baugebiets abdunkeln (beim Bauen) */
   showArea(on: boolean) {
-    const g = this.g;
-    const N = g.size;
-    for (let i = 0; i < N * N; i++) {
-      const dark = on && !g.area[i] && g.tiles[i] !== T.Wasser;
-      const f = dark ? 0.55 : 1;
-      for (let v = 0; v < 18; v++) this.terrainColors[i * 18 + v] = this.baseColors[i * 18 + v] * f;
-    }
-    (this.terrain.geometry.attributes.color as THREE.BufferAttribute).needsUpdate = true;
+    this.terrain.showArea(on);
     this.areaShown = on;
-  }
-
-  /** Farben neu, wenn Wald gerodet wurde */
-  private refreshTileColors() {
-    const g = this.g;
-    const N = g.size;
-    const c = new THREE.Color();
-    for (let i = 0; i < N * N; i++) {
-      const t = g.tiles[i];
-      if (t !== T.Gras) continue;
-      const cur = this.baseColors[i * 18 + 1];
-      c.setHex(0x86b84c);
-      if (Math.abs(cur - c.g) < 0.12) continue; // schon Gras
-      for (let v = 0; v < 6; v++) {
-        this.baseColors[i * 18 + v * 3] = c.r; this.baseColors[i * 18 + v * 3 + 1] = c.g; this.baseColors[i * 18 + v * 3 + 2] = c.b;
-      }
-    }
-    this.showArea(this.areaShown);
   }
 
   private buildWater() {
@@ -257,7 +168,7 @@ export class View {
       }
     }
     for (let i = 0; i < N * N; i++) {
-      const v = Math.round(Math.min(1, dist[i] / 7) * 255);
+      const v = Math.round(Math.min(1, dist[i] / 9) * 255);
       data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255;
     }
     const depthTex = new THREE.DataTexture(data, N, N);
@@ -266,8 +177,8 @@ export class View {
     depthTex.needsUpdate = true;
 
     const geo = new THREE.PlaneGeometry(N * 5, N * 5, 160, 160).rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshPhongMaterial({
-      color: 0xffffff, transparent: true, shininess: 140, specular: 0xbfe6ff,
+    const mat = new THREE.MeshStandardMaterial({
+      color: 0xffffff, transparent: true, roughness: 0.09, metalness: 0.0, envMapIntensity: 0.75,
     });
     const uni = this.waterUniforms as Record<string, THREE.IUniform>;
     uni.uDepth = { value: depthTex };
@@ -290,7 +201,7 @@ vW = wp;`)
   vec3 wq = (modelMatrix * vec4(position, 1.0)).xyz;
   float dx = cos(wq.x * 0.7 + uTime * 1.3) * 0.7 * 0.045 + cos((wq.x + wq.z) * 1.6 + uTime * 2.1) * 1.6 * 0.018;
   float dz = -sin(wq.z * 0.55 + uTime * 0.9) * 0.55 * 0.045 + cos((wq.x + wq.z) * 1.6 + uTime * 2.1) * 1.6 * 0.018;
-  objectNormal = normalize(vec3(-dx * 3.0, 1.0, -dz * 3.0));
+  objectNormal = normalize(vec3(-dx * 1.4, 1.0, -dz * 1.4));
 }`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
@@ -303,112 +214,45 @@ float wn(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 
   return mix(mix(wh(i), wh(i + vec2(1, 0)), f.x), mix(wh(i + vec2(0, 1)), wh(i + vec2(1, 1)), f.x), f.y); }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
 vec2 uv = vW.xz / uN;
-float d = (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) ? 1.0 : texture2D(uDepth, uv).r;
-vec3 shallow = vec3(0.32, 0.80, 0.78);
-vec3 mid = vec3(0.10, 0.52, 0.70);
-vec3 deep = vec3(0.04, 0.24, 0.45);
-vec3 col = mix(shallow, mid, smoothstep(0.0, 0.3, d));
+vec2 uvc = clamp(uv, 0.0, 1.0);
+float d = max(texture2D(uDepth, uvc).r, smoothstep(0.0, 0.2, length(uv - uvc)));
+vec3 shallow = vec3(0.10, 0.48, 0.46);
+vec3 mid = vec3(0.03, 0.26, 0.38);
+vec3 deep = vec3(0.012, 0.09, 0.20);
+vec3 col = mix(shallow, mid, smoothstep(0.0, 0.25, d));
 col = mix(col, deep, smoothstep(0.3, 1.0, d));
 // Glitzern / Strömungsmuster
 float n = wn(vW.xz * 1.3 + vec2(uTime * 0.25, uTime * 0.18)) * 0.6 + wn(vW.xz * 3.1 - vec2(uTime * 0.3, -uTime * 0.2)) * 0.4;
 col *= 0.9 + 0.2 * n;
 // Schaum an der Küste, rollt in Wellen heran
-float shore = 1.0 - smoothstep(0.0, 0.16, d);
-float waves = smoothstep(0.55, 1.0, sin(d * 70.0 - uTime * 2.2 + n * 3.0) * 0.5 + 0.5) * (1.0 - smoothstep(0.03, 0.2, d));
+float shore = 1.0 - smoothstep(0.0, 0.1, d);
+float waves = smoothstep(0.55, 1.0, sin(d * 70.0 - uTime * 2.2 + n * 3.0) * 0.5 + 0.5) * (1.0 - smoothstep(0.02, 0.13, d));
 float foam = clamp(shore * smoothstep(0.35, 0.75, n + 0.25) + waves * 0.8, 0.0, 1.0);
-col = mix(col, vec3(0.97, 0.99, 1.0), foam * 0.85);
+col = mix(col, vec3(0.85, 0.9, 0.9), foam * 0.6);
 diffuseColor.rgb = col;
-diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
+diffuseColor.a = mix(0.62, 0.97, smoothstep(0.0, 0.35, d)) + foam * 0.3;`);
     };
     mat.customProgramCacheKey = () => 'wasser-v2';
     this.water = new THREE.Mesh(geo, mat);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(N * 5, N * 5).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x0a2a3c }));
+    floor.position.set(0, -2.4, 0);
+    this.water.add(floor);
     this.water.position.set(N / 2, 0, N / 2);
     this.water.renderOrder = 1;
     this.water.receiveShadow = true;
     this.scene.add(this.water);
   }
 
-  private buildMountains() {
-    const g = this.g;
-    const cells: number[] = [];
-    for (let i = 0; i < g.tiles.length; i++) if (g.tiles[i] === T.Berg) cells.push(i);
-    const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
-    this.mountains = new THREE.InstancedMesh(mountainGeometry(), mat, Math.max(1, cells.length * 2));
-    const r = rng(g.seed + 11);
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const c = new THREE.Color();
-    let n = 0;
-    for (const i of cells) {
-      const x = i % g.size, y = (i / g.size) | 0;
-      // Abstand zum Bergrand → höher in der Mitte
-      let inner = 0;
-      for (let j = -2; j <= 2; j++) for (let k = -2; k <= 2; k++) if (g.tile(x + k, y + j) === T.Berg) inner++;
-      const hgt = 0.8 + (inner / 25) * 2.6 + r() * 0.6;
-      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), r() * Math.PI);
-      m.compose(new THREE.Vector3(x + 0.5 + (r() - 0.5) * 0.3, LAND_Y - 0.05, y + 0.5 + (r() - 0.5) * 0.3), q, new THREE.Vector3(1.05 + r() * 0.3, hgt, 1.05 + r() * 0.3));
-      this.mountains.setMatrixAt(n, m);
-      c.setHex(hgt > 2.6 ? 0xd9d6cf : r() < 0.5 ? 0x8a8174 : 0x9a8f7e);
-      this.mountains.setColorAt(n, c);
-      n++;
-    }
-    this.mountains.count = n;
-    this.mountains.frustumCulled = false;
-    this.mountains.castShadow = true;
-    this.mountains.receiveShadow = true;
-    this.scene.add(this.mountains);
-  }
-
-  private buildTrees() {
-    const g = this.g;
-    let forest = 0;
-    for (const t of g.tiles) if (t === T.Wald) forest++;
-    if (!this.trees) {
-      this.trees = new THREE.InstancedMesh(treeGeometry(), new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true }), forest * 3 + 10);
-      this.trees.castShadow = true;
-      this.trees.receiveShadow = true;
-    } else if (this.trees.instanceMatrix.count < forest * 3) {
-      this.scene.remove(this.trees);
-      this.trees = new THREE.InstancedMesh(this.trees.geometry, this.trees.material, forest * 3 + 10);
-      this.trees.castShadow = true;
-    }
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    const c = new THREE.Color();
-    let n = 0;
-    for (let i = 0; i < g.tiles.length; i++) {
-      // gleiche Zufallsfolge für jede Kachel, damit Bäume beim Roden nicht "springen"
-      const rr = rng(g.seed * 31 + i);
-      if (g.tiles[i] !== T.Wald) continue;
-      const x = i % g.size, y = (i / g.size) | 0;
-      const count = 2 + (rr() < 0.4 ? 1 : 0);
-      for (let k = 0; k < count; k++) {
-        const s = 0.8 + rr() * 0.6;
-        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), rr() * 6);
-        m.compose(new THREE.Vector3(x + 0.2 + rr() * 0.6, LAND_Y, y + 0.2 + rr() * 0.6), q, new THREE.Vector3(s, s * (0.9 + rr() * 0.4), s));
-        this.trees.setMatrixAt(n, m);
-        c.setRGB(0.8 + rr() * 0.35, 0.85 + rr() * 0.25, 0.75 + rr() * 0.3);
-        this.trees.setColorAt(n, c);
-        n++;
-      }
-    }
-    this.trees.count = n;
-    this.trees.frustumCulled = false;
-    this.trees.instanceMatrix.needsUpdate = true;
-    if (this.trees.instanceColor) this.trees.instanceColor.needsUpdate = true;
-    this.scene.add(this.trees);
-  }
-
   onTreesChanged() {
-    this.buildTrees();
-    this.refreshTileColors();
+    this.terrain.updateSplat();
+    this.veg.refresh();
   }
 
   private buildRoads() {
     const N = this.g.size;
     const geo = new THREE.BoxGeometry(1, 0.05, 1);
     if (!this.roadMesh) {
-      this.roadMesh = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: 0xb59a6a }), N * N);
+      this.roadMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0x8a7151, roughness: 1 }), N * N);
       this.roadMesh.receiveShadow = true;
       this.previewRoads = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }), 400);
       this.previewRoads.count = 0;
@@ -433,6 +277,7 @@ diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
     }
     this.roadMesh.count = n;
     this.roadMesh.instanceMatrix.needsUpdate = true;
+    this.veg?.refresh();
   }
 
   setRoadPreview(cells: [number, number][], ok: boolean[]) {
@@ -451,15 +296,9 @@ diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
     if (this.previewRoads.instanceColor) this.previewRoads.instanceColor.needsUpdate = true;
   }
 
-  /** höchster Eckpunkt unter einer Grundfläche */
+  /** Bodenhöhe unter einer Grundfläche */
   groundY(x: number, y: number, s: number): number {
-    const N = this.g.size;
-    let h = -1;
-    for (let j = 0; j <= s; j++) for (let i = 0; i <= s; i++) {
-      const cx = Math.min(N, Math.max(0, x + i)), cy = Math.min(N, Math.max(0, y + j));
-      h = Math.max(h, this.heights[cy * (N + 1) + cx]);
-    }
-    return Math.max(h, 0.05);
+    return this.terrain.groundY(x, y, s);
   }
 
   // ---------- Gebäude ----------
@@ -486,14 +325,15 @@ diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
   addBuilding(b: Building) {
     const d = BUILDINGS[b.type];
     const model = buildingModel(b.type, b.tier);
-    const mesh = new THREE.Mesh(model.geo, this.mat);
+    const glb = this.lib.building(b.type, b.tier);
+    const mesh: THREE.Object3D = glb ?? new THREE.Mesh(model.geo, this.mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.position.set(b.x + d.size / 2, this.groundY(b.x, b.y, d.size), b.y + d.size / 2);
     mesh.rotation.y = this.facing(b);
     mesh.userData.id = b.id;
     this.scene.add(mesh);
-    const spin = this.attachSpinners(mesh, model);
+    const spin = glb ? [] : this.attachSpinners(mesh, model);
     const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, sizeAttenuation: false }));
     icon.scale.set(0.055, 0.055, 1);
     icon.position.set(mesh.position.x, mesh.position.y + 2.6, mesh.position.z);
@@ -503,7 +343,7 @@ diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
     this.views.set(b.id, { mesh, spin, icon, iconKey: '', tier: b.tier });
   }
 
-  private attachSpinners(mesh: THREE.Mesh, model: ModelDef) {
+  private attachSpinners(mesh: THREE.Object3D, model: ModelDef) {
     return model.spinners.map((sp) => {
       const m = new THREE.Mesh(sp.geo, this.mat);
       m.position.set(...sp.pos);
@@ -524,11 +364,9 @@ diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
     const v = this.views.get(b.id);
     if (!v) return;
     if (v.tier !== b.tier) {
-      const model = buildingModel(b.type, b.tier);
-      v.mesh.geometry = model.geo;
-      for (const sp of v.spin) v.mesh.remove(sp.m);
-      v.spin = this.attachSpinners(v.mesh, model);
-      v.tier = b.tier;
+      // neue Ausbaustufe → Modell austauschen
+      this.removeBuilding(b);
+      this.addBuilding(b);
     }
   }
 
@@ -642,7 +480,8 @@ diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
     );
     this.camera.lookAt(r.tx, LAND_Y, r.tz);
     // Sonne folgt der Kamera, damit Schatten immer scharf sind
-    this.sun.position.set(r.tx - 18, 40, r.tz - 10);
+    this.sun.position.set(r.tx + this.sunDir.x * 60, this.sunDir.y * 60, r.tz + this.sunDir.z * 60);
+    this.sky.position.set(r.tx, 0, r.tz);
     this.sun.target.position.set(r.tx, 0, r.tz);
     const span = Math.min(45, 12 + r.dist * 0.9);
     const sc = this.sun.shadow.camera;
@@ -659,9 +498,11 @@ diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
     this.raycaster.setFromCamera(ndc, this.camera);
     // Erst Gebäude treffen (hohe Häuser), dann Boden
     const meshes = Array.from(this.views.values(), (v) => v.mesh);
-    const hit = withBuildings ? this.raycaster.intersectObjects(meshes, false)[0] : undefined;
+    const hit = withBuildings ? this.raycaster.intersectObjects(meshes, true)[0] : undefined;
     if (hit) {
-      const b = this.g.byId.get(hit.object.userData.id);
+      let o: THREE.Object3D | null = hit.object;
+      while (o && o.userData.id === undefined) o = o.parent;
+      const b = o ? this.g.byId.get(o.userData.id) : undefined;
       if (b) return [b.x, b.y];
     }
     const p = new THREE.Vector3();
@@ -681,6 +522,7 @@ diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
 
   frame(t: number, gameDt: number) {
     this.waterUniforms.uTime.value = t;
+    windTime.value = t;
     for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;
     this.updateCamera();
     this.renderer.render(this.scene, this.camera);

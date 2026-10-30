@@ -41,11 +41,11 @@ export function generateIsland(seed: number, size = MAP_SIZE): Uint8Array {
   const c = size / 2;
   // Berge: 1–2 Zentren auf dem Land
   const peaks: [number, number, number][] = [];
-  const peakCount = 1 + (r() < 0.6 ? 1 : 0);
+  const peakCount = 2 + (r() < 0.4 ? 1 : 0);
   for (let i = 0; i < peakCount; i++) {
     const ang = r() * Math.PI * 2;
     const dist = 6 + r() * 9;
-    peaks.push([c + Math.cos(ang) * dist, c + Math.sin(ang) * dist, 2.6 + r() * 1.6]);
+    peaks.push([c + Math.cos(ang) * dist, c + Math.sin(ang) * dist, 3.4 + r() * 2.0]);
   }
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
