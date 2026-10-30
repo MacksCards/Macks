@@ -64,5 +64,40 @@ await page.screenshot({ path: `${out}/f4-gebiet.png` });
 await page.evaluate(() => { window.__view.showArea(false); window.__ui.openMap(); });
 await page.waitForTimeout(500);
 await page.screenshot({ path: `${out}/f5-karte.png` });
+await page.evaluate(() => window.__ui.closeModal());
+const r3 = await page.evaluate(() => {
+  const g = window.__game();
+  const k = g.kontor();
+  const [kx, ky] = g.center(k);
+  // Holzfäller mit möglichst viel Wald im Gebiet suchen, dann Weg vom Kontor dorthin legen
+  let best = null, be = -1;
+  for (let y = Math.floor(ky) - 9; y <= ky + 9; y++) for (let x = Math.floor(kx) - 9; x <= kx + 9; x++) {
+    if (!g.canPlace('holzfaeller', x, y).ok) continue;
+    const e = g.siteEfficiency('holzfaeller', x, y);
+    if (e > be) { be = e; best = [x, y]; }
+  }
+  if (!best) return { fehler: 'kein Platz für Holzfäller' };
+  g.place('holzfaeller', best[0], best[1]);
+  const b = g.buildings[g.buildings.length - 1];
+  // Weg: L-Form von Kontor-Rand zu Holzfäller-Rand
+  const cells = [];
+  const sx = Math.floor(kx), sy = Math.floor(ky) + 2, tx = best[0], ty = best[1] - 1;
+  for (let x = Math.min(sx, tx); x <= Math.max(sx, tx); x++) cells.push([x, sy]);
+  for (let y = Math.min(sy, ty); y <= Math.max(sy, ty); y++) cells.push([tx, y]);
+  const roads = g.placeRoads(cells);
+  const linked = g.linked.has(b.id);
+  const holz0 = g.lagerOf(0, k.island).holz;
+  let maxStock = 0, cartMoved = false;
+  for (let i = 0; i < 1200; i++) { g.tick(0.25); maxStock = Math.max(maxStock, b.stock); if (g.carts.some((c) => c.state !== 'idle')) cartMoved = true; }
+  return { best, eff: be.toFixed(2), roads, linked, status: b.status, holzVorher: holz0, holzNachher: g.lagerOf(0, k.island).holz, maxStock, cartMoved, carts: g.carts.length };
+});
+console.log('Holzfäller+Karren:', JSON.stringify(r3));
+// einen Karren unterwegs fotografieren
+await page.evaluate(() => {
+  const g = window.__game();
+  for (let i = 0; i < 400; i++) { g.tick(0.25); const c = g.carts.find((c) => c.state !== 'idle' && c.path.length > 2); if (c) { const r = window.__view.rig; r.tx = c.x; r.tz = c.y; r.dist = 12; return; } }
+});
+await page.waitForTimeout(1000);
+await page.screenshot({ path: `${out}/f6-karren.png` });
 console.log(errs.length ? 'FEHLER: ' + errs.join(' | ') : 'keine Fehler');
 await browser.close(); server.close();

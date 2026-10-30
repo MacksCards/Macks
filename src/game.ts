@@ -29,6 +29,21 @@ export interface Building {
   happy: number;
   growT: number;
   upT: number;
+  /** eigenes kleines Lager des Betriebs (wartet auf den Marktkarren) */
+  stock: number;
+}
+
+/** Marktkarren: holt Waren von Betrieben ab und bringt sie ins Inselllager */
+export interface Cart {
+  id: number;
+  home: number; // Kontor/Marktplatz
+  x: number;
+  y: number;
+  path: [number, number][];
+  state: 'idle' | 'hin' | 'zurueck';
+  target: number;
+  g: GoodId | null;
+  n: number;
 }
 
 export interface Slot { g: GoodId | null; n: number }
@@ -81,6 +96,8 @@ const SAVE_KEY = 'neue-ufer-save-v3';
 export const HUMAN = 0;
 const SHIP_SPEED = 3.2; // Kacheln pro Spielsekunde
 const SHIP_SIGHT = 9;
+const CART_SPEED = 1.8; // Felder pro Spielsekunde
+const CART_CAP = 6; // Tonnen pro Fahrt
 export const DOCK_RANGE = 5; // so nah muss ein Schiff am Kontor/Bauplatz sein
 
 const enc = (a: ArrayLike<number>) => { let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i] + 48); return s; };
@@ -100,6 +117,7 @@ export class Game {
   buildings: Building[] = [];
   byId = new Map<number, Building>();
   ships: Ship[] = [];
+  carts: Cart[] = [];
   players: Player[] = [];
   lager: Record<string, Goods> = {};
   nextId = 1;
@@ -120,6 +138,7 @@ export class Game {
   /** Bereits freigeschaltete Gebäude (bleiben freigeschaltet) */
   unlocked = new Set<BuildingId>();
   private unlockT = 0;
+  private cartT = 0;
 
   ev: GameEvents = { added() {}, removed() {}, changed() {}, roads() {}, trees() {}, seen() {}, message() {} };
 
@@ -168,6 +187,7 @@ export class Game {
     g.quest = d.quest;
     for (const b of d.buildings) {
       if (!BUILDINGS[b.type]) continue;
+      b.stock ??= 0;
       g.buildings.push(b);
       g.byId.set(b.id, b);
       g.stamp(b, b.id);
@@ -260,7 +280,7 @@ export class Game {
     return {
       id: this.nextId++, type, x, y, owner, island: this.islandOf[this.idx(x, y)],
       progress: 0, loaded: false, eff: 1, status: 'ok', missing: [], active: 0,
-      tier: 0, residents: type === 'haus' ? 1 : 0, need: { nahrung: 1 }, demand: {}, short: {}, happy: 0.7, growT: 0, upT: 0,
+      tier: 0, residents: type === 'haus' ? 1 : 0, need: { nahrung: 1 }, demand: {}, short: {}, happy: 0.7, growT: 0, upT: 0, stock: 0,
     };
   }
 
@@ -386,6 +406,95 @@ export class Game {
       this.coverage.set(h.id, set);
     }
     for (const b of this.buildings) b.eff = this.siteEfficiency(b.type, b.x, b.y);
+    // Marktkarren: Kontor 2, Marktplatz 1
+    this.carts = this.carts.filter((c) => this.byId.has(c.home));
+    for (const b of claimers) {
+      const want = b.type === 'kontor' ? 2 : 1;
+      const have = this.carts.filter((c) => c.home === b.id).length;
+      const [cx, cy] = this.center(b);
+      for (let i = have; i < want; i++) this.carts.push({ id: this.nextId++, home: b.id, x: cx, y: cy, path: [], state: 'idle', target: 0, g: null, n: 0 });
+    }
+  }
+
+  /** Weg über Straßen von Gebäude a zu Gebäude b (Feldmitten), null = keine Verbindung */
+  roadPath(a: Building, b: Building): [number, number][] | null {
+    const N = this.size;
+    const goal = new Set<number>();
+    for (const [x, y] of this.ring(b)) if (this.inMap(x, y)) goal.add(this.idx(x, y));
+    const startRing = this.ring(a).filter(([x, y]) => this.inMap(x, y)).map(([x, y]) => this.idx(x, y));
+    // direkt benachbart?
+    for (const k of startRing) if (this.occ[k] === b.id) return [];
+    const from = new Map<number, number>();
+    const q: number[] = [];
+    for (const k of startRing) if (this.roads[k] && !from.has(k)) { from.set(k, -1); q.push(k); }
+    for (let h = 0; h < q.length; h++) {
+      const k = q[h];
+      if (goal.has(k)) {
+        const path: [number, number][] = [];
+        for (let c = k; c >= 0; c = from.get(c)!) path.push([c % N + 0.5, ((c / N) | 0) + 0.5]);
+        return path.reverse();
+      }
+      const x = k % N, y = (k / N) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (!this.inMap(nx, ny)) continue;
+        const nk = this.idx(nx, ny);
+        if (this.roads[nk] && !from.has(nk)) { from.set(nk, k); q.push(nk); }
+      }
+    }
+    return null;
+  }
+
+  private assignCart(c: Cart, home: Building) {
+    const [hx, hy] = this.center(home);
+    const reach = this.def(home).work ?? 9;
+    const taken = new Set(this.carts.filter((o) => o.state === 'hin').map((o) => o.target));
+    const cands = this.buildings
+      .filter((b) => b.owner === home.owner && b.island === home.island && this.def(b).prod && b.stock >= 1 && !taken.has(b.id))
+      .filter((b) => { const [bx, by] = this.center(b); return Math.hypot(bx - hx, by - hy) <= reach + 1; })
+      .sort((p, q) => q.stock - p.stock);
+    for (const b of cands) {
+      const path = this.roadPath(home, b);
+      if (!path) continue;
+      const [bx, by] = this.center(b);
+      c.path = [...path, [bx, by]];
+      c.state = 'hin';
+      c.target = b.id;
+      return;
+    }
+  }
+
+  private tickCarts(dt: number) {
+    const think = this.cartT >= 1;
+    for (const c of this.carts) {
+      const home = this.byId.get(c.home)!;
+      if (c.state === 'idle') { if (think) this.assignCart(c, home); continue; }
+      let step = CART_SPEED * dt;
+      while (step > 0 && c.path.length) {
+        const [tx, ty] = c.path[0];
+        const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy);
+        if (d < 1e-3) { c.path.shift(); continue; }
+        const m = Math.min(step, d);
+        c.x += (dx / d) * m; c.y += (dy / d) * m; step -= m;
+        if (m >= d) c.path.shift();
+      }
+      if (c.path.length) continue;
+      if (c.state === 'hin') {
+        const b = this.byId.get(c.target);
+        if (b && this.def(b).prod) {
+          const take = Math.min(Math.floor(b.stock), CART_CAP);
+          b.stock -= take; c.g = this.def(b).prod!.output; c.n = take;
+        }
+        const back = b ? this.roadPath(home, b) : null;
+        c.path = [...(back ?? []).reverse(), this.center(home)];
+        c.state = 'zurueck';
+      } else {
+        const l = this.lagerOf(home.owner, home.island);
+        if (l && c.g) l[c.g] = Math.min(Math.max(this.capOf(home.owner, home.island), l[c.g]), l[c.g] + c.n);
+        c.g = null; c.n = 0; c.state = 'idle';
+      }
+    }
+    if (think) this.cartT = 0;
   }
 
   ring(b: { type: BuildingId; x: number; y: number }): [number, number][] {
@@ -403,12 +512,14 @@ export class Game {
       return 0;
     }
     const want = d.needs === 'wald' ? T.Wald : T.Wasser;
-    const full = d.needs === 'wald' ? (type === 'jagdhuette' ? 10 : 14) : 10;
+    const R = d.work ?? 4;
+    // so viel Wald/Wasser im Arbeitsradius braucht ein Betrieb für volle Leistung
+    const full = Math.round(Math.PI * R * R * (d.needs === 'wald' ? (type === 'jagdhuette' ? 0.18 : 0.28) : 0.2));
     const cx = x + d.size / 2, cy = y + d.size / 2;
     let n = 0;
-    for (let j = -5; j <= 5; j++) for (let i = -5; i <= 5; i++) {
+    for (let j = -R - 1; j <= R + 1; j++) for (let i = -R - 1; i <= R + 1; i++) {
       const tx = Math.floor(cx + i), ty = Math.floor(cy + j);
-      if ((tx + 0.5 - cx) ** 2 + (ty + 0.5 - cy) ** 2 > 16) continue;
+      if ((tx + 0.5 - cx) ** 2 + (ty + 0.5 - cy) ** 2 > R * R) continue;
       if (tx >= x && tx < x + d.size && ty >= y && ty < y + d.size) continue;
       if (this.tile(tx, ty) === want) n++;
     }
@@ -688,6 +799,8 @@ export class Game {
       if (b.type === 'haus') this.tickHouse(b, dt);
       else if (this.def(b).prod) this.tickProduction(b, dt);
     }
+    this.cartT += dt;
+    this.tickCarts(dt);
     for (const p of this.players) {
       const { tax, upkeep } = this.incomePerMinute(p.id);
       p.money += ((tax - upkeep) / 60) * dt;
@@ -700,12 +813,11 @@ export class Game {
   private tickProduction(b: Building, dt: number) {
     const p = this.def(b).prod!;
     const l = this.lagerOf(b.owner, b.island);
-    const cap = this.capOf(b.owner, b.island);
     let working = false;
     b.missing = [];
     if (!l || !this.linked.has(b.id)) b.status = 'keinWeg';
     else if (b.eff <= 0) b.status = this.def(b).needs === 'wasser' ? 'keinWasser' : 'keinWald';
-    else if (l[p.output] >= cap) b.status = 'lagerVoll';
+    else if (b.stock >= (this.def(b).stock ?? 4)) b.status = 'lagerVoll';
     else {
       if (!b.loaded) {
         const inp = p.input ?? {};
@@ -722,7 +834,7 @@ export class Game {
         if (b.progress >= p.time) {
           b.progress = 0;
           b.loaded = false;
-          l[p.output] = Math.min(cap, l[p.output] + (p.amount ?? 1));
+          b.stock = Math.min(this.def(b).stock ?? 4, b.stock + (p.amount ?? 1));
         }
       } else b.status = 'rohstoff';
     }

@@ -430,7 +430,7 @@ export class UI {
       h += `<h3>${d.icon} ${d.name}</h3><p class="sub">${d.desc}</p>`;
       if (d.prod) {
         const st: Record<string, string> = {
-          ok: '✅ Arbeitet', keinWeg: '🚧 Kein Weg zum Kontor oder Marktplatz', lagerVoll: '📦 Lager ist voll',
+          ok: '✅ Arbeitet', keinWeg: '🚧 Kein Weg zum Kontor oder Marktplatz', lagerVoll: '📦 Voll – wartet auf den Marktkarren (Weg + Reichweite von Kontor/Marktplatz?)',
           keinWald: '🌲 Kein Wald in der Nähe', keinWasser: '🌊 Kein Wasser in der Nähe',
           rohstoff: `⚠️ Es fehlt: ${b.missing.map((m) => GOOD[m].name).join(', ')}`,
         };
@@ -438,10 +438,12 @@ export class UI {
         h += `<div class="row"><span>Status</span><b>${st[b.status] ?? ''}</b></div>
           <div class="row"><span>Produziert</span><b>${inp ? inp + ' → ' : ''}${d.prod.amount ?? 1} ${GOOD[d.prod.output].icon} ${GOOD[d.prod.output].name} / ${Math.round(d.prod.time / Math.max(0.05, b.eff))} s</b></div>
           <div class="row"><span>Standort</span><b>${Math.round(b.eff * 100)} %</b></div>
+          <div class="row"><span>Im Betrieb gelagert</span><b>${Math.floor(b.stock)} / ${d.stock ?? 4} t</b></div>
           <div class="row"><span>Auslastung</span><b>${Math.round(b.active * 100)} %</b></div>
           <div class="bar"><i style="width:${Math.round((b.progress / d.prod.time) * 100)}%"></i></div>`;
       }
-      if (d.radius) h += `<div class="row"><span>Reichweite</span><b>${d.radius} Felder</b></div>`;
+      if (d.work && d.prod) h += `<div class="row"><span>Arbeitsradius</span><b>${d.work} Felder</b></div>`;
+      else if (d.radius) h += `<div class="row"><span>Reichweite</span><b>${d.radius} Felder</b></div>`;
       if (d.storage) h += `<div class="row"><span>Lager</span><b>+${d.storage} je Ware</b></div>`;
     }
     h += `<div class="row"><span>Unterhalt</span><b>${d.upkeep} Taler/Min</b></div>`;

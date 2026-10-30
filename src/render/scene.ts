@@ -9,6 +9,7 @@ import { LAND_Y, Terrain } from './terrain';
 import { Vegetation, windTime } from './vegetation';
 import { ModelLibrary } from './glb';
 import { ShipLayer } from './ships';
+import { CartLayer } from './carts';
 import { buildingMaterial } from './materials';
 import { ModelDef } from './kit';
 
@@ -24,6 +25,7 @@ export class View {
   private g: Game;
   private terrain!: Terrain;
   ships!: ShipLayer;
+  private carts!: CartLayer;
   private seenTex!: THREE.DataTexture;
   private seenCount: number[] = [];
   private border: THREE.LineSegments | null = null;
@@ -141,6 +143,8 @@ export class View {
     this.terrain = new Terrain(g);
     this.scene.add(this.terrain.group);
     if (!this.ships) { this.ships = new ShipLayer(g); this.scene.add(this.ships.group); }
+    const h = (x: number, z: number) => this.terrain.heightAt(x, z);
+    if (!this.carts) { this.carts = new CartLayer(g, h); this.scene.add(this.carts.group); } else this.carts.setGame(g, h);
     this.seenCount = g.islands.map(() => -1);
     this.areaShown = false;
     this.buildWater();
@@ -495,12 +499,13 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.footprint.scale.set(d.size, 1, d.size);
     this.footprint.position.set(x + d.size / 2, gy + 0.03, y + d.size / 2);
     (this.footprint.material as THREE.MeshBasicMaterial).color.setHex(ok ? 0x55ff55 : 0xff4444);
-    this.showRadius(d.radius ?? 0, x + d.size / 2, y + d.size / 2);
+    this.showRadius(d.work ?? d.radius ?? 0, x + d.size / 2, y + d.size / 2, d.work && d.prod ? 0xffb347 : 0xffffff);
   }
 
-  showRadius(r: number, x = 0, z = 0) {
+  showRadius(r: number, x = 0, z = 0, color = 0xffffff) {
     if (!r) { this.radiusRing.visible = false; return; }
     this.radiusRing.visible = true;
+    (this.radiusRing.material as THREE.MeshBasicMaterial).color.setHex(color);
     this.radiusRing.scale.set(r, 1, r);
     this.radiusRing.position.set(x, LAND_Y + 0.06, z);
   }
@@ -512,7 +517,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     const r = d.size * 0.75;
     this.selectRing.scale.set(r, 1, r);
     this.selectRing.position.set(b.x + d.size / 2, this.groundY(b.x, b.y, d.size) + 0.06, b.y + d.size / 2);
-    this.showRadius(d.radius ?? 0, b.x + d.size / 2, b.y + d.size / 2);
+    this.showRadius(d.work ?? d.radius ?? 0, b.x + d.size / 2, b.y + d.size / 2, d.work && d.prod ? 0xffb347 : 0xffffff);
   }
 
   // ---------- Kamera & Picking ----------
@@ -589,6 +594,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
 
   frame(t: number, gameDt: number) {
     this.ships.update(t);
+    this.carts.update(t);
     this.waterUniforms.uTime.value = t;
     windTime.value = t;
     for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;
