@@ -35,7 +35,7 @@ Wichtige Regeln:
 - **Bedarf vs. Wünsche:** Was in der Tabelle steht, ist harte Bedingung für den Aufstieg. Fehlende Waren machen unzufrieden, Bewohner ziehen aus.
 - **Freischaltungen** gelten pro Insel (200 Bürger müssen auf *einer* Insel wohnen). Eine höhere Stufe zählt auch für niedrigere (100 Bürger erfüllen „100 Siedler“, nicht umgekehrt).
 - **Baumaterial an Bewohner:** Am Kontor lässt sich die Abgabe von Holz/Ziegel/Werkzeug für Haus-Aufstiege sperren (wichtig bei Materialmangel).
-- **Steuersatz** ist einstellbar; höher = mehr Geld, aber unzufriedener. Bei leerer Kasse kurz erhöhen ist besser als Abwanderung.
+- **Steuersatz** ist einstellbar; höher = mehr Geld, aber unzufriedener. Höchster Satz, bei dem Bewohner noch bleiben (voll versorgt, Erfahrungswerte): Pioniere ~48 %, Siedler ~45 %, Bürger ~38 %, Kaufleute ~36 %, Aristokraten ~35 % – weniger, wenn Waren fehlen. Bei leerer Kasse kurz erhöhen ist besser als Abwanderung.
 - **Bankrott:** längere Zeit tief im Minus (Größenordnung −10 000 Taler) → Spiel verloren.
 - **Arbeiter:** Betriebe bringen ihre Arbeiter selbst mit; Produktionsinseln brauchen keine Wohnhäuser.
 - **Schatz:** Beim Bauen findet man gelegentlich vergrabene Schätze (1 000 Taler).
@@ -102,7 +102,7 @@ Produktionsrate in t/Minute (1 Zyklus ≈ 1 min), Betriebskosten aktiv/ruhend in
 | Steinbruch (am Berg) + Steinmetz → Ziegel (1 Steinbruch reicht für bis zu 6 Steinmetze) | 2,9 t |
 | Forsthaus → Holz | 2,8 t |
 
-Minen: Die normale Erzmine erschöpft sich irgendwann; dann baut man auf dem Vorkommen eine **tiefe Erzmine** (ab 400 Kaufleuten). Goldvorkommen erschöpfen sich nach Fan-Angaben nicht. Gebäude zeigen ein **Fragezeichen**, wenn sie nicht produzieren (Rohstoff fehlt/zu weit, Felder wachsen noch, schlechter Standort, Mine erschöpft).
+Minen: Erzvorkommen sind klein (~80 t) oder groß (~240 t bzw. sehr ergiebig); die normale Erzmine erschöpft sich, dann baut man auf dem Vorkommen eine **tiefe Erzmine** (ab 400 Kaufleuten). Goldvorkommen erschöpfen sich nach Fan-Angaben nicht. Gebäude zeigen ein **Fragezeichen**, wenn sie nicht produzieren (Rohstoff fehlt/zu weit, Felder wachsen noch, schlechter Standort, Mine erschöpft).
 
 ## 5. Alle Gebäude mit Daten
 
@@ -242,7 +242,7 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 ## 8. Schiffe
 | Schiff | Freischaltung (Bau) | Kosten | Laderaum | Kanonen | Treffer | Tempo (leer/voll) | Bauzeit kl./gr. Werft |
 |---|---|---|---|---|---|---|---|
-| Kleines Handelsschiff | 120 Siedler | 400 Taler, 25 Holz, 3 Stoffe | 200 t (4 Plätze) | 6 | 50 | 100/60 | 120/65 s |
+| Kleines Handelsschiff | 120 Siedler | 400 Taler, 25 Holz, 3 Stoffe | 200 t | 6 | 50 | 100/60 | 120/65 s |
 | Kleines Kriegsschiff | 120 Siedler | 600 Taler, 32 Holz, 4 Stoffe | 150 t | 8 | 65 | 110/66 | 150/100 s |
 | Großes Handelsschiff | 500 Kaufleute | 520 Taler, 45 Holz, 5 Stoffe | 300 t | 10 | 80 | 80/48 | –/105 s |
 | Großes Kriegsschiff | 500 Kaufleute | 900 Taler, 60 Holz, 7 Stoffe | 400 t | 14 | 120 | 120/72 | –/140 s |
@@ -252,6 +252,7 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 - **Handelsrouten**: automatische Fahrten zwischen Kontoren mit Lade-/Entladeaufträgen.
 - **Reparatur** an der Werft (Holz + Stoffe). Schiffe kann man von Mitspielern auch kaufen.
 - Weiße Flagge = friedliche Fahrt.
+- Obergrenze ca. 20 Schiffe (je nach Version bis 33); jeder Triumphbogen erlaubt ein Schiff mehr.
 
 ## 9. Militär & Kampf
 | Einheit | Freischaltung | Kosten | Unterhalt | Treffer | Stärke | Schussintervall | Reichweite |
@@ -263,19 +264,20 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 | Wachturm (Stein/Holz) | 200 Siedler | s. o. + 2 Kanonen | 5 | 55/37 | 4,0 | 3,0 s | 8 Felder |
 
 - Ausbildung in Burg (200 s), großer Burg (140 s), Festung (100 s).
-- Eroberung: Truppen per Schiff übersetzen, gegnerische Gebäude angreifen; wer **Kontor und Marktplätze** einer Insel einnimmt, übernimmt die Siedlung. Kanonen setzen Gebäude in Brand. Details: `docs/recherche/quelle-b-militaer.md`.
+- Eroberung: Truppen per Schiff übersetzen, gegnerische Gebäude angreifen; Gebiet anderer Spieler übernimmt man nur, indem man deren **Marktplätze/Kontor** einnimmt bzw. zerstört. Kanonen setzen Gebäude in Brand. Details: `docs/recherche/quelle-b-militaer.md`.
 - Nach dem Sieg über einen Gegner: **Triumphbogen** baubar.
 
 ## 10. Handel, Diplomatie, Gegner
-- **Freie Händler** laufen Kontore an und kaufen/verkaufen nach den am Kontor eingestellten Aufträgen und Preisen. Werkzeug am Anfang beim Händler kaufen.
-- **Computergegner** (bis zu 3, je eigene Farbe/Charakter): siedeln, handeln, schließen Verträge, erklären Krieg. Diplomatie: Handelsvertrag, Friedensvertrag, Bündnis, Krieg.
-- **Ureinwohner**: Handel (sie wollen bestimmte Waren), Konflikte möglich; ihre Inseln/Gold.
-- **Piraten**: überfallen Handelsschiffe; Bestechung (~700, später ~1400 Taler), Geleitschutz mit Kanonen, Piratennest zerstören.
-- Details und Preistabellen: `docs/recherche/quelle-c-schiffe-handel.md`.
+- **Freie Händler** kaufen/verkaufen nach den am Kontor eingestellten Aufträgen (Ware, Menge, Preis); sie können nicht angegriffen werden. Werkzeug am Anfang beim Händler kaufen. Direkt mit der KI zu handeln ist meist günstiger.
+- **Marktkarren** handeln auf derselben Insel auch mit Nachbarn (Spieler, Ureinwohner).
+- **Computergegner**: höchstens drei, jeder mit eigener Farbe und Persönlichkeit; sie siedeln, handeln und orientieren sich am Tempo des Spielers. KI-Gegner bekriegen sich nicht untereinander. Diplomatie mit dem Spieler: Handelsvertrag, Friedensvertrag, Bündnis, Krieg.
+- **Ureinwohner** (Einheimische): Dörfer mit Häuptlingshütte; man sieht, welche Waren sie wollen, und tauscht (z. B. Stoffe/Alkohol gegen Tabak/Gewürze, Verhältnis ca. 1 : 1,5 bis 1 : 2). Greift man sie an oder zerstört ein Dorf, endet der Handel für immer und ein **Fluch** bringt Dürren, Brände, Seuchen (Gold der Insel kann versiegen).
+- **Piraten**: überfallen Schiffe und Küsten; man kann **Schutz kaufen** oder sie gegen andere Spieler **bestechen** (Betrag hängt vom eigenen Vermögen ab), Geleitschutz mit Kanonen, Piratennest zerstören. Ein Sieg über Piraten kann einen Triumphbogen bringen.
+- Details und Preistabelle der KI für alle Waren: `docs/recherche/quelle-c-schiffe-handel.md`.
 
 ## 11. Katastrophen, Ereignisse, Spielmodi
-- **Feuer** (Feuerwehr mit Wegeanschluss), **Pest** (Sensenmann über dem Haus; Arzt in Reichweite), **Kriminalität** (Galgen), **Dürre/Ernteausfall**, **Vulkanausbruch** (Erweiterung), Schätze.
-- **Endlosspiel** mit Einstellungen (Schwierigkeit, Startbedingungen, Gegner), **Szenarien** (Hauptspiel ~26, Erweiterung „Neue Inseln, neue Abenteuer“ +20, Leveleditor, Wassermühle), **Mehrspieler**, **Endwertung**/Punkte.
+- **Feuer** (Feuerwehr mit Wegeanschluss; Holzbrücken brennen, Steinbrücken nicht), **Pest** (Sensenmann über dem Haus; Arzt in Reichweite), **Kriminalität** (Galgen), **Dürre** (alle Ernten sterben, nicht zu verhindern – Fischer sind dürresicher), **Vulkanausbruch** (Erweiterung), vergrabene Schätze (1 000 Taler).
+- **Endlosspiel** mit Einstellungen (Schwierigkeit, Startbedingungen, Gegner; Ureinwohner, Piraten, Brände, Dürre, Pest je nach Schwierigkeit), **Szenarien** (Hauptspiel ~26, Erweiterung „Neue Inseln, neue Abenteuer“ +20, Leveleditor, Wassermühle), **Mehrspieler**, **Endwertung**/Punkte.
 - Spielgeschwindigkeit, Statistiken, Infomodus („?“) für jedes Gebäude.
 
 ## 12. Was „Neue Ufer“ daraus macht (Abweichungen)

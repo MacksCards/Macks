@@ -37,14 +37,16 @@ Hauptquelle ist Tim Howgego, englische Fan-Anleitung (FAQ/Strategy Guide). Die A
 | Typ (Arbeitsname) | Kosten (Credits) | Freischaltung (Bevölkerung) | Holz | Stoff | Kanonen-Wert (TMIL) | Laderaum (t) | Bauzeit kleine Werft / große Werft (s) |
 |---|---|---|---|---|---|---|---|
 | Kleines Handelsschiff | 400 | 120 Siedler | 25 | 3 | 6 | 200 | 120 / 65 |
-| Großes Handelsschiff | 520 | 500 Kaufleute | 45 | 5 | 10 | 300 | nicht baubar / 105 |
+| Großes Handelsschiff | 520 | 500 Kaufleute | 45 | 5 | 10 | 300 | – / 105 |
 | Kleines Kriegsschiff | 600 | 120 Siedler | 32 | 4 | 8 | 150 | 150 / 100 |
-| Großes Kriegsschiff | 900 | 500 Kaufleute | 60 | 7 | 14 | 400 | nicht baubar / 140 |
+| Großes Kriegsschiff | 900 | 500 Kaufleute | 60 | 7 | 14 | 400 | – / 140 |
 | Piratenschiff (nur Gegner) | nicht angegeben | nicht anwendbar | – | – | 10 (Maximum, siehe 1.2) | nicht angegeben | nicht anwendbar |
+
+Die Bauzeit "–" bedeutet in TMIL, dass für diesen Werft-Typ keine Bauzeit angegeben ist. Die Quelle sagt dies nicht ausdrücklich als "nicht baubar" (siehe 6, Punkt 3).
 
 Erläuterungen:
 - Schiffe lassen sich erst ab der genannten Bevölkerungsstufe bauen. Sie können aber auch ohne diese Stufe von anderen Spielern gekauft werden (TMIL, Fußnote).
-- Die Spalte "Kanonen-Wert" führt die Tabelle unter "Cannon". Ob dies Baukosten oder Kapazität ist, ist unklar (siehe 6, Punkt 5).
+- Die Spalte "Kanonen-Wert" führt die Tabelle unter "Cannon". Ob dies Baukosten oder Kapazität ist, ist unklar (siehe 6, Punkt 4).
 - Der Laderaum in Tonnen ist die Gesamtladung des Schiffs (TMIL, Spalte "Cargo"). Die Anzahl der Laderäume ist nur für das Kleine Kriegsschiff belegt: drei (TST 5.4.2). Große Schiffe haben mehr Laderäume (TMU, TSh 3.8.2). Eine Zahl dazu fehlt.
 - Die Bauzeit "120 / 65" bedeutet: kleine Werft 120 s, große Werft 65 s (TMIL, Fußnote).
 
@@ -77,14 +79,14 @@ Erläuterungen:
 | Betriebskosten | 100/20 | 150/30 |
 | Größe | 3×3 | 4×4 |
 | Einflussbereich (TBLD, Spalte "Coverage") | 13 | 17 |
-| Baut | nur kleine Schiffe (laut Tabelle) | alle Schiffe |
+| Baut | Kleine Schiffe. Die Tabelle nennt für große Schiffe hier keine Bauzeit (siehe 6, Punkt 3). | Alle Schiffe |
 
 Regeln zum Bau:
 - Ein Schiff wird an der Werft bestellt. Das Material wird danach automatisch herangeschafft (TSh 3.8.2).
 - Die Werft braucht einen Marktplatz in ihrem Einflussbereich (TSh 3.8.2).
 - Die Große Werft baut kleine Schiffe deutlich schneller: Handelsschiff 120 s auf 65 s, Kriegsschiff 150 s auf 100 s (TMIL).
-- Trick (FrankB, TSh 3.8.2): Ein Großes Kriegsschiff wird im Bau-Menü der Großen Werft ausgewählt, aber nicht bestätigt. Danach wird es an der Kleinen Werft bestellt. Der Bau dauert dort länger. **[WIDERSPRUCH]** Die Tabelle gibt für große Schiffe an der kleinen Werft keine Bauzeit an (siehe 6, Punkt 3).
-- Die Große Werft hat eine Bevölkerungsgrenze von 500 Kaufleuten. Das gilt auch für den Bau großer Schiffe.
+- Trick (FrankB, TSh 3.8.2): Ein Großes Kriegsschiff wird im Bau-Menü der Großen Werft ausgewählt, aber nicht bestätigt. Danach wird es an der Kleinen Werft bestellt. Der Bau dauert dort länger. Dafür muss eine Große Werft existieren. **[WIDERSPRUCH]** Die Tabelle gibt für große Schiffe an der kleinen Werft keine Bauzeit an (siehe 6, Punkt 3).
+- Große Schiffe brauchen 500 Kaufleute (TMIL). Die Große Werft hat dieselbe Freischaltung (TBLD).
 
 ### 1.4 Anzahl, Kauf und Verkauf, Reparatur, Bewaffnung
 
@@ -100,13 +102,13 @@ Regeln zum Bau:
 
 **Schiffe verkaufen**
 - Die KI kauft ein Schiff, wenn sie kein Schiff und keine Werft hat (Falke, TSh 3.8.4).
-- Robbie47: Man versenkt das letzte Schiff und zerstört die Werft, baut dann ein Schiff und bietet es an. Die KI kauft es dann. **[WIDERSPRUCH]** Eric Lorah sagt, die KI kauft gegen KI-Gegner kaum Schiffe (siehe 6, Punkt 13).
+- Robbie47: Man versenkt das letzte Schiff und zerstört die Werft, baut dann ein Schiff und bietet es an. Die KI kauft es dann. **[WIDERSPRUCH]** Eric Lorah sagt, die KI kauft gegen KI-Gegner kaum Schiffe (siehe 6, Punkt 8).
 
 **Reparatur**
 - An der Werft gibt es einen Reparatur-Knopf. Ein gelber Rand zeigt, dass die Reparatur läuft. Es wird nur ein Schiff gleichzeitig repariert (TSh 3.8.6, Render).
 - Die Reparatur braucht Holz und Stoff. Der Marktplatz liefert sie. Ein Marktplatz direkt neben der Werft spart Zeit (TSh 3.8.6).
 - Hilfreich ist: freier Weg zum Markt oder Kontor, Werft im Einflussbereich des Schiffs, genug Holz und Stoff auf der Insel (Worker72, TSh 3.8.6).
-- Ein Schiff im Trockendock kann die weiße Flagge gehisst haben (Terry, TSh 3.8.6).
+- Die weiße Flagge kann während des gesamten Aufenthalts im Trockendock gehisst bleiben (Terry, TSh 3.8.6).
 - Die Materialmenge pro Reparatur ist nicht angegeben (siehe 7).
 
 **Bewaffnung**
@@ -152,7 +154,7 @@ Regeln zum Bau:
 ### 1.6 Seekampf-Regeln
 
 - Piraten sind feindlich, solange sie nicht bestochen sind. Andere Spieler greifen nur bei triftigem Grund an (TTD 3.6.8).
-- Bewaffnete Schiffe fangen Kämpfe an. Unbewaffnete Schiffe fahren ihre Route weiter. Deshalb rüsten viele Spieler Handelsschiffe in der Anfangsphase ab (FrankB, TSPN 5.5.2).
+- Bewaffnete Schiffe fangen Kämpfe an. Unbewaffnete Schiffe fahren ihre Route weiter. FrankB rüstet seine Schiffe deshalb am Anfang ab (FrankB, TSPN 5.5.2).
 - Die weiße Flagge hisst man mit der Taste W (FrankB, TSPN 5.5.2).
 - Wird die weiße Flagge gehisst, bevor der Pirat das Schiff erreicht, gibt es keinen Kampf. Es wird nichts geraubt, und das Piratenschiff zieht nach einiger Zeit ab (sb4x4, TSPN 5.5.2).
 - Die weiße Flagge bleibt nach einem Neustart des Spiels nicht gespeichert (FrankB, TSPN 5.5.2).
@@ -180,7 +182,7 @@ Regeln zum Bau:
 | Kontor III | 100 Bürger | 250 | 4 | 6 | 4 | 15/15 | 75 | 8 | 6 | 2×3 | 16/6 |
 | Kontor IV | 250 Kaufleute (TBLD) | 250 | 4 | 10 | 5 | 15/15 | 100 | 11 | 8 | 2×3 | 16/6 |
 
-Quellen: Lager und Handelsgrenzen aus TTD 3.6.7. Kosten und Baustoffe aus TBLD und GIGA. Die Spalte "Einflussbereich" hat in TBLD zwei Werte (16/6). Die Bedeutung des zweiten Werts ist unklar. **[WIDERSPRUCH]** GIGA nennt Kontor IV bei 250 Bürgern, TBLD bei 250 Kaufleuten (siehe 6, Punkt 16).
+Quellen: Lager und Handelsgrenzen aus TTD 3.6.7. Kosten und Baustoffe aus TBLD und GIGA. Die Spalte "Einflussbereich" hat in TBLD zwei Werte (16/6). Die Bedeutung des zweiten Werts ist unklar. **[WIDERSPRUCH]** GIGA nennt Kontor IV bei 250 Bürgern, TBLD bei 250 Kaufleuten (siehe 6, Punkt 9).
 
 Regeln:
 - Das erste Kontor einer Insel wird von einem Schiff an der Küste aus gebaut. Das Schiff muss das nötige Material an Bord haben (TCB 3.4.9).
@@ -188,7 +190,7 @@ Regeln:
 - Normalerweise gibt es nur ein Kontor pro Insel. Ausnahme: Nach der Zerstörung eines Piratenlagers kann man an derselben Stelle ein eigenes Kontor bauen (joe_44850 und Günter, TCB 3.4.9).
 - Beim Bau eines Kontors wird automatisch 1 t Nahrung eingelagert (Sandmonkey, TCB 3.4.9).
 - Die Obergrenze für Parteien auf einer Insel liegt laut FrankB bei sieben. Das ist unsicher (TCB 3.4.9).
-- Die Kontoren sind auch ein Ankerpunkt für Ladeplätze: Piers und Docks sind nicht nötig, damit Schiffe anlegen können (Lord Khang, TCB 3.4.10).
+- Piers und Docks sind zum Anlegen am Kontor nicht nötig (Lord Khang, TCB 3.4.10).
 
 ### 2.2 Marktwagen (Handel auf der eigenen Insel)
 
@@ -255,7 +257,7 @@ Beobachtung (berechnet): Bei fast allen Waren verkauft die KI für etwa zwei Dri
 
 - **Krieg und Frieden:** Gute Gelegenheit zum Angriff sei, wenn du etwa 700 bis 800 Kaufleute hast, dann sind die Bürger leicht zufriedenzustellen und du brauchst wenige Handelsschiffe. Die Wirtschaft sollte stabil sein. Während des Krieges kann man Handelsschiffe zurück in den Heimathafen holen, bis die KI-Flotte versenkt ist (FrankB, TST 5.4.3).
 - **Gewinnen und Anfangen:** Wer eine Schlacht sicher gewinnt, sollte sie beginnen. Der Gewinn erweitert das Gebiet (vipris, TST 5.4.3). Manche lassen die KI am Leben und verkaufen ihr Waren für Geld (Robitoby, TST 5.4.3).
-- **Verträge mit der KI:** Die KI hat Frieden und Handelsvertrag mit dem Spieler, solange man genug zahlt. Zahlt man zu viel, bricht sie nicht den Vertrag, sondern ist "beleidigt". Helen: Wer zu viel gibt, bricht den Friedens- und Handelsvertrag. Helen schreibt zugleich, dass sie genug zahlt, um Frieden und Vertrag zu halten. Präzisierung in den Quellen: Die Vertragsschwelle ist nicht fest angegeben (siehe 7).
+- **Verträge mit der KI:** Die KI kann mit dem Spieler einen Friedensvertrag und einen Handelsvertrag haben. Helen berichtet, dass bei ihr zu viel gezahltes Geld den Friedens- und den Handelsvertrag brach. Sie zahlte deshalb gerade so viel, dass beides bestehen blieb. Die Schwelle ist nicht angegeben (siehe 7).
 - **Entwicklungszahlungen an die KI:** Terry wollte der KI mit 100.000 "einen Schub" geben. Bei 70.000 war sie beleidigt. Schließlich akzeptierte sie zwei Zahlungen zu je 60.000, dazwischen Warenverkauf (TST 5.4.4).
 - **Bündnisse:** Ureinwohner und KI können nie echte Verbündete sein. Sie sind nur Handelspartner. Greift jemand dich an, schauen sie zu (Terry, TST 5.4.4).
 - **KI untereinander:** KI-Spieler haben keine Verträge untereinander und kämpfen nie gegeneinander. Die einzige Ausnahme sind Piraten, die KI und Ureinwohner angreifen können (FrankB, TST 5.4.4).
@@ -263,12 +265,11 @@ Beobachtung (berechnet): Bei fast allen Waren verkauft die KI für etwa zwei Dri
 ### 2.7 Verhalten der Computergegner (KI)
 
 **Kriegsauslöser**
-- Eigene Siedlung auf einer KI-Insel. Dabei spielt es keine Rolle, ob zwei KI-Spieler dort siedeln (FrankB, TTD 3.6.8).
-- Ein Soldat auf einer KI-Insel (FrankB, TTD 3.6.8).
+- Eigene Siedlung auf einer KI-Insel. Umgekehrt gilt dasselbe: Siedelt die KI auf deiner Insel, herrscht Krieg (FrankB, TTD 3.6.8).
+- Ein Soldat auf einer KI-Insel, auch wenn dort zwei KI-Spieler siedeln (FrankB, TTD 3.6.8).
 - Die KI braucht eine Insel, weil ihre Bevölkerung zu groß ist (FrankB, TTD 3.6.8).
 - Findet die KI keine passende Insel (mit 100 % eines fehlenden Guts), siedelt sie auf deiner Insel. Sie erklärt dir sofort den Krieg (FrankB, TTD 3.6.8).
 - Blockade des KI-Lagers: näher als 3 Felder heranfahren (Guardian, TTD 3.6.8).
-- Ein Schiff mit Kriegsmodus, das beim Handeln versehentlich nahe an die Häuptlingshütte geklickt wird, löst bei Ureinwohnern den Krieg aus (Eric Lorah, TTD 3.6.8). Das betrifft Ureinwohner, nicht die KI.
 - Szenarien können einen Krieg bei einer bestimmten Stufe festlegen (Aristokraten) und/oder wenn die KI unter ein bestimmtes Niveau fällt (FrankB, TTD 3.6.8).
 
 **Pazifismus- und Neid-Regler** (nur Szenario-Editor, auch im Standardspiel beobachtbar; Neferankh, TTD 3.6.8)
@@ -278,7 +279,7 @@ Beobachtung (berechnet): Bei fast allen Waren verkauft die KI für etwa zwei Dri
 
 **Verhalten im Handel**
 - Die KI will oft alles kaufen (sb4x4, TST 5.4.1).
-- Die KI-Schiffe fahren nicht aggressiv an, wenn du unbewaffnet ladest (Folga, TTD 3.6.8). Das gilt nur, solange du nicht alle Zugänge zu ihrem Hafen blockierst.
+- Ein unbewaffnetes Schiff, das bei einem KI-Lager lädt, wird laut Folga nicht angegriffen. Das gilt nur, solange man nicht alle Zugänge zum Hafen blockiert (TTD 3.6.8).
 
 ---
 
@@ -309,8 +310,8 @@ Drei Spielarten (Frieden, TSPN 3.7.1):
 3. Um sich zu entwaffnen, Kanonen in den Laderaum legen oder vollständig abladen.
 
 **Preis**
-- Die Quellen nennen **keinen festen Betrag**. Die Höhe hängt vom eigenen Geld ab (FrankB, TSPN 5.5.2). Die Vorgängernotiz 03 nennt "ca. 700, später 1400 Taler". Dafür gibt es in den Quellen keine Grundlage (siehe 6).
-- Man kann mehr zahlen, wenn man will. Bei eigener Siedlung auf der Piratenkarte schießen sie dennoch (FrankB, TSPN 5.5.2).
+- Die Quellen nennen **keinen festen Betrag**. Die Höhe hängt vom eigenen Geld ab (FrankB, TSPN 5.5.2). Die Vorgängernotiz 03 nennt "ca. 700, später 1400 Taler". Dafür gibt es in den Quellen keine Grundlage (siehe 6, Punkt 5).
+- Höhere Zahlungen helfen nicht, wenn du auf der Pirateninsel siedelst oder dort Soldaten hast. Dann schießen sie trotzdem (FrankB, TSPN 5.5.2).
 
 **Dauer und Ausnahmen**
 - Die Schutzzahlung hält nicht ewig, sondern nur eine Zeit lang (Frieden, TSPN 3.7.2). Wenn sie aufgebraucht ist, greifen Piraten wieder an (Arcturis, TSPN 5.5.2).
@@ -361,7 +362,7 @@ Siehe 1.2. Das Piratenschiff hat 95 Lebenspunkte, Stärke 4, Schussintervall 1 s
 
 ### 4.1 Vorkommen
 
-- Im Endlosspiel leben auf der Inselwelt einige Dörfer der Ureinwohner (WIKI). AI nennt sie "Einheimische".
+- Im Endlosspiel leben auf der Inselwelt einige Dörfer der Ureinwohner (WIKI). `ai_infos.txt` nennt sie "Einheimische".
 - Ein Dorf liegt auf einer Insel. Die Quellen beschreiben keine Anzahl.
 
 ### 4.2 Handel
@@ -369,9 +370,9 @@ Siehe 1.2. Das Piratenschiff hat 95 Lebenspunkte, Stärke 4, Schussintervall 1 s
 - Man klickt die Häuptlingshütte an. Dort sieht man die Waren, die die Ureinwohner interessieren (FrankB, TPN 3.7.5).
 - Liegt die markierte Fläche teilweise im Meer, fährt man mit dem Schiff dorthin und handelt direkt. Sonst braucht man ein Kontor auf der Insel, einen freien Weg zum Dorf und einen Marktwagen (FrankB, TPN 3.7.5).
 - Der Handel beruht auf Tausch (TPN 3.7.5).
-- **Verhältnis:** Manny nennt 1 : 1,5. Für 10 t Stoff oder Alkohol gibt es 15 t Ureinwohnerware. Eine Lieferung von 1 t wird auf 2 t aufgerundet. Das ergibt 2 t statt 1,5 t. Tim schreibt dazu "25 % mehr". Rechnerisch sind es 33 % mehr. **[WIDERSPRUCH]** (siehe 6, Punkt 9.)
+- **Verhältnis:** Manny nennt 1 : 1,5. Für 10 t Stoff oder Alkohol gibt es 15 t Ureinwohnerware. Eine Lieferung von 1 t wird auf 2 t aufgerundet. Das ergibt 2 t statt 1,5 t. Tim schreibt dazu "25 % mehr". Rechnerisch sind es 33 % mehr. **[WIDERSPRUCH]** (siehe 6, Punkt 7.)
 - Ggcourt: Man bietet 1 t und verlangt 5 t. Das bringt oft 2 t für 1 t eigener Ware. Das braucht Zeit, lohnt sich aber.
-- Robbie47: Die Ureinwohner geben doppelt so viel Zigarren oder Gewürze wie Stoff oder Alkohol. Die Zigarren sind vermutlich Tabakwaren. **[WIDERSPRUCH]** (siehe 6, Punkt 9.)
+- Robbie47: Die Ureinwohner geben doppelt so viel Zigarren oder Gewürze wie Stoff oder Alkohol. Die Zigarren sind vermutlich Tabakwaren. **[WIDERSPRUCH]** (siehe 6, Punkt 7.)
 - Auf 50-%-Inseln brauchen die Dörfer gleich viel Stoff und Alkohol, bieten aber weniger Waren an (Robbie47, TST 5.4.1).
 - Handel mit automatischen Routen geht auch mit Einzelpaketen zu 1 t (TST 5.4.1).
 
@@ -390,13 +391,13 @@ Siehe 1.2. Das Piratenschiff hat 95 Lebenspunkte, Stärke 4, Schussintervall 1 s
 
 ### 4.5 Folgen der Zerstörung eines Dorfes (Flüche)
 
-- Zerstörst du ein Dorf, verhängen die Heiler einen Fluch. Die Folgen sind häufigere Dürren, Brände und Seuchen. Außerdem kann man nicht mehr mit den Ureinwohnern handeln. Goldvorkommen unter Kontrolle der Ureinwohner werden zerstört (Zomby Woof, TPN 3.7.4). **[WIDERSPRUCH]** Robbie47 nennt Dürren und Vulkanausbrüche (siehe 6, Punkt 8).
+- Zerstörst du ein Dorf, verhängt der Medizinmann (Tim: "medicine-man"; deutsche Bezeichnung nicht belegt) einen Fluch. Die Folgen sind häufigere Dürren, Brände und Seuchen. Außerdem kann man nicht mehr mit den Ureinwohnern handeln. Goldvorkommen unter Kontrolle der Ureinwohner werden zerstört (Zomby Woof, TPN 3.7.4). **[WIDERSPRUCH]** Robbie47 nennt Dürren und Vulkanausbrüche (siehe 6, Punkt 6).
 - Der Häuptlingsfluch zerstört die Goldmine der Insel dauerhaft. Dort wird nie wieder Gold gefördert (Robbie47, TSPN 5.5.1).
 - Flüche halten nicht ewig, sondern ungefähr 15 bis 20 Minuten Spielzeit (Joe Cool, TPN 3.7.4).
 
 ### 4.6 Vertreibung und Ausrottung
 
-- Ein Dorf wird vertrieben, indem man es zerstört und alle töten muss. Das führt zu den Flüchen (4.5).
+- Die Quellen beschreiben nur die vollständige Zerstörung eines Dorfs. Dabei werden alle Bewohner getötet, und es folgen die Flüche (4.5). Eine Vertreibung ohne Zerstörung nennen sie nicht.
 - Robbie47 kämpft nie gegen die Ureinwohner. Begründung: Nach dem Krieg handelt niemand mehr mit einem, und die Flüche sind schädlich. Aus wirtschaftlicher Sicht ist der Handel mit ihnen günstig (TSPN 5.5.1).
 - CGAD1 zerstört ein Dorf, wenn es im Weg steht und man es nicht braucht. Am Anfang sind Dörfer nützlich (TSPN 5.5.1).
 
@@ -412,7 +413,7 @@ Siehe 1.2. Das Piratenschiff hat 95 Lebenspunkte, Stärke 4, Schussintervall 1 s
 6. **Routen:** Pro Gut höchstens 100 t. Kleine Schiffe für kurze Strecken, große für lange. Hub-Insel als Zwischenlager nutzen (TTD 3.6.1 und TST 5.4.2).
 7. **Kleine Ladung auf Auto-Route:** Kleine Schiffe sind schnell und entkommen Piraten (Neferankh, TSPN 5.5.2).
 8. **Ureinwohner:** 1 t anbieten, 5 t verlangen. Einzellieferungen nutzen die Rundung aus (Ggcourt und Manny, TST 5.4.1).
-9. **Ureinwohner nie angreifen:** Der Handel endet dauerhaft (TPN 3.7.5 und TST 5.5.1).
+9. **Ureinwohner nie angreifen:** Der Handel endet dauerhaft (TPN 3.7.5 und TSPN 5.5.1).
 10. **Piraten:** Früh bestechen oder Nahrung kaufen. Nicht versenken, sondern beschädigen (TSPN 5.5.2).
 11. **Krieg erst ab stabiler Wirtschaft,** etwa ab 700 bis 800 Kaufleuten (FrankB, TST 5.4.3).
 12. **Keine Blockade auf unter 3 Feldern:** Das löst den Krieg aus (Guardian, TTD 3.6.8).
@@ -424,24 +425,17 @@ Siehe 1.2. Das Piratenschiff hat 95 Lebenspunkte, Stärke 4, Schussintervall 1 s
 
 | Nr. | Thema | Aussage A (Quelle) | Aussage B (Quelle) | Einordnung |
 |---|---|---|---|---|
-| 1 | Erscheinen Freier Händler | Beim ersten Kontor, bewegen sich aber erst mit zweitem (FrankB, TTD 3.6.5) | Erst beim zweiten Kontor (Budgie, TTD 3.6.5) | Ungeklärt. Eventuell spielt Version oder Szenario mit. |
-| 2 | Schiffsobergrenze | 33 Schiffe (Eric Lorah, TSh 3.8.5) | 20 Schiffe in UK-Version, laut AnnoDan1602 auch in der deutschen Originalversion (TSh 3.8.5) | Version-abhängig. Die 20 gelten für die UK-Version sicher. |
-| 3 | Große Schiffe an der kleinen Werft | Tabelle: keine Bauzeit ("nicht baubar", TMIL) | Trick mit Bau an der Kleinen Werft, dauert länger (FrankB, TSh 3.8.2) | Vermutlich gibt es den Trick. Die Tabelle nennt nur die Standardbauzeit nicht. |
-| 4 | Kanonen-Spalte bei Schiffen | Tabelle "Cannon" wie bei Türmen als Baukosten gelesen (TMIL) | Kanonen werden beim Bau nicht automatisch montiert (TSh 3.8.7) | Ob der Bau Kanonen verbraucht, ist aus den Quellen nicht klar. |
-| 5 | Kanonen-Spalte bei Türmen | Tabelle: 2 Kanonen für Wachturm (TMIL, TBLD) | TBLD bezeichnet 2 Kanonen als "Also requires" (Bau) | Gleiche Frage wie Punkt 4. Die Spalte ist uneinheitlich benannt. |
-| 6 | Kosten für Bestechung | Kein fester Betrag, abhängig vom Geld (FrankB, TSPN 5.5.2) | ca. 700, später 1400 Taler (Vorgängernotiz 03, nicht aus Tim) | Die Notiz 03 ist unbelegt. |
-| 7 | Schiffsbau "Großes" an Werft | Große Werft für 500 Kaufleute (TBLD, GIGA) | Großes Schiff für 500 Kaufleute (TMIL) | Keine Zahlenwidersprüche. Der Hinweis gilt sowohl für Werft als auch für Schiff. |
-| 8 | Folgen eines Dorf-Fluchs | Dürre, Brände, Seuchen (Zomby Woof, TPN 3.7.4) | Dürre und Vulkanausbrüche (Robbie47, TSPN 5.5.1) | Unvereinbar. Die Quellen wissen nicht genau, welche Flüche kommen. |
-| 9 | Tauschverhältnis Ureinwohner | 1 : 1,5 (Manny, TST 5.4.1) | doppelt (Robbie47, TSPN 5.5.1) und 2 : 1 (Ggcourt, TST 5.4.1) | Die Quellen sind uneinheitlich. Manny rechnet außerdem falsch: 2 t statt 1,5 t sind 33 % mehr, nicht 25 %. |
-| 10 | Verträge der KI | KI hat Frieden und Handelsvertrag mit dem Spieler (Helen, TST 5.4.4) | KI-Spieler untereinander ohne Verträge (FrankB, TST 5.4.4) | Kein echter Widerspruch. Die Aussagen beziehen sich auf verschiedene Beziehungen. |
-| 11 | Piraten-Kanonen | 10 Kanonen (TMIL, Falke) | Szenario-abhängig (Frieden, TMIL) | Maximum für Spielfall, nicht fest. |
-| 12 | Schiffskauf durch die KI | Kauft, wenn sie kein Schiff und keine Werft hat (Falke, TSh 3.8.4) | Kauft nach Versenkung des letzten Schiffs (Robbie47, TSh 3.8.4); "unwahrscheinlich" (Eric Lorah) | Bedingungen unterschiedlich. Eric Lorah meint wohl den Normalfall. |
-| 13 | Kontor IV und 250er-Gebäude | Kontor IV 250 Kaufleute (TBLD) | Kontor IV 250 Bürger (GIGA). Gleiches für Hochschule, Goldschmied, Platz II und III. | Die GIGA-Liste ordnet 250 falsch zu, wenn TBLD recht hat. Die Quellen sind uneinheitlich. |
-| 14 | Kanonengießerei | 400 Bürger (TBLD, Tabelle 1; GIGA) | 300 Kaufleute (TBLD, Tabelle 3, Voraussetzungen) | Intern widersprüchlich in TBLD. Mehrheit: 400 Bürger. |
-| 15 | Vorgängernotiz 03 | Schwertschmiede ab 150 Bürgern, Kanonengießerei ab 250 Kaufleuten, Musketen und große Burg ab 500 Kaufleuten, Feuerwehr ab 50 Pionieren (Notiz 03) | Schwertschmiede ab 200 Siedlern, Kanonengießerei ab 400 Bürgern, Musketenbauer und große Burg ab 400 Kaufleuten, Feuerwehr ab 15 Siedlern (TBLD, GIGA) | Die Notiz 03 weicht in fünf Punkten ab. Sie muss korrigiert werden. |
-| 16 | Triumphbogen und Gegnerzahl | Ein Bogen pro besiegtem Gegner und einer bei Piratensieg (Mircea, TCB 3.4.4) | Normalerweise nicht mehr als drei Gegner (TCB 3.4.4) | Die Anzahl ergibt sich aus dem Szenario. Keine echte Widersprüchlichkeit. |
-
----
+| 1 | Erscheinen Freier Händler | Beim ersten Kontor, bewegen sich aber erst mit einem zweiten (FrankB, TTD 3.6.5) | Erst beim zweiten Kontor (Budgie, TTD 3.6.5) | Ungeklärt. Version oder Szenario könnten eine Rolle spielen. |
+| 2 | Schiffsobergrenze | 33 Schiffe (Eric Lorah, TSh 3.8.5) | 20 Schiffe in der UK-Version, laut AnnoDan1602 auch in der deutschen Originalversion (TSh 3.8.5) | Versionsabhängig. Die 20 gelten für die UK-Version sicher. |
+| 3 | Große Schiffe an der kleinen Werft | Tabelle: keine Bauzeit angegeben ("–", TMIL) | Trick mit Bau an der Kleinen Werft, dauert länger (FrankB, TSh 3.8.2) | Der Trick wird beschrieben. Die Tabelle zeigt dafür keinen Wert. Die Angabe ist unvollständig, nicht zwingend falsch. |
+| 4 | Kanonen-Spalte bei Schiffen | Spalte "Cannon" wie bei Türmen als Baukosten lesbar (TMIL) | Kanonen werden beim Bau nicht automatisch montiert (TSh 3.8.7) | Ob der Bau Kanonen verbraucht, ist aus den Quellen nicht klar. |
+| 5 | Kosten für Bestechung der Piraten | Kein fester Betrag, abhängig vom eigenen Geld (FrankB, TSPN 5.5.2) | ca. 700, später 1400 Taler (Vorgängernotiz 03, nicht aus Tim) | Die Notiz 03 ist durch keine Quelle belegt. |
+| 6 | Folgen eines Dorf-Fluchs | Dürren, Brände, Seuchen (Zomby Woof, TPN 3.7.4) | Dürren und Vulkanausbrüche (Robbie47, TSPN 5.5.1) | Die Quellen sind uneinheitlich. |
+| 7 | Tauschverhältnis mit Ureinwohnern | 1 : 1,5 (Manny, TST 5.4.1) | Doppelt (Robbie47, TSPN 5.5.1), 2 : 1 (Ggcourt, TST 5.4.1) | Die Quellen sind uneinheitlich. Manny rechnet außerdem falsch: 2 t statt 1,5 t sind 33 % mehr, nicht 25 %. |
+| 8 | Schiffskauf durch die KI | Kauft, wenn sie kein Schiff und keine Werft hat (Falke, TSh 3.8.4) | Kauft nach Versenkung des letzten Schiffs und Zerstörung der Werft (Robbie47, TSh 3.8.4). Eric Lorah hält Kauf für unwahrscheinlich (TSh 3.8.4). | Die Bedingungen unterscheiden sich. Eric Lorah meint wohl den Normalfall. |
+| 9 | Kontor IV und 250er-Gebäude | Kontor IV, Hochschule, Goldschmied, Platz II und III: 250 Kaufleute (TBLD) | Dieselben Gebäude: 250 Bürger (GIGA) | Die Quellen widersprechen sich. TBLD ist ausführlicher, deshalb ist die Angabe dort als wahrscheinlicher zu werten. |
+| 10 | Kanonengießerei | 400 Bürger (TBLD, Tabelle 1; GIGA) | 300 Kaufleute (TBLD, Tabelle 3, Voraussetzungen) | Intern widersprüchlich in TBLD. Mehrheit: 400 Bürger. |
+| 11 | Vorgängernotiz 03 | Schwertschmiede ab 150 Bürgern, Kanonengießerei ab 250 Kaufleuten, Musketenbauer und große Burg ab 500 Kaufleuten, Feuerwehr ab 50 Pionieren | Schwertschmiede ab 200 Siedlern, Kanonengießerei ab 400 Bürgern (oder 300 Kaufleuten laut TBLD Tab. 3), Musketenbauer und große Burg ab 400 Kaufleuten, Feuerwehr ab 15 Siedlern (TBLD, GIGA) | Die Notiz 03 weicht bei fünf Punkten ab und sollte korrigiert werden. |
 
 ## 7. Lücken
 
