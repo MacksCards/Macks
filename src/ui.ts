@@ -1,5 +1,5 @@
 // Bedienoberfläche (HTML über dem 3D-Bild) und Steuerlogik.
-import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, GOOD, GOODS, GoodId, TIERS } from './data';
+import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, GOOD, GOODS, GoodId, PRICES, TIERS } from './data';
 import { Building, Game, HUMAN, QUESTS, Ship, newSeed } from './game';
 import { PFLANZEN, Pflanze, depositText } from './world';
 import { Input } from './input';
@@ -43,6 +43,7 @@ export class UI {
   private goodEls = new Map<GoodId, HTMLElement>();
   private questOpen = false;
   selShip: Ship | null = null;
+  relevant = new Set<GoodId>();
   islandInfo: number | null = null;
 
   constructor(public g: Game, public view: View, private onNewGame: (g: Game) => void) {
@@ -203,6 +204,7 @@ export class UI {
     const p = $('#buildPanel');
     p.innerHTML = '';
     p.classList.remove('hidden');
+    $('#quest').classList.add('hidden');
     for (const d of Object.values(BUILDINGS)) {
       if (d.category !== c || !this.g.isUnlocked(d.id)) continue;
       const card = el('button', 'card', `<span class="ic">${d.icon}</span><b>${d.name}</b><small class="cost">${costText(d.cost)}</small><small class="desc">${d.desc}</small>`);
@@ -219,7 +221,7 @@ export class UI {
   }
 
   private refreshCards() {
-    document.querySelectorAll<HTMLElement>('#buildPanel .card').forEach((c) => {
+    document.querySelectorAll<HTMLElement>('#buildPanel .card[data-type]').forEach((c) => {
       const d = BUILDINGS[c.dataset.type as BuildingId];
       c.classList.toggle('poor', !this.g.canAfford(d.cost).ok);
     });
@@ -228,6 +230,7 @@ export class UI {
   private closeCat() {
     this.openCat = null;
     $('#buildPanel').classList.add('hidden');
+    $('#quest').classList.toggle('hidden', this.mode.kind !== 'none');
     document.querySelectorAll('.cat').forEach((b) => b.classList.remove('active'));
   }
 
@@ -299,6 +302,7 @@ export class UI {
     if (m.kind !== 'build' || !m.has) return;
     const r = this.g.place(m.type, m.gx, m.gy);
     if (!r.ok) { this.toast(r.reason ?? 'Geht nicht', 'bad'); return; }
+    if (m.type === 'kontor') { this.setMode({ kind: 'none' }); return; }
     // Vorschau bleibt aktiv für das nächste Gebäude
     m.has = false;
     this.view.setGhost(null);
@@ -398,7 +402,21 @@ export class UI {
         <div class="row"><span>Unterhalt</span><b class="neg">−${fmt(inc.upkeep)}</b></div>
         <h4>Einwohner</h4>`;
       TIERS.forEach((t, i) => { h += `<div class="row"><span>${t.name}</span><b>${pt[i]}</b></div>`; });
+      if (b && b.owner === HUMAN) {
+        h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
+        for (const gd of GOODS) {
+          const pr = PRICES[gd.id];
+          if (!pr || (!this.relevant.has(gd.id) && g.goods[gd.id] < 1)) continue;
+          h += `<div class="trade"><span>${gd.icon} ${gd.name}</span><button class="btn" data-buy="${gd.id}">+5 · ${pr.kaufen}</button><button class="btn" data-sell="${gd.id}">−5 · ${pr.verkaufen}</button></div>`;
+        }
+      }
       if (!this.setHtml(box, h)) return;
+      box.querySelectorAll<HTMLElement>('[data-buy],[data-sell]').forEach((bt) => bt.addEventListener('click', () => {
+        const gid = (bt.dataset.buy ?? bt.dataset.sell) as GoodId;
+        const n = g.trade(HUMAN, b!.island, gid, bt.dataset.buy ? 5 : -5);
+        if (!n) this.toast(bt.dataset.buy ? 'Nicht genug Taler oder Lager voll' : 'Nichts zum Verkaufen da', 'bad');
+        this.renderInfo();
+      }));
       $('#infoX').addEventListener('click', () => this.select(null));
       return;
     }
@@ -482,7 +500,10 @@ export class UI {
     const g = this.g, s = this.selShip!;
     const dock = g.shipDock(s);
     const near = g.shipNearIsland(s);
-    let h = head + `<h3>⛵ ${s.name}</h3><p class="sub">${s.path.length ? 'Unterwegs …' : 'Liegt vor Anker'} – tippe aufs Meer, um hinzusegeln.</p><h4>Laderaum</h4><div class="slots">`;
+    const canFound = near >= 0 && !g.kontor(HUMAN, near) && !s.path.length;
+    let h = head + `<h3>⛵ ${s.name}</h3><p class="sub">${s.path.length ? 'Unterwegs …' : 'Liegt vor Anker'} – tippe aufs Meer, um hinzusegeln.</p>`;
+    if (canFound) h += `<button class="btn wide ok" id="shipKontor">⚓ Kontor auf ${g.islands[near].name} bauen (💰100 🪵6 🔧3)</button>`;
+    h += `<h4>Laderaum</h4><div class="slots">`;
     for (const sl of s.slots) h += `<div class="slot">${sl.g ? `<span>${GOOD[sl.g].icon}</span><b>${sl.n}</b>` : '<small>leer</small>'}</div>`;
     h += '</div>';
     if (dock) {
@@ -495,15 +516,13 @@ export class UI {
         h += '</div>';
       }
     }
-    if (near >= 0 && !g.kontor(HUMAN, near) && !s.path.length) {
-      h += `<h4>Insel in der Nähe</h4>${this.islandHtml(near).replace('<h3>', '<h3 class="small">')}
-        <button class="btn wide ok" id="shipKontor">⚓ Kontor bauen (💰100 🪵6 🔧3)</button>`;
-    } else if (near < 0 && !s.path.length && !dock) h += '<p class="sub">Segle an eine Küste, um dort ein Kontor zu bauen.</p>';
+    if (canFound) h += `<h4>Insel in der Nähe</h4>${this.islandHtml(near).replace('<h3>', '<h3 class="small">')}`; else if (near < 0 && !s.path.length && !dock) h += '<p class="sub">Segle an eine Küste, um dort ein Kontor zu bauen.</p>';
     if (!this.setHtml(box, h)) return;
     $('#infoX').addEventListener('click', () => this.selectShip(null));
     document.getElementById('shipUnload')?.addEventListener('click', () => {
       const n = g.unloadAll(s);
-      this.toast(n ? `${n} t ins Kontor geladen` : 'Kontor ist voll', n ? 'good' : 'bad');
+      const left = s.slots.reduce((a, sl) => a + sl.n, 0);
+      this.toast(n ? `${n} t ins Kontor geladen${left ? ` – ${left} t bleiben an Bord (Lager voll, 30 t je Ware)` : ''}` : 'Kontor ist voll (30 t je Ware)', n ? 'good' : 'bad');
       this.renderInfo();
     });
     box.querySelectorAll<HTMLElement>('[data-load]').forEach((bt) => bt.addEventListener('click', () => {
@@ -582,7 +601,9 @@ export class UI {
     g.focus = focus;
     $('#islandName').textContent = focus >= 0 ? `📍 ${g.islands[focus].name}` : '⛵ Noch kein Kontor';
     // Nur Waren zeigen, die es gibt oder die ein freigeschaltetes Gebäude herstellt/braucht
-    const relevant = new Set<GoodId>(['holz', 'werkzeug', 'nahrung']);
+    const relevant = this.relevant;
+    relevant.clear();
+    for (const k of ['holz', 'werkzeug', 'nahrung'] as GoodId[]) relevant.add(k);
     for (const d of Object.values(BUILDINGS)) {
       if (!d.prod || !g.isUnlocked(d.id) || !d.category) continue;
       relevant.add(d.prod.output);
@@ -648,7 +669,7 @@ export class UI {
       <button class="btn wide" id="mResume">▶️ Weiterspielen</button>
       <button class="btn wide" id="mSave">💾 Speichern</button>
       <button class="btn wide" id="mHelp">❓ Anleitung</button>
-      <button class="btn wide danger" id="mNew">🏝️ Neues Spiel (neue Insel)</button>
+      <button class="btn wide danger" id="mNew">🏝️ Neues Spiel (neue Inselwelt)</button>
       <p class="sub">Das Spiel speichert automatisch.</p></div>`;
     $('#mResume').addEventListener('click', () => this.closeModal());
     $('#mSave').addEventListener('click', () => {
@@ -658,11 +679,18 @@ export class UI {
     });
     $('#mHelp').addEventListener('click', () => this.openHelp());
     $('#mNew').addEventListener('click', () => {
-      this.ask('Neu anfangen?', 'Dein aktuelles Spiel geht verloren.', '🏝️ Neue Insel', () => {
+      const m2 = $('#modal');
+      m2.innerHTML = `<div class="box"><h2>Neues Spiel</h2><p class="sub">Eine neue Inselwelt. Dein aktuelles Spiel geht verloren.</p>
+        <p>Wie viele Konkurrenten sollen mitspielen?</p>
+        <div class="row2">${[0, 1, 2, 3].map((n) => `<button class="btn ${n === 2 ? 'ok' : ''}" data-opp="${n}">${n}</button>`).join('')}</div>
+        <button class="btn wide" id="newX">Abbrechen</button></div>`;
+      $('#newX').addEventListener('click', () => this.closeModal());
+      m2.querySelectorAll<HTMLElement>('[data-opp]').forEach((bt) => bt.addEventListener('click', () => {
         Game.clearSave();
-        this.onNewGame(Game.create(newSeed()));
-        this.toast('Eine neue Insel wartet auf dich!', 'good');
-      });
+        this.onNewGame(Game.create(newSeed(), Number(bt.dataset.opp)));
+        this.closeModal();
+        this.toast('Eine neue Inselwelt wartet auf dich!', 'good');
+      }));
     });
   }
 

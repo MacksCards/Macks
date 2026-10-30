@@ -46,7 +46,7 @@ export class CartLayer {
         this.group.add(m);
         this.meshes.set(c.id, m);
       }
-      m.visible = c.state !== 'idle';
+      m.visible = c.state !== 'idle' && this.g.seen[this.g.idx(Math.floor(c.x), Math.floor(c.y))] === 1;
       m.geometry = c.n > 0 ? this.geoFull : this.geoEmpty;
       const prev = this.last.get(c.id);
       if (prev) {

@@ -38,6 +38,10 @@ function boot() {
   let hudT = 0;
   let iconT = 0;
   const loop = (now: number) => {
+    requestAnimationFrame(loop);
+    try { step(now); } catch (e) { console.warn('Spielschleife', e); }
+  };
+  const step = (now: number) => {
     const real = Math.min(0.1, (now - last) / 1000);
     last = now;
     let gameDt = 0;
@@ -50,10 +54,10 @@ function boot() {
     }
     hudT += real;
     iconT += real;
-    if (hudT > 0.25) { hudT = 0; ui.updateHud(); }
-    if (iconT > 0.6) { iconT = 0; view.refreshIcons(); }
+    // Fehler in der Anzeige dürfen das Spiel nie anhalten
+    if (hudT > 0.25) { hudT = 0; try { ui.updateHud(); } catch (e) { console.warn('HUD', e); } }
+    if (iconT > 0.6) { iconT = 0; try { view.refreshIcons(); } catch (e) { console.warn('Icons', e); } }
     view.frame(now / 1000, ui.paused || modalOpen ? 0 : real * ui.speed);
-    requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
 

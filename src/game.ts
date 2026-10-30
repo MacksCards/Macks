@@ -1,9 +1,10 @@
 // Spiellogik: Inselwelt, Spieler, Schiffe, Bauen, Wirtschaft, Speichern.
 // Wie im Vorbild hat jede Insel ihr eigenes Lager (je Spieler); Geld ist global.
 import {
-  BUILDINGS, BuildingDef, BuildingId, Cost, GOOD, GOODS, GoodId, SLOT_CAP, START_CARGO, START_MONEY, TIERS,
+  BUILDINGS, BuildingDef, BuildingId, Cost, GOOD, GOODS, GoodId, PRICES, SLOT_CAP, START_CARGO, START_MONEY, TIERS,
 } from './data';
 import { findSeaPath } from './path';
+import { thinkAI } from './ai';
 import { Island, T, WORLD_SIZE, generateWorld, rng } from './world';
 
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen';
@@ -59,7 +60,10 @@ export interface Ship {
   slots: Slot[];
 }
 
-export interface Player { id: number; name: string; color: number; ai: boolean; money: number }
+/** Gedächtnis eines Computergegners */
+export interface AIState { phase: 'suchen' | 'fahren' | 'gruenden' | 'aufbau'; island: number; t: number; tries: number; grid: boolean }
+
+export interface Player { id: number; name: string; color: number; ai: boolean; money: number; brain?: AIState }
 
 type Goods = Record<GoodId, number>;
 
@@ -99,6 +103,13 @@ const SHIP_SIGHT = 9;
 const CART_SPEED = 1.8; // Felder pro Spielsekunde
 const CART_CAP = 6; // Tonnen pro Fahrt
 export const DOCK_RANGE = 5; // so nah muss ein Schiff am Kontor/Bauplatz sein
+
+/** Computergegner (eigene Namen und Farben) */
+export const OPPONENTS = [
+  { name: 'Hendrik van Dalen', color: 0xc8463b },
+  { name: 'Morwenna Grey', color: 0xe0b23a },
+  { name: 'Baron von Kessel', color: 0x4f9a4a },
+];
 
 const enc = (a: ArrayLike<number>) => { let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i] + 48); return s; };
 const zeroGoods = (): Goods => Object.fromEntries(GOODS.map((g) => [g.id, 0])) as Goods;
@@ -158,14 +169,22 @@ export class Game {
     this.occ = new Int32Array(N);
   }
 
-  static create(seed: number): Game {
+  static create(seed: number, opponents = 2): Game {
     const g = new Game();
     g.setupWorld(seed);
     g.players = [{ id: HUMAN, name: 'Du', color: 0x2f6fd0, ai: false, money: START_MONEY }];
+    for (let i = 0; i < Math.min(3, opponents); i++) {
+      const o = OPPONENTS[i];
+      g.players.push({ id: i + 1, name: o.name, color: o.color, ai: true, money: START_MONEY, brain: { phase: 'suchen', island: -1, t: 0, tries: 0, grid: false } });
+    }
+    const shipNames = ['Morgenstern', 'Seeadler', 'Goldene Gans', 'Nordlicht'];
+    for (const p of g.players) {
+      const [sx, sy] = g.starts[p.id];
+      const ship: Ship = { id: g.nextId++, owner: p.id, name: shipNames[p.id], x: sx + 0.5, y: sy + 0.5, dir: -Math.PI / 4, path: [], slots: [] };
+      for (let i = 0; i < 4; i++) ship.slots.push(START_CARGO[i] ? { g: START_CARGO[i][0], n: START_CARGO[i][1] } : { g: null, n: 0 });
+      g.ships.push(ship);
+    }
     const [sx, sy] = g.starts[HUMAN];
-    const ship: Ship = { id: g.nextId++, owner: HUMAN, name: 'Morgenstern', x: sx + 0.5, y: sy + 0.5, dir: -Math.PI / 4, path: [], slots: [] };
-    for (let i = 0; i < 4; i++) ship.slots.push(START_CARGO[i] ? { g: START_CARGO[i][0], n: START_CARGO[i][1] } : { g: null, n: 0 });
-    g.ships.push(ship);
     g.reveal(sx, sy, SHIP_SIGHT + 2);
     g.recompute();
     g.checkUnlocks(true);
@@ -287,9 +306,9 @@ export class Game {
   // ---------- Freischaltungen (wie im Vorbild nach Einwohnerzahl) ----------
 
   /** Größte Einwohnerzahl mindestens der Stufe tier auf einer einzelnen Insel */
-  maxPop(tier: number): number {
+  maxPop(tier: number, owner = HUMAN): number {
     const per = new Map<number, number>();
-    for (const b of this.buildings) if (b.owner === HUMAN && b.type === 'haus' && b.tier >= tier) per.set(b.island, (per.get(b.island) ?? 0) + b.residents);
+    for (const b of this.buildings) if (b.owner === owner && b.type === 'haus' && b.tier >= tier) per.set(b.island, (per.get(b.island) ?? 0) + b.residents);
     return Math.max(0, ...per.values());
   }
 
@@ -625,6 +644,25 @@ export class Game {
     }
   }
 
+  // ---------- Handel ----------
+
+  /** Mit dem freien Händler am Kontor handeln: n > 0 kaufen, n < 0 verkaufen. Gibt gehandelte Tonnen zurück. */
+  trade(owner: number, island: number, g: GoodId, n: number): number {
+    const pr = PRICES[g];
+    const l = this.lagerOf(owner, island);
+    if (!pr || !l) return 0;
+    const p = this.players[owner];
+    if (n > 0) {
+      const room = Math.max(0, this.capOf(owner, island) - l[g]);
+      const t = Math.floor(Math.min(n, room, p.money / pr.kaufen));
+      l[g] += t; p.money -= t * pr.kaufen;
+      return t;
+    }
+    const t = Math.floor(Math.min(-n, l[g]));
+    l[g] -= t; p.money += t * pr.verkaufen;
+    return t;
+  }
+
   // ---------- Bauen ----------
 
   canAfford(c: Cost, owner = HUMAN, island = this.focus): Check {
@@ -664,8 +702,8 @@ export class Game {
         if (this.own[k] >= 0 && this.own[k] !== owner) return { ok: false, reason: 'Das Land gehört schon jemand anderem' };
       } else if (this.own[k] !== owner) return { ok: false, reason: 'Außerhalb deines Gebiets – baue einen Marktplatz' };
     }
-    if (owner === HUMAN && d.category && !this.isUnlocked(type)) {
-      const u = d.unlock!;
+    if (d.category && d.unlock && (owner === HUMAN ? !this.isUnlocked(type) : this.maxPop(d.unlock.tier, owner) < d.unlock.n)) {
+      const u = d.unlock;
       return { ok: false, reason: `Erst ab ${u.n} ${TIERS[u.tier].name}` };
     }
     if (type === 'kontor') {
@@ -722,31 +760,31 @@ export class Game {
     return { ok: true };
   }
 
-  canRoad(x: number, y: number): Check {
+  canRoad(x: number, y: number, owner = HUMAN): Check {
     if (!this.inMap(x, y)) return { ok: false, reason: 'Außerhalb der Karte' };
     const k = this.idx(x, y);
     const t = this.tiles[k];
     if (t === T.Wasser || t === T.Berg) return { ok: false, reason: 'Hier geht kein Weg' };
     if (this.roads[k] || this.occ[k]) return { ok: false, reason: 'Platz ist belegt' };
-    if (!this.area[k]) return { ok: false, reason: 'Außerhalb deines Gebiets' };
-    if (this.money < (BUILDINGS.weg.cost.taler ?? 0)) return { ok: false, reason: 'Zu wenig Taler' };
+    if (this.own[k] !== owner) return { ok: false, reason: 'Außerhalb deines Gebiets' };
+    if (this.players[owner].money < (BUILDINGS.weg.cost.taler ?? 0)) return { ok: false, reason: 'Zu wenig Taler' };
     return { ok: true };
   }
 
-  placeRoads(cells: [number, number][]): number {
+  placeRoads(cells: [number, number][], owner = HUMAN): number {
     let n = 0, trees = false, lastReason = '';
     for (const [x, y] of cells) {
-      const c = this.canRoad(x, y);
+      const c = this.canRoad(x, y, owner);
       if (!c.ok) { lastReason = c.reason ?? ''; continue; }
       const k = this.idx(x, y);
       if (this.tiles[k] === T.Wald) { this.tiles[k] = T.Gras; trees = true; }
       this.roads[k] = 1;
-      this.money -= BUILDINGS.weg.cost.taler ?? 0;
+      this.players[owner].money -= BUILDINGS.weg.cost.taler ?? 0;
       n++;
     }
     if (n) { this.recompute(); this.ev.roads(); }
     if (trees) this.ev.trees();
-    if (!n && lastReason && cells.length === 1) this.ev.message(lastReason, 'bad');
+    if (!n && lastReason && cells.length === 1 && owner === HUMAN) this.ev.message(lastReason, 'bad');
     return n;
   }
 
@@ -801,6 +839,7 @@ export class Game {
     }
     this.cartT += dt;
     this.tickCarts(dt);
+    for (const p of this.players) if (p.ai && p.brain) thinkAI(this, p, dt);
     for (const p of this.players) {
       const { tax, upkeep } = this.incomePerMinute(p.id);
       p.money += ((tax - upkeep) / 60) * dt;

@@ -39,7 +39,7 @@ export interface World {
   starts: [number, number][];
 }
 
-export const WORLD_SIZE = 160;
+export const WORLD_SIZE = 240;
 
 export function rng(seed: number): () => number {
   let a = seed >>> 0;
@@ -75,22 +75,23 @@ export function generateWorld(seed: number, size = WORLD_SIZE): World {
   const tiles = new Uint8Array(size * size);
   const island = new Int16Array(size * size).fill(-1);
   const islands: Island[] = [];
-  const margin = 12;
+  const margin = 14;
   // Startecken für Schiffe (im freien Meer)
-  const starts: [number, number][] = [[7, size - 8], [size - 8, size - 8], [size - 8, 7], [7, 7]];
+  const starts: [number, number][] = [[8, size - 9], [size - 9, size - 9], [size - 9, 8], [8, 8]];
 
   // Inselzentren platzieren: erst große, dann mittlere, dann kleine
   const plan: { r: number; g: Island['groesse'] }[] = [];
-  for (let i = 0; i < 4; i++) plan.push({ r: 15 + r() * 4, g: 'gross' });
-  for (let i = 0; i < 7; i++) plan.push({ r: 9 + r() * 3, g: 'mittel' });
-  for (let i = 0; i < 6; i++) plan.push({ r: 5 + r() * 2.5, g: 'klein' });
+  // Größen so, dass jede Insel eine echte Siedlung trägt (Mindestgröße wird unten geprüft)
+  for (let i = 0; i < 3; i++) plan.push({ r: 27 + r() * 7, g: 'gross' });
+  for (let i = 0; i < 6; i++) plan.push({ r: 17 + r() * 5, g: 'mittel' });
+  for (let i = 0; i < 5; i++) plan.push({ r: 12 + r() * 2.5, g: 'klein' });
   const centers: { x: number; y: number; r: number; g: Island['groesse'] }[] = [];
   for (const p of plan) {
     for (let tries = 0; tries < 300; tries++) {
       const x = margin + p.r + r() * (size - 2 * margin - 2 * p.r);
       const y = margin + p.r + r() * (size - 2 * margin - 2 * p.r);
-      const ok = centers.every((c) => Math.hypot(c.x - x, c.y - y) > c.r + p.r + 6)
-        && starts.every(([sx, sy]) => Math.hypot(sx - x, sy - y) > p.r + 10);
+      const ok = centers.every((c) => Math.hypot(c.x - x, c.y - y) > c.r + p.r + 7)
+        && starts.every(([sx, sy]) => Math.hypot(sx - x, sy - y) > p.r * 1.3 + 10);
       if (ok) { centers.push({ x, y, ...p }); break; }
     }
   }
@@ -111,17 +112,17 @@ export function generateWorld(seed: number, size = WORLD_SIZE): World {
       const u = (dx * cs + dy * sn) * stretch, v = (-dx * sn + dy * cs) / stretch;
       const d = Math.hypot(u, v) / rad;
       const n = shapeA(x + id * 31, y) * 0.55 + shapeB(x, y + id * 17) * 0.3;
-      if (d < 0.62 + n * 0.7 && island[y * size + x] < 0) {
+      if (d < 0.68 + n * 0.55 && island[y * size + x] < 0) {
         const k = y * size + x;
         island[k] = id; tiles[k] = T.Gras; cells.push(k);
       }
     }
     // Berge: große/mittlere Inseln meist, kleine manchmal (dafür eher mit Gold)
-    const peaks = c.g === 'gross' ? 1 + (r() < 0.6 ? 1 : 0) : c.g === 'mittel' ? (r() < 0.75 ? 1 : 0) : (r() < 0.5 ? 1 : 0);
+    const peaks = c.g === 'gross' ? 2 + (r() < 0.5 ? 1 : 0) : c.g === 'mittel' ? 1 + (r() < 0.3 ? 1 : 0) : (r() < 0.75 ? 1 : 0);
     const peakPos: [number, number, number][] = [];
     for (let i = 0; i < peaks; i++) {
       const ang = r() * Math.PI * 2, dist = rad * (0.15 + r() * 0.35);
-      peakPos.push([c.x + Math.cos(ang) * dist, c.y + Math.sin(ang) * dist, c.g === 'klein' ? 2.2 + r() : 2.8 + r() * 1.8]);
+      peakPos.push([c.x + Math.cos(ang) * dist, c.y + Math.sin(ang) * dist, c.g === 'klein' ? 2.6 + r() : c.g === 'mittel' ? 3.2 + r() * 1.6 : 4 + r() * 2.5]);
     }
     for (const k of cells) {
       const x = k % size, y = (k / size) | 0;
@@ -135,17 +136,32 @@ export function generateWorld(seed: number, size = WORLD_SIZE): World {
     // Fruchtbarkeit: 2–3 Pflanzen des eigenen Klimas, selten eine fremde mit 50 %
     const own = (Object.keys(PFLANZEN) as Pflanze[]).filter((p) => PFLANZEN[p].klima === isl.klima);
     const other = (Object.keys(PFLANZEN) as Pflanze[]).filter((p) => PFLANZEN[p].klima !== isl.klima);
-    const n = 2 + (r() < (c.g === 'klein' ? 0.6 : 0.35) ? 1 : 0);
-    own.sort(() => r() - 0.5).slice(0, n).forEach((p, i) => { isl.frucht[p] = i === 0 || r() < 0.5 ? 100 : 50; });
-    if (r() < 0.3) isl.frucht[other[Math.floor(r() * other.length)]] = 50;
+    const n = c.g === 'gross' ? 1 + (r() < 0.4 ? 1 : 0) : c.g === 'mittel' ? 2 : 2 + (r() < 0.6 ? 1 : 0);
+    const full = c.g === 'gross' ? 0.3 : c.g === 'mittel' ? 0.55 : 0.85; // Chance auf 100 %
+    own.sort(() => r() - 0.5).slice(0, n).forEach((p, i) => { isl.frucht[p] = (i === 0 && c.g !== 'gross') || r() < full ? 100 : 50; });
+    if (r() < (c.g === 'klein' ? 0.4 : 0.2)) isl.frucht[other[Math.floor(r() * other.length)]] = 50;
     // Vorkommen im Berg
     if (peaks > 0) {
-      const goldChance = c.g === 'klein' ? 0.45 : c.g === 'mittel' ? 0.15 : 0.08;
+      const goldChance = c.g === 'klein' ? 0.5 : c.g === 'mittel' ? 0.15 : 0.04;
       if (r() < goldChance) isl.gold = 1;
       else if (r() < 0.7) isl.erz = r() < 0.5 ? 240 : 80;
     }
     islands.push(isl);
   });
+
+  // Mindestgröße: Inseln, die zu klein geraten sind, verschwinden wieder
+  const MIN = { klein: 320, mittel: 650, gross: 1500 } as const;
+  for (const isl of islands) {
+    let n = 0;
+    for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) if (island[y * size + x] === isl.id) n++;
+    if (n < MIN[isl.groesse]) {
+      for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) {
+        const k = y * size + x;
+        if (island[k] === isl.id) { island[k] = -1; tiles[k] = T.Wasser; }
+      }
+      isl.land = 0;
+    }
+  }
 
   // Strand: Land direkt am Wasser
   const copy = tiles.slice();
@@ -165,9 +181,18 @@ export function generateWorld(seed: number, size = WORLD_SIZE): World {
     }
     Object.assign(isl, { x0: a, y0: b, x1: c, y1: d, land });
   }
+  // entfernte Inseln aus der Liste nehmen und IDs neu vergeben
+  const keep = islands.filter((i) => i.land > 0);
+  const remap = new Map(keep.map((i, n) => [i.id, n]));
+  for (let k = 0; k < island.length; k++) if (island[k] >= 0) island[k] = remap.get(island[k]) ?? -1;
+  keep.forEach((i, n) => { i.id = n; i.name = NAMEN[n % NAMEN.length]; });
+  islands.length = 0;
+  islands.push(...keep);
   // Startinsel-Garantie: nahe am Spielerstart eine große/mittlere Insel mit Erz
   const [sx, sy] = starts[0];
-  const near = islands.filter((i) => i.groesse !== 'klein').sort((p, q) => Math.hypot(p.cx - sx, p.cy - sy) - Math.hypot(q.cx - sx, q.cy - sy))[0];
+  const hasBerg = (i: Island) => { for (let y = i.y0; y <= i.y1; y++) for (let x = i.x0; x <= i.x1; x++) if (island[y * size + x] === i.id && tiles[y * size + x] === T.Berg) return true; return false; };
+  for (const i of islands) if (!hasBerg(i)) { i.erz = 0; i.gold = 0; }
+  const near = islands.filter((i) => i.groesse !== 'klein' && hasBerg(i)).sort((p, q) => Math.hypot(p.cx - sx, p.cy - sy) - Math.hypot(q.cx - sx, q.cy - sy))[0];
   if (near && !near.erz && !near.gold) near.erz = 240;
   return { size, tiles, island, islands, starts };
 }

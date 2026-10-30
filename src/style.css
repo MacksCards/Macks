@@ -136,6 +136,7 @@ body.paused .top { border-bottom-color: var(--gold); }
   background: rgba(43, 33, 24, .93); border: 1px solid var(--rand); border-radius: 10px;
   color: var(--pergament); font: inherit; font-size: 14px; text-align: left; padding: 7px 12px;
 }
+.quest { min-height: 40px; }
 .quest b { color: var(--gold); }
 .quest .prog { color: var(--pergament-2); font-variant-numeric: tabular-nums; margin-left: 4px; }
 .quest small { display: block; margin-top: 3px; color: var(--pergament-2); font-size: 13px; }
@@ -174,6 +175,8 @@ body.paused .top { border-bottom-color: var(--gold); }
 .modal .sub { color: var(--pergament-2); font-size: 13px; text-align: center; }
 .modal .row2 { display: flex; gap: 8px; }
 .modal .row2 .btn { flex: 1; }
+.info .trade { display: grid; grid-template-columns: 1fr auto auto; gap: 4px; align-items: center; font-size: 13px; padding: 2px 0; }
+.info .trade .btn { min-height: 34px; padding: 2px 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
 
 /* ---------- Hochformat-Hinweis ---------- */
 #rotate {

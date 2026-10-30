@@ -28,7 +28,7 @@ export class View {
   private carts!: CartLayer;
   private seenTex!: THREE.DataTexture;
   private seenCount: number[] = [];
-  private border: THREE.LineSegments | null = null;
+  private border: THREE.Mesh | null = null;
   private veg!: Vegetation;
   private water!: THREE.Mesh;
   private waterUniforms: Record<string, THREE.IUniform> = { uTime: { value: 0 } };
@@ -274,18 +274,31 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     const g = this.g, N = g.size;
     if (this.border) { this.scene.remove(this.border); this.border.geometry.dispose(); }
     const pts: number[] = [];
+    const cols: number[] = [];
+    const c = new THREE.Color();
     const y = (x: number, z: number) => Math.max(this.terrain.heightAt(x, z), 0.05) + 0.07;
-    const mine = (x: number, z: number) => x >= 0 && z >= 0 && x < N && z < N && g.own[z * N + x] === 0;
+    const ownAt = (x: number, z: number) => (x >= 0 && z >= 0 && x < N && z < N ? g.own[z * N + x] : -1);
+    // Band (0,16 Felder breit) statt dünner Linie – gut sichtbar auf dem Handy
+    const w = 0.08;
+    const seg = (x0: number, z0: number, x1: number, z1: number) => {
+      const horiz = z0 === z1;
+      const ox = horiz ? 0 : w, oz = horiz ? w : 0;
+      const a = [x0 - ox, z0 - oz], b = [x1 - ox, z1 - oz], c2 = [x1 + ox, z1 + oz], d = [x0 + ox, z0 + oz];
+      for (const [px, pz] of [a, b, c2, a, c2, d]) { pts.push(px, y(px, pz), pz); cols.push(c.r, c.g, c.b); }
+    };
     for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-      if (!mine(x, z) || g.tiles[z * N + x] === 0) continue;
-      if (!mine(x, z - 1)) pts.push(x, y(x, z), z, x + 1, y(x + 1, z), z);
-      if (!mine(x, z + 1)) pts.push(x, y(x, z + 1), z + 1, x + 1, y(x + 1, z + 1), z + 1);
-      if (!mine(x - 1, z)) pts.push(x, y(x, z), z, x, y(x, z + 1), z + 1);
-      if (!mine(x + 1, z)) pts.push(x + 1, y(x + 1, z), z, x + 1, y(x + 1, z + 1), z + 1);
+      const o = ownAt(x, z);
+      if (o < 0 || g.tiles[z * N + x] === 0 || !g.seen[z * N + x]) continue;
+      c.setHex(o === 0 ? 0x8fc0ff : g.players[o]?.color ?? 0xffffff);
+      if (ownAt(x, z - 1) !== o) seg(x, z, x + 1, z);
+      if (ownAt(x, z + 1) !== o) seg(x, z + 1, x + 1, z + 1);
+      if (ownAt(x - 1, z) !== o) seg(x, z, x, z + 1);
+      if (ownAt(x + 1, z) !== o) seg(x + 1, z, x + 1, z + 1);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    this.border = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x8fc0ff, transparent: true, opacity: 0.85, depthWrite: false }));
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    this.border = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
     this.border.renderOrder = 3;
     this.scene.add(this.border);
   }
@@ -303,7 +316,12 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) if (g.seen[y * N + x]) n++;
       if (n !== this.seenCount[id]) { this.seenCount[id] = n; changed.push(id); }
     });
-    if (changed.length) this.veg.refresh(changed);
+    if (changed.length) { this.veg.refresh(changed); this.onTerritory(); }
+    // fremde Gebäude erst zeigen, wenn ihr Platz entdeckt ist
+    for (const [id, v] of this.views) {
+      const b = g.byId.get(id);
+      if (b) { v.mesh.visible = g.seen[g.idx(b.x, b.y)] === 1; v.icon.visible = v.icon.visible && v.mesh.visible; }
+    }
   }
 
   onTreesChanged() {
@@ -395,6 +413,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     mesh.position.set(b.x + d.size / 2, this.groundY(b.x, b.y, d.size), b.y + d.size / 2);
     mesh.rotation.y = this.facing(b);
     mesh.userData.id = b.id;
+    mesh.visible = this.g.seen[this.g.idx(b.x, b.y)] === 1;
     this.scene.add(mesh);
     const spin = glb ? [] : this.attachSpinners(mesh, model);
     const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, sizeAttenuation: false }));

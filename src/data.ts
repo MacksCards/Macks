@@ -59,9 +59,9 @@ export interface BuildingDef {
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   weg: { id: 'weg', name: 'Feldweg', icon: '🟫', category: 'wege', size: 1, cost: { taler: 5 }, upkeep: 0,
     desc: 'Verbindet Betriebe mit Kontor oder Marktplatz. Mit dem Finger ziehen, um mehrere Felder zu bauen.' },
-  kontor: { id: 'kontor', name: 'Kontor', icon: '⚓', category: null, size: 3, cost: { taler: 100, holz: 6, werkzeug: 3 }, upkeep: 15, radius: 10, storage: 30, work: 10,
+  kontor: { id: 'kontor', name: 'Kontor', icon: '⚓', category: null, size: 3, cost: { taler: 100, holz: 6, werkzeug: 3 }, upkeep: 15, radius: 16, storage: 30, work: 16,
     desc: 'Lager und Hafen einer Insel. Wird vom Schiff aus an der Küste gebaut und beansprucht das Land ringsum.' },
-  markt: { id: 'markt', name: 'Marktplatz', icon: '🏪', category: 'oeffentlich', size: 3, cost: { taler: 300, holz: 6, werkzeug: 2 }, upkeep: 10, radius: 9, storage: 10, work: 9,
+  markt: { id: 'markt', name: 'Marktplatz', icon: '🏪', category: 'oeffentlich', size: 3, cost: { taler: 300, holz: 6, werkzeug: 2 }, upkeep: 10, radius: 15, storage: 10, work: 15,
     desc: 'Erweitert den Baubereich und das Lager. Wohnhäuser brauchen einen Markt in Reichweite.' },
   haus: { id: 'haus', name: 'Wohnhaus', icon: '🏠', category: 'wohnen', size: 2, cost: { holz: 3 }, upkeep: 0,
     desc: 'Hier ziehen Pioniere ein. Sind sie zufrieden, steigt das Haus zu Siedlern und Bürgern auf.' },
@@ -143,3 +143,19 @@ export const BASE_STORAGE = 0; // Kontor bringt seine Kapazität selbst mit
 export const START_CARGO: [GoodId, number][] = [['werkzeug', 40], ['holz', 50], ['nahrung', 30], ['stoff', 10]];
 export const START_MONEY = 8000;
 export const SLOT_CAP = 50;
+
+/** Preise des freien Händlers (Taler je Tonne): kaufen = du zahlst, verkaufen = du bekommst.
+ *  Orientiert an den Handelspreisen des Vorbilds (Händler etwas teurer als Direkthandel). */
+export const PRICES: Partial<Record<GoodId, { kaufen: number; verkaufen: number }>> = {
+  werkzeug: { kaufen: 90, verkaufen: 60 },
+  holz: { kaufen: 20, verkaufen: 12 },
+  stein: { kaufen: 30, verkaufen: 20 },
+  nahrung: { kaufen: 18, verkaufen: 11 },
+  wolle: { kaufen: 15, verkaufen: 10 },
+  stoff: { kaufen: 34, verkaufen: 23 },
+  erz: { kaufen: 60, verkaufen: 40 },
+  getreide: { kaufen: 4, verkaufen: 2 },
+  mehl: { kaufen: 8, verkaufen: 5 },
+  schweine: { kaufen: 8, verkaufen: 5 },
+  bier: { kaufen: 55, verkaufen: 36 },
+};

@@ -58,6 +58,15 @@ console.log('Kontor:', JSON.stringify(r2));
 await page.waitForTimeout(1200);
 await page.screenshot({ path: `${out}/f3-kontor.png` });
 await page.evaluate(() => window.__ui.selectShip(null));
+// Einfrier-Test: Kategorie mit 🔒-Karte öffnen, Spielzeit muss weiterlaufen
+await page.evaluate(() => { window.__ui.paused = false; });
+const tA = await page.evaluate(() => window.__game().time);
+await page.click('.cat[data-cat="nahrung"]');
+await page.waitForTimeout(2500);
+const tB = await page.evaluate(() => window.__game().time);
+await page.screenshot({ path: `${out}/f3b-menue.png` });
+console.log('Einfrier-Test:', tB > tA + 0.5 ? 'OK, Zeit läuft (' + tA.toFixed(1) + ' → ' + tB.toFixed(1) + ')' : 'FEHLER, Zeit steht (' + tA + ' → ' + tB + ')');
+await page.click('.cat[data-cat="nahrung"]');
 await page.evaluate(() => window.__view.showArea(true));
 await page.waitForTimeout(600);
 await page.screenshot({ path: `${out}/f4-gebiet.png` });
@@ -99,5 +108,21 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(1000);
 await page.screenshot({ path: `${out}/f6-karren.png` });
+const r4 = await page.evaluate(() => {
+  const g = window.__game();
+  for (let i = 0; i < 2400; i++) g.tick(0.25); // 10 Minuten
+  return g.players.filter((p) => p.ai).map((p) => {
+    const own = g.buildings.filter((b) => b.owner === p.id);
+    const k = own.find((b) => b.type === 'kontor');
+    const types = {};
+    for (const b of own) types[b.type] = (types[b.type] ?? 0) + 1;
+    const pop = own.filter((b) => b.type === 'haus').reduce((a, b) => a + b.residents, 0);
+    return { name: p.name, phase: p.brain.phase, insel: k ? g.islands[k.island].name : '-', geld: Math.round(p.money), einwohner: pop, gebaeude: types };
+  });
+});
+console.log('Konkurrenten nach 10 min:', JSON.stringify(r4, null, 1));
+await page.evaluate(() => window.__ui.openMap());
+await page.waitForTimeout(500);
+await page.screenshot({ path: `${out}/f7-karte-ki.png` });
 console.log(errs.length ? 'FEHLER: ' + errs.join(' | ') : 'keine Fehler');
 await browser.close(); server.close();
