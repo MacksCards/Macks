@@ -23,7 +23,7 @@ export class View {
   private terrainColors!: Float32Array;
   private baseColors!: Float32Array;
   private water!: THREE.Mesh;
-  private waterUniforms = { uTime: { value: 0 } };
+  private waterUniforms: Record<string, THREE.IUniform> = { uTime: { value: 0 } };
   private trees!: THREE.InstancedMesh;
   private mountains!: THREE.InstancedMesh;
   private roadMesh!: THREE.InstancedMesh;
@@ -50,8 +50,10 @@ export class View {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    this.scene.background = new THREE.Color(0x9fd3ee);
-    this.scene.fog = new THREE.Fog(0x9fd3ee, 60, 160);
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.05;
+    this.scene.background = this.skyTexture();
+    this.scene.fog = new THREE.Fog(0xb7dcef, 70, 170);
 
     this.scene.add(new THREE.HemisphereLight(0xdcefff, 0x6b5a3a, 1.6));
     const sun = new THREE.DirectionalLight(0xfff1d6, 2.2);
@@ -87,6 +89,21 @@ export class View {
     this.scene.add(this.selectRing);
 
     this.buildWorld();
+  }
+
+  private skyTexture(): THREE.Texture {
+    const cv = document.createElement('canvas');
+    cv.width = 4; cv.height = 256;
+    const ctx = cv.getContext('2d')!;
+    const gr = ctx.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, '#4f9fd8');
+    gr.addColorStop(0.55, '#9fd0ee');
+    gr.addColorStop(1, '#e6f2f2');
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, 0, 4, 256);
+    const t = new THREE.CanvasTexture(cv);
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
   }
 
   /** Alles (neu) aufbauen – z. B. nach "Neues Spiel" */
@@ -222,19 +239,88 @@ export class View {
   }
 
   private buildWater() {
-    const N = this.g.size;
-    const geo = new THREE.PlaneGeometry(N * 5, N * 5, 110, 110).rotateX(-Math.PI / 2);
+    const g = this.g;
+    const N = g.size;
+    // Tiefenkarte: 0 an der Küste, 1 im tiefen Meer → Farbe, Schaum, Durchsichtigkeit
+    const data = new Uint8Array(N * N * 4);
+    const dist = new Float32Array(N * N).fill(99);
+    const q: number[] = [];
+    for (let i = 0; i < N * N; i++) if (g.tiles[i] !== T.Wasser) { dist[i] = 0; q.push(i); }
+    for (let h = 0; h < q.length; h++) {
+      const i = q[h];
+      const x = i % N, y = (i / N) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
+        const ni = ny * N + nx;
+        if (dist[ni] > dist[i] + 1) { dist[ni] = dist[i] + 1; q.push(ni); }
+      }
+    }
+    for (let i = 0; i < N * N; i++) {
+      const v = Math.round(Math.min(1, dist[i] / 7) * 255);
+      data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255;
+    }
+    const depthTex = new THREE.DataTexture(data, N, N);
+    depthTex.magFilter = THREE.LinearFilter;
+    depthTex.minFilter = THREE.LinearFilter;
+    depthTex.needsUpdate = true;
+
+    const geo = new THREE.PlaneGeometry(N * 5, N * 5, 160, 160).rotateX(-Math.PI / 2);
     const mat = new THREE.MeshPhongMaterial({
-      color: 0x2f86c0, transparent: true, opacity: 0.72, flatShading: true, shininess: 80, specular: 0x88ccff,
+      color: 0xffffff, transparent: true, shininess: 140, specular: 0xbfe6ff,
     });
+    const uni = this.waterUniforms as Record<string, THREE.IUniform>;
+    uni.uDepth = { value: depthTex };
+    uni.uN = { value: N };
     mat.onBeforeCompile = (sh) => {
-      sh.uniforms.uTime = this.waterUniforms.uTime;
-      sh.vertexShader = 'uniform float uTime;\n' + sh.vertexShader.replace(
-        '#include <begin_vertex>',
-        `#include <begin_vertex>
-        transformed.y += sin(position.x * 0.55 + uTime * 1.1) * 0.05 + cos(position.z * 0.45 + uTime * 0.8) * 0.05;`,
-      );
+      Object.assign(sh.uniforms, uni);
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', `#include <common>
+uniform float uTime;
+varying vec3 vW;`)
+        .replace('#include <begin_vertex>', `#include <begin_vertex>
+vec3 wp = (modelMatrix * vec4(position, 1.0)).xyz;
+float w1 = sin(wp.x * 0.7 + uTime * 1.3) * 0.045;
+float w2 = cos(wp.z * 0.55 + uTime * 0.9) * 0.045;
+float w3 = sin((wp.x + wp.z) * 1.6 + uTime * 2.1) * 0.018;
+transformed.y += w1 + w2 + w3;
+vW = wp;`)
+        .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
+{
+  vec3 wq = (modelMatrix * vec4(position, 1.0)).xyz;
+  float dx = cos(wq.x * 0.7 + uTime * 1.3) * 0.7 * 0.045 + cos((wq.x + wq.z) * 1.6 + uTime * 2.1) * 1.6 * 0.018;
+  float dz = -sin(wq.z * 0.55 + uTime * 0.9) * 0.55 * 0.045 + cos((wq.x + wq.z) * 1.6 + uTime * 2.1) * 1.6 * 0.018;
+  objectNormal = normalize(vec3(-dx * 3.0, 1.0, -dz * 3.0));
+}`);
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <common>', `#include <common>
+uniform float uTime;
+uniform sampler2D uDepth;
+uniform float uN;
+varying vec3 vW;
+float wh(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+float wn(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(wh(i), wh(i + vec2(1, 0)), f.x), mix(wh(i + vec2(0, 1)), wh(i + vec2(1, 1)), f.x), f.y); }`)
+        .replace('#include <color_fragment>', `#include <color_fragment>
+vec2 uv = vW.xz / uN;
+float d = (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) ? 1.0 : texture2D(uDepth, uv).r;
+vec3 shallow = vec3(0.32, 0.80, 0.78);
+vec3 mid = vec3(0.10, 0.52, 0.70);
+vec3 deep = vec3(0.04, 0.24, 0.45);
+vec3 col = mix(shallow, mid, smoothstep(0.0, 0.3, d));
+col = mix(col, deep, smoothstep(0.3, 1.0, d));
+// Glitzern / Strömungsmuster
+float n = wn(vW.xz * 1.3 + vec2(uTime * 0.25, uTime * 0.18)) * 0.6 + wn(vW.xz * 3.1 - vec2(uTime * 0.3, -uTime * 0.2)) * 0.4;
+col *= 0.9 + 0.2 * n;
+// Schaum an der Küste, rollt in Wellen heran
+float shore = 1.0 - smoothstep(0.0, 0.16, d);
+float waves = smoothstep(0.55, 1.0, sin(d * 70.0 - uTime * 2.2 + n * 3.0) * 0.5 + 0.5) * (1.0 - smoothstep(0.03, 0.2, d));
+float foam = clamp(shore * smoothstep(0.35, 0.75, n + 0.25) + waves * 0.8, 0.0, 1.0);
+col = mix(col, vec3(0.97, 0.99, 1.0), foam * 0.85);
+diffuseColor.rgb = col;
+diffuseColor.a = mix(0.55, 0.93, smoothstep(0.0, 0.45, d)) + foam * 0.3;`);
     };
+    mat.customProgramCacheKey = () => 'wasser-v2';
     this.water = new THREE.Mesh(geo, mat);
     this.water.position.set(N / 2, 0, N / 2);
     this.water.renderOrder = 1;
