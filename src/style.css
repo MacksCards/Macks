@@ -80,14 +80,14 @@ body.paused .top { border-bottom-color: var(--gold); }
 /* ---------- Linke Baumenü-Spalte ---------- */
 .left {
   position: absolute; top: calc(52px + var(--in-t)); left: calc(6px + var(--in-l)); bottom: calc(6px + var(--in-b));
-  display: flex; flex-direction: column; gap: 4px; overflow-y: auto; scrollbar-width: none;
+  display: flex; flex-direction: column; gap: 3px; overflow-y: auto; scrollbar-width: none;
 }
 .left::-webkit-scrollbar { display: none; }
 .cat {
-  width: 58px; min-height: 46px; padding: 3px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  width: 58px; min-height: 40px; padding: 2px 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
   background: rgba(43, 33, 24, .9);
 }
-.cat span { font-size: 21px; line-height: 1; }
+.cat span { font-size: 19px; line-height: 1; }
 .cat small { font-size: 10px; letter-spacing: .02em; color: var(--pergament-2); }
 
 /* ---------- Baukarten ---------- */

@@ -619,6 +619,8 @@ export const QUESTS: Quest[] = [
   { title: 'Bessere Nahrung', hint: 'Schweinezucht → Fleischerei liefert viel mehr Nahrung als Fischer und Jäger.',
     done: (g) => done(g, ['schweinezucht', 'fleischerei']) === 2,
     progress: (g) => `${done(g, ['schweinezucht', 'fleischerei'])}/2`, reward: 600 },
+  { title: 'Brot backen', hint: 'Getreidefarm → Mühle → Bäckerei: Aus 1 Mehl backt die Bäckerei 2 Nahrung.',
+    done: (g) => done(g, ['getreidefarm', 'muehle', 'baeckerei']) === 3, progress: (g) => `${done(g, ['getreidefarm', 'muehle', 'baeckerei'])}/3`, reward: 700 },
   { title: 'Bier für die Bürger', hint: 'Bürger wollen Bier und ein Wirtshaus: Getreidefarm → Brauerei, dazu ein Wirtshaus.',
     done: (g) => done(g, ['getreidefarm', 'brauerei']) === 2 && g.count('wirtshaus') >= 1,
     progress: (g) => `${done(g, ['getreidefarm', 'brauerei']) + Math.min(1, g.count('wirtshaus'))}/3`, reward: 1000 },

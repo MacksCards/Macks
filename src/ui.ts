@@ -239,7 +239,18 @@ export class UI {
     }
     if (m.kind === 'demolish') {
       const t = this.view.pick(x, y, true);
-      if (t && this.g.demolish(t[0], t[1])) this.toast('Abgerissen', 'info');
+      if (!t) return;
+      const b = this.g.buildingAt(t[0], t[1]);
+      if (b && b.type !== 'kontor') {
+        // Gebäude nur nach Rückfrage abreißen (Wege sofort)
+        const d = BUILDINGS[b.type];
+        this.ask(`${d.icon} ${d.name} abreißen?`, 'Du bekommst die Hälfte des Baumaterials zurück.', '💥 Abreißen', () => {
+          this.g.removeBuilding(b);
+          this.toast('Abgerissen', 'info');
+        });
+        return;
+      }
+      if (this.g.demolish(t[0], t[1])) this.toast('Abgerissen', 'info');
       return;
     }
     const t = this.view.pick(x, y, true);
@@ -385,7 +396,7 @@ export class UI {
         };
         const inp = Object.entries(d.prod.input ?? {}).map(([k, n]) => `${n} ${GOOD[k as GoodId].icon}`).join(' + ');
         h += `<div class="row"><span>Status</span><b>${st[b.status] ?? ''}</b></div>
-          <div class="row"><span>Produziert</span><b>${inp ? inp + ' → ' : ''}1 ${GOOD[d.prod.output].icon} ${GOOD[d.prod.output].name} / ${Math.round(d.prod.time / Math.max(0.05, b.eff))} s</b></div>
+          <div class="row"><span>Produziert</span><b>${inp ? inp + ' → ' : ''}${d.prod.amount ?? 1} ${GOOD[d.prod.output].icon} ${GOOD[d.prod.output].name} / ${Math.round(d.prod.time / Math.max(0.05, b.eff))} s</b></div>
           <div class="row"><span>Standort</span><b>${Math.round(b.eff * 100)} %</b></div>
           <div class="row"><span>Auslastung</span><b>${Math.round(b.active * 100)} %</b></div>
           <div class="bar"><i style="width:${Math.round((b.progress / d.prod.time) * 100)}%"></i></div>`;
@@ -496,7 +507,7 @@ export class UI {
         <li><b>Karte bewegen:</b> mit einem Finger ziehen. <b>Zoomen & drehen:</b> mit zwei Fingern.</li>
         <li><b>Bauen:</b> links eine Kategorie wählen → Gebäude wählen → auf die Insel tippen → nochmal tippen oder ✓.</li>
         <li><b>Wege 🛤️:</b> Betriebe brauchen einen Feldweg zum Kontor oder Marktplatz, sonst liefern sie nichts.</li>
-        <li><b>Bewohner:</b> Pioniere wollen Fisch und einen Marktplatz. Sind sie zufrieden, steigen ihre Häuser zu Siedlern und Bürgern auf. Die wollen mehr.</li>
+        <li><b>Bewohner:</b> Pioniere wollen Nahrung und einen Marktplatz. Sind sie zufrieden, steigen ihre Häuser zu Siedlern und Bürgern auf. Die wollen mehr.</li>
         <li><b>Geld:</b> Bewohner zahlen Steuern, Betriebe kosten Unterhalt. Achte auf die Bilanz oben links.</li>
         <li>Tippe auf ein Gebäude, um zu sehen, was ihm fehlt. Das 📜 unten hilft dir mit Aufgaben.</li>
       </ul>

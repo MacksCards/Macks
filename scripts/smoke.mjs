@@ -59,7 +59,7 @@ const report = await page.evaluate(() => {
   for (let i = 0; i < 10; i++) tryPlace('haus', false);
   const sim = (min) => { for (let i = 0; i < min * 240; i++) g.tick(0.25); };
   sim(3);
-  log.push(`nach 3 min: pop ${g.population()} fisch ${g.goods.fisch} geld ${Math.round(g.money)} quest ${g.quest}`);
+  log.push(`nach 3 min: pop ${g.population()} nahrung ${g.goods.nahrung} geld ${Math.round(g.money)} quest ${g.quest}`);
   tryPlace('schaffarm', true); tryPlace('weberei', true); tryPlace('kapelle', false);
   for (let i = 0; i < 6; i++) tryPlace('haus', false);
   tryPlace('fischer', true);
