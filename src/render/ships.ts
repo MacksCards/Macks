@@ -229,7 +229,8 @@ export class ShipLayer {
     // Fahrtroute des ausgewählten Schiffs
     const sel = this.g.ships.find((s) => s.id === this.selected);
     if (sel && sel.path.length) {
-      const pts = [new THREE.Vector3(sel.x, 0.1, sel.y), ...sel.path.map(([x, y]) => new THREE.Vector3(x, 0.1, y))];
+      const [sx0, sy0] = this.g.ip(sel);
+      const pts = [new THREE.Vector3(sx0, 0.1, sy0), ...sel.path.map(([x, y]) => new THREE.Vector3(x, 0.1, y))];
       this.route.geometry.setFromPoints(pts);
       this.route.computeLineDistances();
       this.route.visible = true;

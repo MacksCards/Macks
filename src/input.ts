@@ -37,7 +37,7 @@ export class Input {
 
   private down(e: PointerEvent) {
     this.el.setPointerCapture(e.pointerId);
-    const p: Ptr = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now() };
+    const p: Ptr = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: e.timeStamp };
     this.ptrs.set(e.pointerId, p);
     this.rotating = e.button === 2 || (e.pointerType === 'mouse' && e.shiftKey);
     if (this.ptrs.size === 1) {
@@ -109,7 +109,7 @@ export class Input {
       this.h.paintEnd(cancel);
       return;
     }
-    if (this.ptrs.size === 0 && !this.multi && !this.moved && !cancel && performance.now() - p.t < 600) {
+    if (this.ptrs.size === 0 && !this.multi && !this.moved && !cancel && e.timeStamp - p.t < 600) {
       this.h.tap(e.clientX, e.clientY);
     }
   }

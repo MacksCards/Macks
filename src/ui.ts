@@ -231,10 +231,21 @@ export class UI {
       const n = this.roadCells.length;
       const ok = n > 0 && this.roadEndSet;
       const build = ok ? this.roadBuildable() : 0;
-      const msg = !this.roadStart ? 'Tippe auf das Feld, wo der Weg beginnen soll.'
-        : !ok ? 'Tippe jetzt auf das Ziel. Die Karte kannst du dabei mit dem Finger verschieben.'
-        : build ? `${build} Felder – ✓ zum Bauen (oder nochmal aufs Ziel tippen). Anderes Ziel antippen ändert den Weg.`
-        : 'Hier kann kein Weg gebaut werden – tippe ein anderes Ziel an.';
+      const isRoad = m.type === 'weg' || m.type === 'steinweg';
+      const what = isRoad ? 'der Weg' : m.type === 'palisade' ? 'die Palisade' : 'die Mauer';
+      // Warum geht es nicht? (Material, Gebiet, Platz) – Grund des ersten gesperrten Feldes
+      const why = () => {
+        for (const [cx, cy] of this.roadCells) {
+          const c = isRoad ? this.g.canRoad(cx, cy, HUMAN, m.type as 'weg' | 'steinweg') : this.g.canPlace(m.type, cx, cy);
+          if (!c.ok && !(isRoad && this.g.roads[this.g.idx(cx, cy)])) return c.reason ?? 'Geht hier nicht';
+        }
+        return 'Geht hier nicht';
+      };
+      const msg = !this.roadStart ? `Tippe auf das Feld, wo ${what} beginnen soll.`
+        : !ok ? 'Tippe jetzt auf das Ziel (gelb markiert ist der Start). Die Karte kannst du dabei mit dem Finger verschieben.'
+        : this.roadNoWay ? `Kein Durchgang bis dorthin (Wasser, Gebäude oder fremdes Gebiet) – tippe ein anderes Ziel an.`
+        : build ? `${build} Felder – ✓ zum Bauen oder nochmal aufs gelbe Ziel tippen.${this.roadPartial ? ' Bis ganz dorthin geht es nicht (Wasser, Gebäude oder Gebietsgrenze) – die Strecke endet am nächsten möglichen Feld.' : ' Anderes Ziel antippen ändert die Strecke.'}`
+        : `⚠️ ${why()} – tippe ein anderes Ziel an.`;
       const total = build ? ` · zusammen ${costText(Object.fromEntries(Object.entries(d.cost).map(([k, v]) => [k, (v ?? 0) * build])))}` : '';
       t.innerHTML = `<b>${d.icon} ${d.name}</b> <span class="cost">${costText(d.cost)} je Feld${total}</span><br><small>${msg}${m.type === 'steinweg' && !this.roadStart ? ' Feldwege werden dabei gepflastert.' : ''}</small>`;
       ($('#hintOk') as HTMLButtonElement).disabled = !build;
@@ -467,6 +478,17 @@ export class UI {
   // ---------- Wege ziehen ----------
 
   private roadEndSet = false;
+  /** true = es gibt keinen durchgehenden Weg zum Ziel (✓ gesperrt) */
+  private roadNoWay = false;
+  /** true = Ziel nicht erreichbar, der Weg endet am nächsten erreichbaren Feld */
+  private roadPartial = false;
+
+  /** freie Nachbarfelder des Gebäudes, das auf (x,y) steht */
+  private freeAround(x: number, y: number, pass: (x: number, y: number) => boolean): [number, number][] {
+    const b = this.g.buildingAt(x, y);
+    if (!b) return [];
+    return this.g.ring(b).filter(([rx, ry]) => pass(rx, ry)) as [number, number][];
+  }
 
   /** Wege per Tippen: erstes Tippen = Start, zweites = Ziel (Vorschau), nochmal Ziel oder ✓ = bauen */
   private roadTap(x: number, y: number) {
@@ -476,6 +498,7 @@ export class UI {
       this.roadStart = t;
       this.roadCells = [t];
       this.roadEndSet = false;
+      this.roadNoWay = false;
       sound.play('klick');
     } else {
       const end = this.roadCells[this.roadCells.length - 1];
@@ -495,7 +518,8 @@ export class UI {
     const [x1, y1] = t;
     const type = this.mode.kind === 'road' ? this.mode.type : 'weg';
     const road = type === 'weg' || type === 'steinweg';
-    const pass = (x: number, y: number) => g.inMap(x, y) && (g.roads[g.idx(x, y)] > 0 || (road ? g.canRoad(x, y, HUMAN, type).ok : g.canPlace(type, x, y).ok));
+    // Wege dürfen über vorhandene Wege laufen, Mauern/Palisaden nicht
+    const pass = (x: number, y: number) => g.inMap(x, y) && ((road && g.roads[g.idx(x, y)] > 0) || (road ? g.canRoad(x, y, HUMAN, type).ok : g.canPlace(type, x, y).ok));
     const pad = 12;
     const bx0 = Math.max(0, Math.min(x0, x1) - pad), by0 = Math.max(0, Math.min(y0, y1) - pad);
     const bx1 = Math.min(N - 1, Math.max(x0, x1) + pad), by1 = Math.min(N - 1, Math.max(y0, y1) + pad);
@@ -507,33 +531,46 @@ export class UI {
     const id = (x: number, y: number, d: number) => ((y - by0) * W + (x - bx0)) * 4 + d;
     const open: [number, number][] = [];
     const push = (st: number, c: number) => { open.push([st, c]); };
-    if (pass(x0, y0) || g.roads[g.idx(x0, y0)]) for (let d = 0; d < 4; d++) { cost[id(x0, y0, d)] = 0; push(id(x0, y0, d), 0); }
+    // Start: das Feld selbst, oder – wenn dort ein Gebäude steht – alle freien Nachbarfelder
+    const starts: [number, number][] = pass(x0, y0) ? [[x0, y0]] : g.occ[g.idx(x0, y0)] ? this.freeAround(x0, y0, pass) : [];
+    for (const [sx, sy] of starts) if (sx >= bx0 && sy >= by0 && sx <= bx1 && sy <= by1) for (let d = 0; d < 4; d++) { cost[id(sx, sy, d)] = 0; push(id(sx, sy, d), 0); }
+    // Ziel: das Feld selbst, oder bei einem Gebäude dessen freie Nachbarfelder
+    const goals = new Set<number>((pass(x1, y1) ? [[x1, y1]] : g.occ[g.idx(x1, y1)] ? this.freeAround(x1, y1, pass) : []).map(([gx, gy]) => gy * N + gx));
     let goal = -1;
     let guard = 0;
+    // nächstes erreichbares Feld zum Ziel merken (falls das Ziel selbst nicht erreichbar ist)
+    let near = -1, nearD = Infinity;
+    const d0 = Math.hypot(x1 - x0, y1 - y0);
     while (open.length && guard++ < 60000) {
       // kleinste Kosten zuerst (einfach, Suchraum ist klein)
       let bi = 0; for (let i = 1; i < open.length; i++) if (open[i][1] < open[bi][1]) bi = i;
       const [st, c] = open[bi]; open[bi] = open[open.length - 1]; open.pop();
       if (c > cost[st]) continue;
       const d = st % 4, cell = (st - d) / 4, x = cell % W + bx0, y = Math.floor(cell / W) + by0;
-      if (x === x1 && y === y1) { goal = st; break; }
+      if (goals.has(y * N + x)) { goal = st; break; }
+      const dd = Math.hypot(x1 - x, y1 - y);
+      if (dd < nearD) { nearD = dd; near = st; }
       for (let nd = 0; nd < 4; nd++) {
         const nx = x + DIRS[nd][0], ny = y + DIRS[nd][1];
         if (nx < bx0 || ny < by0 || nx > bx1 || ny > by1) continue;
-        if (!pass(nx, ny) && !(nx === x1 && ny === y1)) continue;
-        const nc = c + 1 + (nd !== d ? 0.6 : 0) + (g.roads[g.idx(nx, ny)] ? -0.3 : 0);
+        if (!pass(nx, ny)) continue;
+        const nc = c + 1 + (nd !== d ? 0.6 : 0) + (road && g.roads[g.idx(nx, ny)] ? -0.3 : 0);
         const ns = id(nx, ny, nd);
         if (nc < cost[ns]) { cost[ns] = nc; from[ns] = st; push(ns, nc); }
       }
     }
+    this.roadPartial = false;
+    if (goal < 0 && near >= 0 && nearD < d0 - 0.5) { goal = near; this.roadPartial = true; }
     if (goal >= 0) {
       const cells: [number, number][] = [];
       for (let st = goal; st >= 0; st = from[st]) { const cell = (st - (st % 4)) / 4; cells.push([cell % W + bx0, Math.floor(cell / W) + by0]); }
       cells.reverse();
       this.roadCells = cells.slice(0, 200);
+      this.roadNoWay = false;
       return;
     }
-    // kein Durchgang gefunden: L-Form (rote Felder zeigen, wo es nicht geht)
+    // kein Durchgang gefunden: L-Form nur als rote Vorschau – gebaut wird dann nichts
+    this.roadNoWay = true;
     const cells: [number, number][] = [];
     const line = (a: number, b: number) => { const out: number[] = []; const st = Math.sign(b - a); for (let v = a; ; v += st) { out.push(v); if (v === b) break; } return out; };
     if (Math.abs(x1 - x0) >= Math.abs(y1 - y0)) {
@@ -548,6 +585,7 @@ export class UI {
 
   /** wie viele Felder der Vorschau wirklich neu gebaut würden */
   private roadBuildable(): number {
+    if (this.roadNoWay) return 0;
     const type = this.mode.kind === 'road' ? this.mode.type : 'weg';
     const road = type === 'weg' || type === 'steinweg';
     return this.roadCells.filter(([x, y]) => road ? this.g.canRoad(x, y, HUMAN, type).ok : this.g.canPlace(type, x, y).ok).length;
@@ -555,7 +593,7 @@ export class UI {
 
   /** Vorschau bauen; danach geht es vom Ziel aus weiter */
   private confirmRoad() {
-    if (this.mode.kind !== 'road' || !this.roadEndSet || !this.roadCells.length) return;
+    if (this.mode.kind !== 'road' || !this.roadEndSet || !this.roadCells.length || this.roadNoWay) return;
     const type = this.mode.type;
     const end = this.roadCells[this.roadCells.length - 1];
     const n = type === 'weg' || type === 'steinweg' ? this.g.placeRoads(this.roadCells, HUMAN, type) : this.g.placeMany(type, this.roadCells);
@@ -565,6 +603,7 @@ export class UI {
     this.roadStart = end;
     this.roadCells = [end];
     this.roadEndSet = false;
+    this.roadNoWay = false;
     this.previewRoad();
     this.updateHint();
   }

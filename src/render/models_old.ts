@@ -82,11 +82,6 @@ function foundation(b: Builder, s: number) {
   b.box(s * 0.92, 0.5, s * 0.92, C.fundament, 0, -0.48, 0);
 }
 
-function sheep(b: Builder, x: number, z: number, ry: number) {
-  b.box(0.32, 0.2, 0.2, C.weiss, x, 0.1, z, ry);
-  b.box(0.12, 0.12, 0.12, C.schwarz, x + Math.cos(ry) * 0.2, 0.2, z - Math.sin(ry) * 0.2, ry);
-}
-
 function logPile(b: Builder, x: number, z: number) {
   for (let i = 0; i < 3; i++) b.cyl(0.07, 0.07, 0.6, 6, C.holz, x, 0.07 + i * 0.0, z - 0.15 + i * 0.15, 0, Math.PI / 2);
   b.cyl(0.07, 0.07, 0.6, 6, C.dunkelholz, x, 0.19, z - 0.07, 0, Math.PI / 2);
@@ -229,7 +224,7 @@ function makeSchaffarm(): Geo {
   for (const x of [-1.4, 0, 1.4]) for (const z of [-1.4, 1.4]) b.box(0.07, 0.35, 0.07, C.dunkelholz, x, 0.05, z);
   b.box(1.0, 0.6, 0.8, C.holz, -0.8, 0.05, -0.8);
   b.roof(1.2, 0.45, 1.0, C.rot, -0.8, 0.65, -0.8);
-  sheep(b, 0.5, -0.6, 0.3); sheep(b, 0.8, 0.4, 2.2); sheep(b, -0.2, 0.7, 1.2); sheep(b, 0.1, 0.05, 4.0);
+  // Schafe laufen lebendig (render/life.ts), nicht als feste Figuren im Modell
   return b.build();
 }
 

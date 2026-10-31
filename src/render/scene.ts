@@ -426,7 +426,9 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       const [x, y] = cells[k];
       m.makeTranslation(x + 0.5, this.groundY(x, y, 1) + 0.04, y + 0.5);
       this.previewRoads.setMatrixAt(n, m);
-      this.previewRoads.setColorAt(n, c.setHex(ok[k] ? 0x66ff66 : 0xff5555));
+      // Start und Ziel heller hervorheben (dorthin tippt man zum Bestätigen)
+      const end = k === 0 || k === cells.length - 1;
+      this.previewRoads.setColorAt(n, c.setHex(ok[k] ? (end ? 0xfff27a : 0x66ff66) : (end ? 0xffa0a0 : 0xff5555)));
       n++;
     }
     this.previewRoads.count = n;
@@ -757,6 +759,8 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
 
   private growT = 0;
   private lastT = 0;
+  private lifeT = 0;
+
   frame(t: number, gameDt: number) {
     const dt = Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
@@ -766,7 +770,9 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.ships.update(t);
     this.carts.update(t);
     const cam = { x: this.rig.tx, z: this.rig.tz, dist: this.rig.dist };
-    this.life.update(t, cam);
+    // Tiere und Arbeiter laufen nach der Spieluhr (stehen in der Pause still)
+    this.lifeT += gameDt;
+    this.life.update(this.lifeT, cam);
     this.units.update(t, cam);
     this.damage(dt);
     this.fx.update(dt, this.renderer.domElement.clientHeight || 400);

@@ -248,6 +248,8 @@ export class Game {
   units: Unit[] = [];
   /** Für flüssige Darstellung: Position vor dem letzten Rechenschritt und Anteil (0..1) bis zum nächsten */
   private prev = new Map<number, [number, number, number]>();
+  /** Arbeitsfortschritt der Betriebe vor dem letzten Rechenschritt (für flüssige Arbeiter/Fischerboote) */
+  private prevProg = new Map<number, number>();
   alpha = 1;
   /** Piraten: Zeit bis zum nächsten Auftauchen, versenkte Piratenschiffe, schon gesichtet? */
   pirateT = 0;
@@ -1194,6 +1196,13 @@ export class Game {
     if (dx * dx + dy * dy > 9) return [o.x, o.y]; // Sprung (z. B. an Land gesetzt): nicht gleiten
     return [p[0] + dx * this.alpha, p[1] + dy * this.alpha];
   }
+  /** Arbeitsfortschritt zwischen zwei Rechenschritten (springt beim neuen Arbeitsgang nicht zurück-gleitend) */
+  ipProgress(b: Building): number {
+    const p = this.prevProg.get(b.id);
+    if (p === undefined || b.progress < p) return b.progress;
+    return p + (b.progress - p) * this.alpha;
+  }
+
   /** Blickrichtung zwischen zwei Rechenschritten */
   ipDir(o: { id: number; dir: number }): number {
     const p = this.prev.get(o.id);
@@ -1209,6 +1218,8 @@ export class Game {
     for (const s of this.ships) this.prev.set(s.id, [s.x, s.y, s.dir]);
     for (const u of this.units) this.prev.set(u.id, [u.x, u.y, u.dir]);
     for (const c of this.carts) this.prev.set(c.id, [c.x, c.y, 0]);
+    this.prevProg.clear();
+    for (const b of this.buildings) if (b.loaded && b.target !== undefined) this.prevProg.set(b.id, b.progress);
     this.time += dt;
     for (const s of this.ships) this.tickShip(s, dt);
     this.sightT += dt;
