@@ -6,8 +6,9 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const out = process.argv[2] || 'shots';
+const port = Number(process.env.PORT || 4173);
 const html = readFileSync(resolve('dist/index.html'));
-const server = createServer((_, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(html); }).listen(4173);
+const server = createServer((_, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(html); }).listen(port);
 
 const browser = await chromium.launch({ args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const ctx = await browser.newContext({ viewport: { width: 852, height: 393 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
@@ -15,7 +16,7 @@ const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
-await page.goto('http://localhost:4173/');
+await page.goto(`http://localhost:${port}/`);
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${out}/01-start.png` });
 await page.click('#hClose').catch(() => {});
@@ -25,6 +26,17 @@ await page.screenshot({ path: `${out}/02-island.png` });
 // Automatisch eine Siedlung bauen und lange simulieren (prüft die Warenketten)
 const report = await page.evaluate(() => {
   const g = window.__game();
+  // Ein neues Spiel beginnt nur mit dem Schiff: zuerst ein Kontor an der Küste der Heimatinsel gründen
+  if (!g.kontor()) {
+    const ship = g.myShips()[0];
+    const isl = g.islands.find((i) => i.heimat) ?? g.islands[0];
+    g.seen.fill(1); window.__view.onSeen();
+    outer: for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) {
+      if (!g.canPlace('kontor', x, y, 0, true).ok) continue;
+      for (const [rx, ry] of g.ring({ type: 'kontor', x, y })) if (g.tiles[g.idx(rx, ry)] === 0) { ship.x = rx + 0.5; ship.y = ry + 0.5; break; }
+      if (g.place('kontor', x, y).ok) { g.unloadAll(ship); break outer; }
+    }
+  }
   const k = g.kontor();
   const log = [];
   g.money = 100000;

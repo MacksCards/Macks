@@ -351,3 +351,32 @@ export function triumphbogen(): ModelDef {
   b.flagPole(0.7, 1.58, 0, 0.4);
   return b.build();
 }
+
+/** Einfaches Tor in der Steinmauer: gemauerter Bogen mit Holzflügeln, Zinnen und zwei Pfeilern (kleiner als das Stadttor) */
+export function steintorKlein(): ModelDef {
+  const b = new Builder();
+  b.ground(1, 1, M.pflaster, false);
+  const H = 0.78;
+  b.box(1, H, 0.44, M.mauer, 0, 0, 0);
+  b.box(1.02, 0.08, 0.46, M.mauerDunkel, 0, 0, 0); // Sockel
+  b.box(1.02, 0.04, 0.46, M.mauerDunkel, 0, H, 0); // Mauerkrone
+  // Durchgang mit Rundbogen und Bogensteinen
+  b.box(0.38, 0.44, 0.46, dunkel, 0, 0, 0);
+  b.add(new THREE.CylinderGeometry(0.19, 0.19, 0.47, 12, 1, false, -Math.PI / 2, Math.PI).rotateX(-Math.PI / 2), dunkel, 0, 0.44, 0);
+  for (const z of [0.225, -0.225]) b.add(new THREE.TorusGeometry(0.215, 0.03, 5, 12, Math.PI), M.mauerDunkel, 0, 0.44, z);
+  b.box(0.08, 0.07, 0.05, M.mauerDunkel, 0, 0.63, 0.235); // Schlussstein
+  gateDoors(b, 0.36, 0.44, 0.17);
+  b.merlons(-0.5, 0.18, 0.5, 0.18, H + 0.04, M.mauer, 0.09, 0.11, 0.08, 0.9);
+  b.merlons(-0.5, -0.18, 0.5, -0.18, H + 0.04, M.mauer, 0.09, 0.11, 0.08, 0.9);
+  // Pfeiler links und rechts mit Steinkappe, an einem eine Laterne
+  for (const s of [-1, 1]) {
+    b.box(0.16, H + 0.16, 0.5, M.mauer, s * 0.42, 0, 0);
+    b.box(0.2, 0.05, 0.54, M.mauerDunkel, s * 0.42, H + 0.16, 0);
+    b.cone(0.13, 0.14, 4, M.schiefer, s * 0.42, H + 0.21, 0, Math.PI / 4);
+  }
+  b.box(0.02, 0.02, 0.08, M.eisen, 0.3, 0.55, 0.26);
+  b.cyl(0.025, 0.03, 0.07, 6, M.eisen, 0.3, 0.48, 0.3);
+  b.sphere(0.02, M.gold, 0.3, 0.52, 0.3);
+  b.flagPole(-0.42, H + 0.35, 0, 0.26);
+  return b.build();
+}

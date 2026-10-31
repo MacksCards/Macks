@@ -4,10 +4,11 @@ import {
   BUILDINGS, BUILD_GOODS, BuildingDef, BuildingId, Cost, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, Res, SHIPS, SLOT_CAP,
   START_CARGO, START_MONEY, ShipType, TIERS, UnitType,
 } from './data';
-import { findSeaPath } from './path';
+import { findSeaPath, seaPass, seaReach } from './path';
 import { thinkAI } from './ai';
 import { tickCombat, unitUpkeep } from './combat';
-import { Island, PFLANZEN, T, WORLD_SIZE, generateWorld, rng } from './world';
+import { SYSTEMS } from './systems';
+import { Island, PFLANZEN, T, WORLD_SIZE, WORLD_SIZES, generateWorld, rng } from './world';
 
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft';
 export type { Res } from './data';
@@ -121,6 +122,8 @@ export interface Ship {
   shotT?: number;
   /** von Piraten gerade ausgeraubt: bis dahin in Ruhe gelassen */
   safeUntil?: number;
+  /** angetipptes Ziel der laufenden Fahrt (für die Neuplanung, wenn im Nebel Land auftaucht) */
+  goal?: [number, number];
 }
 
 /** Gedächtnis eines Computergegners */
@@ -150,12 +153,44 @@ export interface Player {
   graceUntil?: number;
   /** KI: nach dem Abrüsten bis dahin keine neue Vorwarnung */
   calmUntil?: number;
+  /** freier Händler (neutral, unangreifbar) */
+  trader?: boolean;
+  /** Ureinwohner (neutral, nur auf ausdrücklichen Befehl angreifbar) */
+  natives?: boolean;
 }
 
 type Goods = Record<GoodId, number>;
 
+export type Schwierigkeit = 'leicht' | 'normal' | 'schwer';
+export type Ereignisse = 'aus' | 'mild' | 'normal';
+
+/** Einstellungen beim Spielstart (werden im Spielstand gespeichert) */
+export interface GameOptions {
+  schwierigkeit: Schwierigkeit;
+  /** Startgeld des Spielers (Taler) */
+  startgeld: number;
+  /** Piraten an oder aus */
+  piraten: boolean;
+  /** Feuer, Pest, Dürre … (wirkt, sobald es die Ereignisse gibt) */
+  ereignisse: Ereignisse;
+  /** Spielziel (id aus GOALS in src/score.ts) */
+  ziel: string;
+  /** Weltgröße (Felder je Seite, aus WORLD_SIZES) */
+  weltgroesse: number;
+}
+
+/** Standard = das bisherige Spiel (8 000 Taler, Piraten, Endlosspiel, 240 × 240 Felder) */
+export const DEFAULT_OPTIONS: Readonly<GameOptions> = Object.freeze({
+  schwierigkeit: 'normal', startgeld: START_MONEY, piraten: true, ereignisse: 'mild', ziel: 'endlos', weltgroesse: WORLD_SIZE,
+});
+
+/** Ort einer Meldung (Feldkoordinaten wie x/y der Gebäude) */
+export interface MsgAt { x: number; y: number }
+export type MsgKind = 'info' | 'good' | 'bad';
+
 export interface SaveData {
-  v: 3;
+  /** 3 = alt (Welt kam aus der Startzahl), 4 = Welt steht vollständig im Spielstand */
+  v: 3 | 4;
   seed: number;
   tiles: string;
   roads: string;
@@ -174,6 +209,14 @@ export interface SaveData {
   ore?: number[];
   units?: Unit[];
   pirate?: { t: number; sunk: number; seen: boolean; victories?: number };
+  /** ab v4: Inselwelt (damit spätere Änderungen am Weltgenerator alte Stände nicht verändern) */
+  world?: { size: number; islandOf: string; islands: Island[]; starts: [number, number][] };
+  /** ab v4: ausdrücklich gewählte Einstellungen (der Rest kommt aus DEFAULT_OPTIONS) */
+  opts?: Partial<GameOptions>;
+  /** ab v4: Zustand des Zufallsgenerators g.rng() */
+  rng?: number;
+  /** ab v4: Zustand der Spielteile (src/systems.ts), je Spielteil unter seiner id */
+  ext?: Record<string, unknown>;
 }
 
 export interface GameEvents {
@@ -191,16 +234,28 @@ export interface GameEvents {
   sunk(s: Ship): void;
   /** Einheit gefallen */
   died(u: Unit): void;
-  message(text: string, kind?: 'info' | 'good' | 'bad'): void;
+  /** Meldung; at = Ort im Spiel (für „Hinschauen“), fehlt bei allgemeinen Meldungen */
+  message(text: string, kind?: MsgKind, at?: MsgAt): void;
 }
 
 export interface Check { ok: boolean; reason?: string }
+
+/** Ergebnis von undoBuild: wie viele Teile zurückgenommen wurden und was erstattet wurde */
+export interface UndoResult extends Check { n: number; refund: Cost }
+/** Ergebnis von demolishArea: was abgerissen wird (bzw. wurde) und was zurückkommt */
+export interface AreaResult { buildings: number; roads: number; kept: number; refund: Cost }
 
 /** schwert = Nahkampf, muskete, kanone (Kanonier), turm, schiff (Breitseite) */
 export type ShotKind = 'schwert' | 'muskete' | 'kanone' | 'turm' | 'schiff';
 
 const LAGER: BuildingId[] = ['kontor', 'markt'];
+/** Schlüssel des Spielstands (der Name blieb seit Version 3 gleich; die Version steht im Stand selbst: v) */
 const SAVE_KEY = 'neue-ufer-save-v4';
+/** hierhin wird ein unlesbarer Stand gesichert, bevor ein neues Spiel ihn überschreiben kann */
+const BROKEN_KEY = 'neue-ufer-save-sicherung';
+const SAVE_VERSION = 4;
+/** So lange (echte Sekunden) lässt sich ein Bau mit voller Erstattung zurücknehmen */
+export const UNDO_SECONDS = 10;
 export const HUMAN = 0;
 const SHIP_SPEED = 3.2; // Kacheln pro Spielsekunde
 const SHIP_SIGHT = 9;
@@ -219,8 +274,43 @@ export const OPPONENTS = [
 
 const enc = (a: ArrayLike<number>) => { let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i] + 48); return s; };
 const encR = (a: Float32Array) => { let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(48 + Math.round(Math.max(0, Math.min(1, a[i])) * 40)); return s; };
+const dec = (s: string, n: number, what: string) => {
+  if (typeof s !== 'string' || s.length !== n) throw new Error(`Spielstand beschädigt (${what})`);
+  return Uint8Array.from(s, (c) => c.charCodeAt(0) - 48);
+};
+/** Inselnummern je Feld kurz schreiben: „Wert*Anzahl“ hintereinander (Meer ist eine lange Folge von -1) */
+const encRuns = (a: Int16Array) => {
+  const out: string[] = [];
+  for (let i = 0; i < a.length;) { let j = i; while (j < a.length && a[j] === a[i]) j++; out.push(`${a[i]}*${j - i}`); i = j; }
+  return out.join(',');
+};
+const decRuns = (s: string, n: number) => {
+  const a = new Int16Array(n);
+  let i = 0;
+  for (const part of s.split(',')) {
+    const [v, c] = part.split('*').map(Number);
+    if (!Number.isInteger(v) || !Number.isInteger(c) || c < 0 || i + c > n) throw new Error('Spielstand beschädigt (Inseln)');
+    a.fill(v, i, i + c); i += c;
+  }
+  if (i !== n) throw new Error('Spielstand beschädigt (Inseln)');
+  return a;
+};
 const zeroGoods = (): Goods => Object.fromEntries(GOODS.map((g) => [g.id, 0])) as Goods;
 const EMPTY: Goods = Object.freeze(zeroGoods()) as Goods;
+/** Uhr für das Rückgängigmachen (echte Zeit, damit es bei 4-fachem Tempo genauso lange geht) */
+const wallClock = () => (typeof performance !== 'undefined' ? performance.now() : Date.now()) / 1000;
+const COST_KEYS = ['taler', ...BUILD_GOODS] as const;
+/** Kosten aufsummieren (für Gesamt-Erstattungen) */
+const addCost = (sum: Cost, c: Cost) => {
+  for (const k of COST_KEYS) if (c[k]) sum[k] = (sum[k] ?? 0) + c[k]!;
+  return sum;
+};
+/** Was ein Abriss zurückgibt: die Hälfte des Baumaterials, keine Taler */
+const halfRefund = (c: Cost): Cost => {
+  const r: Cost = {};
+  for (const k of BUILD_GOODS) { const v = Math.floor((c[k] ?? 0) / 2); if (v) r[k] = v; }
+  return r;
+};
 
 export class Game {
   seed = 1;
@@ -281,25 +371,47 @@ export class Game {
   best: number[] = [0, 0, 0, 0, 0];
   private unlockT = 0;
   private cartT = 0;
+  /** Einstellungen dieses Spiels (vollständig) und die ausdrücklich gewählten (nur die werden gespeichert) */
+  opts: GameOptions = { ...DEFAULT_OPTIONS };
+  private optsSet: Partial<GameOptions> = {};
+  /** Zustand des gespeicherten Zufallsgenerators (siehe rng()) */
+  private rngState = 1;
+  /** Änderungszähler: steigt bei jedem Bauen, Abreißen, Wegebau oder Besitzwechsel (für Zwischenspeicher anderer Teile) */
+  buildVersion = 0;
+  /** steigt, wenn neue Felder entdeckt werden (Schiffe planen dann ihren Kurs neu) */
+  private seenVer = 0;
+  private planSeen = new Map<number, number>();
+  /** Fahrt ins Unbekannte (Ziel im Nebel): erlaubte Gesamtstrecke und schon gefahrene Strecke */
+  private fogRun = new Map<number, { budget: number; run: number }>();
+  /** Zwischenspeicher für maxPop (wird bei jeder Änderung an Häusern geleert) */
+  private popCache = new Map<number, number>();
+  /** frisch Gebautes für undoBuild: Bauzeit (echte Sekunden), bezahlte Kosten, gerodete Waldfelder */
+  private recent = new Map<number, { t: number; paid: Cost; cleared: number[]; ship?: number }>();
+  private recentRoads = new Map<number, { t: number; owner: number; prev: number; paid: Cost; cleared: boolean }>();
 
   ev: GameEvents = { added() {}, removed() {}, changed() {}, roads() {}, trees() {}, felled() {}, seen() {}, message() {}, shot() {}, sunk() {}, died() {} };
 
   // ---------- Erstellen / Laden ----------
 
-  private setupWorld(seed: number) {
-    const w = generateWorld(seed);
+  /** Welt aus der Startzahl erzeugen (legacy = alte Inselregeln für Spielstände bis Version 3) */
+  private setupWorld(seed: number, size = WORLD_SIZE, legacy = false) {
+    const w = generateWorld(seed, size, legacy);
     this.seed = seed;
     this.size = w.size;
     this.tiles = w.tiles;
     this.islandOf = w.island;
     this.islands = w.islands;
     this.starts = w.starts;
+    this.setupGrids();
+  }
+
+  /** leere Raster in Weltgröße, dann die Rohstoffe aus der Landschaft */
+  private setupGrids() {
     const N = this.size * this.size;
     this.roads = new Uint8Array(N);
     this.seen = new Uint8Array(N);
     this.occ = new Int32Array(N);
-    this.initResources(seed);
-    this.oreStart = new Map(this.islands.map((i) => [i.id, i.erz]));
+    this.initResources(this.seed);
   }
 
   /** Startbestände: Wald voll, Fischgründe je nach Lage (Schwärme an Küsten, reiche und arme Stellen) */
@@ -339,10 +451,19 @@ export class Game {
     }
   }
 
-  static create(seed: number, opponents = 2): Game {
+  /**
+   * Neues Spiel. opts: Einstellungen (fehlende Werte = DEFAULT_OPTIONS, also das bisherige Spiel).
+   * Das Startgeld gilt für den Spieler; die Computergegner starten wie bisher mit START_MONEY.
+   */
+  static create(seed: number, opponents = 2, opts: Partial<GameOptions> = {}): Game {
     const g = new Game();
-    g.setupWorld(seed);
-    g.players = [{ id: HUMAN, name: 'Du', color: 0x2f6fd0, ai: false, money: START_MONEY }];
+    g.optsSet = { ...opts };
+    g.opts = { ...DEFAULT_OPTIONS, ...opts };
+    if (!WORLD_SIZES.includes(g.opts.weltgroesse)) g.opts.weltgroesse = WORLD_SIZE;
+    if (!(g.opts.startgeld >= 0)) g.opts.startgeld = START_MONEY;
+    g.setupWorld(seed, g.opts.weltgroesse);
+    g.rngState = (seed ^ 0x9e3779b9) >>> 0 || 1;
+    g.players = [{ id: HUMAN, name: 'Du', color: 0x2f6fd0, ai: false, money: g.opts.startgeld }];
     for (let i = 0; i < Math.min(3, opponents); i++) {
       const o = OPPONENTS[i];
       g.players.push({ id: i + 1, name: o.name, color: o.color, ai: true, money: START_MONEY, brain: { phase: 'suchen', island: -1, t: 0, tries: 0, grid: false } });
@@ -356,17 +477,54 @@ export class Game {
     }
     const [sx, sy] = g.starts[HUMAN];
     g.reveal(sx, sy, SHIP_SIGHT + 2);
+    // ein Stück Küste der Heimatinsel aufdecken, damit beim Start Land in Sicht ist
+    const coast = g.homeCoast();
+    if (coast) g.reveal(coast[0] + 0.5, coast[1] + 0.5, 6);
+    g.seenDirty = false;
     g.recompute();
     g.checkUnlocks(true);
+    for (const s of SYSTEMS) s.load?.(g, undefined);
     return g;
+  }
+
+  /** Landfeld der Heimatinsel, das dem Start des Spielers am nächsten liegt (null = keine Insel) */
+  homeCoast(): [number, number] | null {
+    const [sx, sy] = this.starts[HUMAN] ?? [0, 0];
+    const home = this.islands.find((i) => i.heimat) ?? this.islands.slice().sort((a, b) => Math.hypot(a.cx - sx, a.cy - sy) - Math.hypot(b.cx - sx, b.cy - sy))[0];
+    if (!home) return null;
+    let best: [number, number] | null = null, bd = 1e9;
+    for (let y = home.y0; y <= home.y1; y++) for (let x = home.x0; x <= home.x1; x++) {
+      if (this.islandOf[this.idx(x, y)] !== home.id) continue;
+      const d = Math.hypot(x + 0.5 - sx, y + 0.5 - sy);
+      if (d < bd) { bd = d; best = [x, y]; }
+    }
+    return best;
   }
 
   static fromSave(d: SaveData): Game {
     const g = new Game();
-    g.setupWorld(d.seed);
-    g.tiles = Uint8Array.from(d.tiles, (c) => c.charCodeAt(0) - 48);
-    g.roads = Uint8Array.from(d.roads, (c) => c.charCodeAt(0) - 48);
-    g.seen = Uint8Array.from(d.seen, (c) => c.charCodeAt(0) - 48);
+    if (d.v >= 4 && d.world) {
+      // Welt vollständig aus dem Spielstand (unabhängig vom heutigen Weltgenerator)
+      const w = d.world;
+      if (!Number.isInteger(w.size) || w.size < 16 || !Array.isArray(w.islands) || !Array.isArray(w.starts)) throw new Error('Spielstand beschädigt (Welt)');
+      g.seed = d.seed;
+      g.size = w.size;
+      g.islands = w.islands;
+      g.starts = w.starts;
+      g.islandOf = decRuns(w.islandOf, w.size * w.size);
+      g.tiles = dec(d.tiles, w.size * w.size, 'Gelände');
+      g.setupGrids();
+    } else {
+      // alter Stand: Inseln wie damals aus der Startzahl (alte Regeln), Gelände aus dem Stand
+      g.setupWorld(d.seed, WORLD_SIZE, true);
+      g.tiles = dec(d.tiles, g.size * g.size, 'Gelände');
+    }
+    const NN = g.size * g.size;
+    g.roads = dec(d.roads, NN, 'Wege');
+    g.seen = dec(d.seen, NN, 'Erkundung');
+    g.optsSet = d.opts ?? {};
+    g.opts = { ...DEFAULT_OPTIONS, ...g.optsSet, weltgroesse: g.size };
+    g.rngState = (d.rng ?? ((d.seed ^ Math.floor(d.time * 1000)) >>> 0)) || 1;
     g.players = d.players;
     g.ships = d.ships;
     g.lager = d.lager;
@@ -374,6 +532,8 @@ export class Game {
     g.nextId = d.nextId;
     g.time = d.time;
     g.quest = d.quest;
+    // alter Stand: verbleibendes Erz je Insel (ab v4 steht es in den Inseln selbst)
+    if (d.v < 4) (d.ore ?? []).forEach((v, i) => { if (g.islands[i]) g.islands[i].erz = v; });
     for (const b of d.buildings) {
       if (!BUILDINGS[b.type]) continue;
       b.stock ??= 0;
@@ -383,48 +543,85 @@ export class Game {
     }
     g.recompute();
     for (const t of d.unlocked ?? []) if (BUILDINGS[t]) g.unlocked.add(t);
-    (d.ore ?? []).forEach((v, i) => { if (g.islands[i]) g.islands[i].erz = v; });
     if (d.best) g.best = d.best;
     g.units = d.units ?? [];
     if (d.pirate) { g.pirateT = d.pirate.t; g.pirateSunk = d.pirate.sunk; g.pirateSeen = d.pirate.seen; g.victories = d.pirate.victories ?? 0; }
     else g.pirateT = 900; // alter Spielstand: Piraten erst nach einer Schonfrist
     if (d.res) {
-      const dec = (str: string, arr: Float32Array) => { for (let i = 0; i < arr.length && i < str.length; i++) arr[i] = (str.charCodeAt(i) - 48) / 40; };
-      dec(d.res.trees, g.trees); dec(d.res.fish, g.fish); dec(d.res.wild, g.wild); dec(d.res.weide, g.weide);
-      if (d.res.feld) dec(d.res.feld, g.feld);
+      const decR = (str: string, arr: Float32Array) => { for (let i = 0; i < arr.length && i < str.length; i++) arr[i] = (str.charCodeAt(i) - 48) / 40; };
+      decR(d.res.trees, g.trees); decR(d.res.fish, g.fish); decR(d.res.wild, g.wild); decR(d.res.weide, g.weide);
+      if (d.res.feld) decR(d.res.feld, g.feld);
     }
     g.checkUnlocks(true);
+    for (const s of SYSTEMS) s.load?.(g, d.ext?.[s.id]);
     return g;
   }
 
   serialize(): SaveData {
+    const ext: Record<string, unknown> = {};
+    for (const s of SYSTEMS) {
+      const v = s.save?.(this);
+      if (v !== undefined) ext[s.id] = v;
+    }
     return {
-      v: 3, seed: this.seed, tiles: enc(this.tiles), roads: enc(this.roads), seen: enc(this.seen),
+      v: SAVE_VERSION, seed: this.seed, tiles: enc(this.tiles), roads: enc(this.roads), seen: enc(this.seen),
       buildings: this.buildings, ships: this.ships, players: this.players, lager: this.lager,
       nextId: this.nextId, time: this.time, quest: this.quest, unlocked: [...this.unlocked], best: this.best,
       res: { trees: encR(this.trees), fish: encR(this.fish), wild: encR(this.wild), weide: encR(this.weide), feld: encR(this.feld) },
-      ore: this.islands.map((i) => i.erz),
       units: this.units, pirate: { t: this.pirateT, sunk: this.pirateSunk, seen: this.pirateSeen, victories: this.victories },
+      world: { size: this.size, islandOf: encRuns(this.islandOf), islands: this.islands, starts: this.starts },
+      opts: this.optsSet, rng: this.rngState, ext,
     };
   }
 
+  /** Hinweis vom letzten load(), z. B. dass ein unlesbarer Stand gesichert wurde (für die Oberfläche) */
+  static loadNote: string | null = null;
+  /** true, wenn ein unlesbarer Stand nicht gesichert werden konnte: dann wird er nicht überschrieben */
+  private static protectSave = false;
+
   save(): boolean {
+    if (Game.protectSave) return false;
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.serialize())); return true; } catch { return false; }
   }
 
+  /**
+   * Spielstand laden. Versionen 3 und 4 werden gelesen. Ist der Stand unlesbar (kaputt oder aus einer
+   * neueren Version), wird er unter eigenem Schlüssel gesichert, bevor ein neues Spiel ihn überschreibt.
+   */
   static load(): Game | null {
+    Game.loadNote = null;
+    let raw: string | null = null;
+    try { raw = localStorage.getItem(SAVE_KEY); } catch { return null; }
+    if (!raw) return null;
     try {
-      const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return null;
       const d = JSON.parse(raw) as SaveData;
-      return d.v === 3 ? Game.fromSave(d) : null;
-    } catch {
+      if (!d || typeof d !== 'object' || (d.v !== 3 && d.v !== 4)) throw new Error(`unbekannte Version ${String((d as { v?: unknown } | null)?.v)}`);
+      return Game.fromSave(d);
+    } catch (e) {
+      try {
+        localStorage.setItem(BROKEN_KEY, raw);
+        localStorage.setItem(`${BROKEN_KEY}-info`, JSON.stringify({ zeit: new Date().toISOString(), grund: String(e) }));
+        Game.loadNote = 'Dein letzter Spielstand ließ sich nicht laden. Er wurde gesichert, und ein neues Spiel beginnt.';
+      } catch {
+        // kein Platz für die Sicherung: dann den alten Stand lieber nicht überschreiben
+        Game.protectSave = true;
+        Game.loadNote = 'Dein letzter Spielstand ließ sich nicht laden. Er bleibt erhalten; dieses Spiel wird erst gespeichert, wenn du ein neues Spiel beginnst.';
+      }
       return null;
     }
   }
 
   static clearSave() {
+    Game.protectSave = false;
     try { localStorage.removeItem(SAVE_KEY); } catch { /* egal */ }
+  }
+
+  /** Zufallszahl 0..1 aus dem gespeicherten Zufallsgenerator (gleiche Folge nach dem Laden) */
+  rng(): number {
+    let t = (this.rngState = (this.rngState + 0x6d2b79f5) >>> 0);
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   }
 
   // ---------- Hilfen ----------
@@ -497,14 +694,27 @@ export class Game {
 
   // ---------- Freischaltungen (wie im Vorbild nach Einwohnerzahl) ----------
 
-  /** Größte Einwohnerzahl mindestens der Stufe tier auf einer einzelnen Insel */
+  /** Größte Einwohnerzahl mindestens der Stufe tier auf einer einzelnen Insel (zwischengespeichert, bis sich Häuser ändern) */
   maxPop(tier: number, owner = HUMAN): number {
+    const key = owner * 8 + tier;
+    const c = this.popCache.get(key);
+    if (c !== undefined) return c;
     const per = new Map<number, number>();
     for (const b of this.buildings) if (b.owner === owner && b.type === 'haus' && b.tier >= tier) per.set(b.island, (per.get(b.island) ?? 0) + b.residents);
-    return Math.max(0, ...per.values());
+    const v = Math.max(0, ...per.values());
+    this.popCache.set(key, v);
+    return v;
+  }
+
+  /** Ein vorbereitetes Gebäude (geplant) gibt es erst, wenn sein Spielteil es als „bereit“ meldet */
+  isReady(type: BuildingId): boolean {
+    if (!BUILDINGS[type].geplant) return true;
+    for (const s of SYSTEMS) if (s.bereit?.(this).includes(type)) return true;
+    return false;
   }
 
   isUnlocked(type: BuildingId): boolean {
+    if (!this.isReady(type)) return false;
     if (this.unlocked.has(type)) return true;
     if (BUILDINGS[type].victory) return false;
     const u = BUILDINGS[type].unlock;
@@ -520,7 +730,7 @@ export class Game {
     for (let t = 0; t < TIERS.length; t++) this.best[t] = Math.max(this.best[t] ?? 0, this.maxPop(t));
     const fresh: BuildingId[] = [];
     for (const d of Object.values(BUILDINGS)) {
-      if (!d.category || d.victory || this.unlocked.has(d.id)) continue;
+      if (!d.category || d.victory || this.unlocked.has(d.id) || !this.isReady(d.id)) continue;
       const u = d.unlock;
       if (!u || this.maxPop(u.tier) >= u.n) { this.unlocked.add(d.id); if (u) fresh.push(d.id); }
     }
@@ -534,7 +744,7 @@ export class Game {
   nextUnlock(cat: string): { type: BuildingId; tier: number; n: number } | null {
     let best: { type: BuildingId; tier: number; n: number } | null = null;
     for (const d of Object.values(BUILDINGS)) {
-      if (d.category !== cat || this.unlocked.has(d.id) || !d.unlock) continue;
+      if (d.category !== cat || this.unlocked.has(d.id) || !d.unlock || !this.isReady(d.id)) continue;
       if (!best || d.unlock.tier < best.tier || (d.unlock.tier === best.tier && d.unlock.n < best.n)) best = { type: d.id, ...d.unlock };
     }
     return best;
@@ -547,7 +757,7 @@ export class Game {
       if (!this.inMap(x, y)) continue;
       if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 > r * r) continue;
       const k = this.idx(x, y);
-      if (!this.seen[k]) { this.seen[k] = 1; this.seenDirty = true; }
+      if (!this.seen[k]) { this.seen[k] = 1; this.seenDirty = true; this.seenVer++; }
     }
   }
 
@@ -560,8 +770,17 @@ export class Game {
 
   // ---------- abgeleitete Werte ----------
 
+  /** Gehört ein Feld zum Wegenetz eines Besitzers? Wege – und seine eigenen Tore (auch ohne Weg darunter) */
+  roadOpen(k: number, owner: number): boolean {
+    const o = this.occ[k];
+    if (o) { const b = this.byId.get(o); return !!b && b.owner === owner && !!BUILDINGS[b.type].gate; }
+    return this.roads[k] > 0;
+  }
+
   recompute() {
     const N = this.size;
+    this.buildVersion++;
+    this.popCache.clear();
     // Besitz: Kontore/Marktplätze beanspruchen Land ihrer Insel (wer zuerst baut, dem gehört es)
     this.own = new Int8Array(N * N).fill(-1);
     this.cap.clear();
@@ -582,34 +801,38 @@ export class Game {
     }
     this.area = new Uint8Array(N * N);
     for (let k = 0; k < N * N; k++) if (this.own[k] === HUMAN) this.area[k] = 1;
-    // Wegnetz ab Kontor/Markt
+    // Wegnetz je Besitzer ab Kontor/Markt: über Wege und durch die eigenen Tore (fremde Tore sperren)
     this.roadLinked = new Uint8Array(N * N);
-    const stack: number[] = [];
+    const nets = new Map<number, Uint8Array>();
     for (const b of claimers) {
+      let net = nets.get(b.owner);
+      if (!net) { net = new Uint8Array(N * N); nets.set(b.owner, net); }
+      const stack: number[] = [];
       for (const [x, y] of this.ring(b)) {
         if (!this.inMap(x, y)) continue;
         const k = this.idx(x, y);
-        if (this.roads[k] && !this.roadLinked[k]) { this.roadLinked[k] = 1; stack.push(k); }
+        if (!net[k] && this.roadOpen(k, b.owner)) { net[k] = 1; this.roadLinked[k] = 1; stack.push(k); }
       }
-    }
-    while (stack.length) {
-      const k = stack.pop()!;
-      const x = k % N, y = (k / N) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + dx, ny = y + dy;
-        if (!this.inMap(nx, ny)) continue;
-        const nk = this.idx(nx, ny);
-        if (this.roads[nk] && !this.roadLinked[nk]) { this.roadLinked[nk] = 1; stack.push(nk); }
+      while (stack.length) {
+        const k = stack.pop()!;
+        const x = k % N, y = (k / N) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx, ny = y + dy;
+          if (!this.inMap(nx, ny)) continue;
+          const nk = this.idx(nx, ny);
+          if (!net[nk] && this.roadOpen(nk, b.owner)) { net[nk] = 1; this.roadLinked[nk] = 1; stack.push(nk); }
+        }
       }
     }
     this.linked.clear();
     for (const b of this.buildings) {
       if (LAGER.includes(b.type)) { this.linked.add(b.id); continue; }
+      const net = nets.get(b.owner);
       for (const [x, y] of this.ring(b)) {
         if (!this.inMap(x, y)) continue;
         const k = this.idx(x, y);
         const other = this.occ[k] ? this.byId.get(this.occ[k]) : undefined;
-        if (this.roadLinked[k] || (other && LAGER.includes(other.type) && other.owner === b.owner)) { this.linked.add(b.id); break; }
+        if (net?.[k] || (other && LAGER.includes(other.type) && other.owner === b.owner)) { this.linked.add(b.id); break; }
       }
     }
     // Versorgung der Wohnhäuser
@@ -624,7 +847,8 @@ export class Game {
         if (s.owner !== h.owner) continue;
         const [sx, sy] = this.center(s);
         const r = this.def(s).radius ?? 0;
-        if ((hx - sx) ** 2 + (hy - sy) ** 2 <= r * r) { set.add(s.type); if (s.type === 'kirche') set.add('kapelle'); }
+        // wie im Vorbild: die Kirche ersetzt die Kapelle, die Hochschule die Schule in ihrer Reichweite
+        if ((hx - sx) ** 2 + (hy - sy) ** 2 <= r * r) { set.add(s.type); if (s.type === 'kirche') set.add('kapelle'); if (s.type === 'hochschule') set.add('schule'); }
       }
       this.coverage.set(h.id, set);
     }
@@ -646,7 +870,7 @@ export class Game {
     }
   }
 
-  /** Weg über Straßen von Gebäude a zu Gebäude b (Feldmitten), null = keine Verbindung */
+  /** Weg über Straßen (und eigene Tore) von Gebäude a zu Gebäude b (Feldmitten), null = keine Verbindung */
   roadPath(a: Building, b: Building): [number, number][] | null {
     const N = this.size;
     const goal = new Set<number>();
@@ -656,7 +880,8 @@ export class Game {
     for (const k of startRing) if (this.occ[k] === b.id) return [];
     const from = new Map<number, number>();
     const q: number[] = [];
-    for (const k of startRing) if (this.roads[k] && !from.has(k)) { from.set(k, -1); q.push(k); }
+    const open = (k: number) => this.roadOpen(k, a.owner);
+    for (const k of startRing) if (open(k) && !from.has(k)) { from.set(k, -1); q.push(k); }
     for (let h = 0; h < q.length; h++) {
       const k = q[h];
       if (goal.has(k)) {
@@ -669,7 +894,7 @@ export class Game {
         const nx = x + dx, ny = y + dy;
         if (!this.inMap(nx, ny)) continue;
         const nk = this.idx(nx, ny);
-        if (this.roads[nk] && !from.has(nk)) { from.set(nk, k); q.push(nk); }
+        if (open(nk) && !from.has(nk)) { from.set(nk, k); q.push(nk); }
       }
     }
     return null;
@@ -681,6 +906,8 @@ export class Game {
     const taken = new Set(this.carts.filter((o) => o.state === 'hin').map((o) => o.target));
     const cands = this.buildings
       .filter((b) => b.owner === home.owner && b.island === home.island && this.def(b).prod && b.stock >= 1 && !taken.has(b.id))
+      // ist die Ware im Inselllager schon am Limit, bleibt sie im Betrieb (er meldet dann selbst „Lager voll“)
+      .filter((b) => this.cartRoom(home, this.def(b).prod!.output) >= 1)
       .filter((b) => { const [bx, by] = this.center(b); return Math.hypot(bx - hx, by - hy) <= reach + 1; })
       .sort((p, q) => q.stock - p.stock);
     for (const b of cands) {
@@ -694,11 +921,48 @@ export class Game {
     }
   }
 
+  /**
+   * Platz im Inselllager des Karren-Heims für eine Ware, abzüglich dessen, was andere Karren
+   * schon dorthin bringen (geladen oder auf dem Weg zum Abholen). except = dieser Karren zählt nicht mit.
+   */
+  private cartRoom(home: Building, g: GoodId, except?: Cart): number {
+    const l = this.lagerOf(home.owner, home.island);
+    if (!l) return 0;
+    let room = this.capOf(home.owner, home.island) - l[g];
+    for (const o of this.carts) {
+      if (o === except) continue;
+      const oh = this.byId.get(o.home);
+      if (!oh || oh.owner !== home.owner || oh.island !== home.island) continue;
+      if (o.g === g && o.n > 0) room -= o.n;
+      else if (o.state === 'hin') {
+        const t = this.byId.get(o.target);
+        if (t && this.def(t).prod?.output === g) room -= Math.min(CART_CAP, Math.floor(t.stock));
+      }
+    }
+    return room;
+  }
+
+  /** Ladung ins Inselllager bringen – nur so viel, wie Platz ist; der Rest bleibt im Karren */
+  private cartUnload(c: Cart, home: Building) {
+    const l = this.lagerOf(home.owner, home.island);
+    if (!c.g || c.n <= 0) { c.g = null; c.n = 0; return; }
+    if (!l) { c.g = null; c.n = 0; return; } // kein Lager mehr (Kontor verloren): die Ladung ist weg
+    const put = Math.max(0, Math.min(c.n, Math.floor(this.capOf(home.owner, home.island) - l[c.g])));
+    l[c.g] += put; c.n -= put;
+    if (c.n <= 0) { c.g = null; c.n = 0; }
+  }
+
   private tickCarts(dt: number) {
     const think = this.cartT >= 1;
     for (const c of this.carts) {
       const home = this.byId.get(c.home)!;
-      if (c.state === 'idle') { if (think) this.assignCart(c, home); continue; }
+      if (c.state === 'idle') {
+        if (!think) continue;
+        // Rest vom letzten Mal: erst abladen, wenn wieder Platz ist – vorher keine neue Fahrt
+        if (c.n > 0) { this.cartUnload(c, home); if (c.n > 0) continue; }
+        this.assignCart(c, home);
+        continue;
+      }
       const here = this.roads[this.idx(Math.floor(c.x), Math.floor(c.y))];
       let step = CART_SPEED * (here === 2 ? 1.5 : 1) * dt;
       while (step > 0 && c.path.length) {
@@ -713,16 +977,18 @@ export class Game {
       if (c.state === 'hin') {
         const b = this.byId.get(c.target);
         if (b && this.def(b).prod) {
-          const take = Math.min(Math.floor(b.stock), CART_CAP);
-          b.stock -= take; c.g = this.def(b).prod!.output; c.n = take;
+          // nur so viel mitnehmen, wie im Lager noch Platz ist – der Rest bleibt im Betrieb
+          const g = this.def(b).prod!.output;
+          const take = Math.max(0, Math.min(Math.floor(b.stock), CART_CAP, Math.floor(this.cartRoom(home, g, c))));
+          b.stock -= take;
+          if (take > 0) { c.g = g; c.n = take; }
         }
         const back = b ? this.roadPath(home, b) : null;
         c.path = [...(back ?? []).reverse(), this.center(home)];
         c.state = 'zurueck';
       } else {
-        const l = this.lagerOf(home.owner, home.island);
-        if (l && c.g) l[c.g] = Math.min(Math.max(this.capOf(home.owner, home.island), l[c.g]), l[c.g] + c.n);
-        c.g = null; c.n = 0; c.state = 'idle';
+        this.cartUnload(c, home);
+        c.state = 'idle';
       }
     }
     if (think) this.cartT = 0;
@@ -782,8 +1048,7 @@ export class Game {
     if (d.deposit) {
       const id = this.islandOf[this.idx(x, y)];
       const isl = this.islands[id];
-      const ok = !isl ? false : d.deposit === 'erz' ? isl.erz > 0 : d.deposit === 'tiefErz' ? this.hadOre(id) : !!isl.gold;
-      if (!ok) return 0;
+      if (!isl || !this.depositLeft(isl, d.deposit)) return 0;
     }
     if (d.needs === 'berg') {
       for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Berg) return 1;
@@ -853,6 +1118,18 @@ export class Game {
     return t;
   }
 
+  /** Eine Ware (bis zu n Tonnen) vom Schiff ins Kontor laden – nur so viel, wie im Lager Platz ist */
+  unloadGood(s: Ship, g: GoodId, n: number): number {
+    const k = this.shipDock(s);
+    if (!k) return 0;
+    const l = this.lagerOf(s.owner, k.island);
+    if (!l) return 0;
+    const room = Math.max(0, Math.floor(this.capOf(s.owner, k.island) - l[g]));
+    const t = this.shipTake(s, g, Math.max(0, Math.min(Math.floor(n), room, this.shipCargo(s, g))));
+    l[g] += t;
+    return t;
+  }
+
   /** Insel, an deren Küste das Schiff gerade liegt (-1 = keine) */
   shipNearIsland(s: Ship): number {
     let best = -1, bd = DOCK_RANGE + 1;
@@ -867,31 +1144,122 @@ export class Game {
     return best;
   }
 
+  /** Nebel für die Kursplanung: Schiffe des Spielers kennen nur Entdecktes (unentdeckt gilt als Wasser) */
+  private fogOf(s: Ship): Uint8Array | undefined { return s.owner === HUMAN ? this.seen : undefined; }
+
+  /**
+   * Schiff fahren lassen (Wunsch: „Tipp aufs Land = in diese Richtung, so weit es geht“).
+   * - Ziel auf dem Wasser (oder im Nebel): kürzester Seeweg dorthin.
+   * - Ziel an Land: der Linie vom Schiff zum Tippunkt folgen; Ziel ist das letzte Wasserfeld vor der Küste
+   *   der angetippten Insel – das Schiff hält an der zugewandten Küste und fährt nicht um die Insel herum.
+   * - Geht beides nicht: Flächensuche ab dem Schiff – das Feld mit dem kleinsten Wert aus
+   *   Abstand zum Tippunkt + 0,5 × Fahrweg („so nah wie möglich, ohne riesigen Umweg“).
+   * false nur, wenn sich das Schiff gar nicht bewegen kann.
+   */
   moveShip(s: Ship, tx: number, ty: number): boolean {
-    let gx = Math.floor(tx), gy = Math.floor(ty);
-    const clamp = (v: number) => Math.min(this.size - 1, Math.max(0, v));
-    gx = clamp(gx); gy = clamp(gy);
-    // Ziel an Land → so nah wie möglich heran: das Küstenwasser, das dem angetippten Punkt am nächsten liegt
-    // (bei Gleichstand das, was näher am Schiff liegt)
-    if (!this.isWater(this.idx(gx, gy))) {
-      let best: [number, number] | null = null, bd = 1e9;
-      for (let r = 1; r < 90 && !best; r++) for (let y = gy - r; y <= gy + r; y++) for (let x = gx - r; x <= gx + r; x++) {
-        if (Math.max(Math.abs(x - gx), Math.abs(y - gy)) !== r) continue; // nur der Ring
-        if (!this.inMap(x, y) || !this.isWater(this.idx(x, y))) continue;
-        const d = Math.hypot(x - gx, y - gy) + Math.hypot(x - s.x, y - s.y) * 0.02;
-        if (d < bd) { bd = d; best = [x, y]; }
-      }
-      if (!best) return false;
-      [gx, gy] = best;
+    const N = this.size;
+    tx = Math.min(N - 0.01, Math.max(0, tx)); ty = Math.min(N - 0.01, Math.max(0, ty));
+    const gx = Math.floor(tx), gy = Math.floor(ty);
+    const sx = Math.min(N - 1, Math.max(0, Math.floor(s.x))), sy = Math.min(N - 1, Math.max(0, Math.floor(s.y)));
+    const fog = this.fogOf(s);
+    const pass = seaPass(this.isWater, fog);
+    const gk = this.idx(gx, gy);
+    let path: [number, number][] | null = null;
+    if (pass(gk)) path = findSeaPath(N, this.isWater, sx, sy, gx, gy, 40000, fog);
+    else {
+      const stop = this.lineToCoast(s.x, s.y, tx, ty, this.islandOf[gk], pass);
+      if (stop && (stop[0] !== sx || stop[1] !== sy)) path = findSeaPath(N, this.isWater, sx, sy, stop[0], stop[1], 40000, fog);
     }
-    const p = findSeaPath(this.size, this.isWater, Math.floor(s.x), Math.floor(s.y), gx, gy);
-    if (!p) return false;
-    s.path = p;
+    path ??= seaReach(N, this.isWater, sx, sy, tx, ty, { seen: fog, w: 0.5 });
+    if (!path) { s.goal = undefined; return false; }
+    s.path = path;
+    s.goal = path.length ? [tx, ty] : undefined;
+    this.planSeen.set(s.id, this.seenVer);
+    // Ziel im Nebel: später nur kleine Umwege erlaubt (sonst würde der Kurs verraten, wo Land ist)
+    if (fog && !fog[gk] && path.length) this.fogRun.set(s.id, { budget: this.pathLength(s, path) + 6, run: 0 });
+    else this.fogRun.delete(s.id);
     return true;
   }
 
+  /** Länge eines Kurses ab der Schiffsposition */
+  private pathLength(s: { x: number; y: number }, path: [number, number][]): number {
+    let len = 0, ax = s.x, ay = s.y;
+    for (const [x, y] of path) { len += Math.hypot(x - ax, y - ay); ax = x; ay = y; }
+    return len;
+  }
+
+  /**
+   * Der Linie vom Punkt (x0, y0) zum Tippunkt folgen: das letzte befahrbare Feld, bevor die Linie
+   * auf (bekanntes) Land der Insel isl trifft – andere Inseln unterwegs zählen nicht.
+   * isl = null: schon vor dem ersten Land überhaupt halten. Ergebnis null = kein solches Feld.
+   */
+  private lineToCoast(x0: number, y0: number, x1: number, y1: number, isl: number | null, pass: (k: number) => boolean): [number, number] | null {
+    const steps = Math.ceil(Math.hypot(x1 - x0, y1 - y0) * 4);
+    let last: [number, number] | null = null;
+    for (let i = 0; i <= steps; i++) {
+      const t = i / Math.max(1, steps);
+      const x = Math.floor(x0 + (x1 - x0) * t), y = Math.floor(y0 + (y1 - y0) * t);
+      if (!this.inMap(x, y)) continue;
+      const k = this.idx(x, y);
+      if (pass(k)) { last = [x, y]; continue; }
+      if (isl === null || this.islandOf[k] === isl) return last;
+    }
+    return last;
+  }
+
+  /** Verläuft der Rest des Kurses über Land, das inzwischen entdeckt wurde? (Felder entlang der Strecke) */
+  private courseBlocked(s: Ship): boolean {
+    const pass = seaPass(this.isWater, this.fogOf(s));
+    let ax = s.x, ay = s.y;
+    for (const [x, y] of s.path) {
+      const n = Math.ceil(Math.hypot(x - ax, y - ay) * 4);
+      for (let i = 1; i <= n; i++) {
+        const px = Math.floor(ax + ((x - ax) * i) / n), py = Math.floor(ay + ((y - ay) * i) / n);
+        if (this.inMap(px, py) && !pass(this.idx(px, py))) return true;
+      }
+      ax = x; ay = y;
+    }
+    return false;
+  }
+
+  /**
+   * Neu planen, weil im Nebel Land aufgetaucht ist. Ist das Ziel bekannt: normal neu fahren (auch mit Umweg).
+   * Liegt es noch im Nebel: nur ein kleiner Umweg (z. B. um eine Landspitze) – sonst würde der Kurs verraten,
+   * dass dort Land ist. Dann hält das Schiff vor der Küste, wie ein Kapitän, der Land voraus sieht.
+   */
+  private replan(s: Ship) {
+    const goal = s.goal;
+    if (!goal) return;
+    const [gx, gy] = goal;
+    if (this.seen[this.idx(Math.floor(gx), Math.floor(gy))]) { this.moveShip(s, gx, gy); return; }
+    const N = this.size, fog = this.fogOf(s);
+    const sx = Math.floor(s.x), sy = Math.floor(s.y);
+    const p = findSeaPath(N, this.isWater, sx, sy, Math.floor(gx), Math.floor(gy), 40000, fog);
+    const len = p ? this.pathLength(s, p) : Infinity;
+    const fr = this.fogRun.get(s.id);
+    // klein = höchstens 3 Felder länger als der bisherige Kurs und insgesamt nicht mehr als 6 Felder Umweg
+    const small = len <= this.pathLength(s, s.path) + 3 && (!fr || fr.run + len <= fr.budget);
+    if (p && small) { s.path = p; this.planSeen.set(s.id, this.seenVer); return; }
+    // vor dem ersten bekannten Land auf der Linie zum Ziel halten (liegt keins darauf: hier stehen bleiben)
+    const pass = seaPass(this.isWater, fog);
+    const stop = this.lineToCoast(s.x, s.y, gx, gy, null, pass);
+    const atGoal = stop && stop[0] === Math.floor(gx) && stop[1] === Math.floor(gy);
+    s.path = (stop && !atGoal && (stop[0] !== sx || stop[1] !== sy) ? findSeaPath(N, this.isWater, sx, sy, stop[0], stop[1], 40000, fog) : null) ?? [];
+    s.goal = undefined;
+    this.fogRun.delete(s.id);
+  }
+
   private tickShip(s: Ship, dt: number) {
-    let step = SHIP_SPEED * (SHIPS[s.type ?? 'handel_klein'].speed) * dt;
+    // im Nebel geplant und inzwischen Land entdeckt? → Kurs neu planen
+    if (s.goal && s.path.length && s.owner === HUMAN && this.planSeen.get(s.id) !== this.seenVer) {
+      this.planSeen.set(s.id, this.seenVer);
+      if (this.courseBlocked(s)) this.replan(s);
+    }
+    // beschädigte Schiffe fahren langsamer: halbe Fahrt bei fast keinen Treffern mehr
+    const full = this.shipMaxHp(s);
+    const hp = Math.max(0, Math.min(full, s.hp ?? full));
+    let step = SHIP_SPEED * (SHIPS[s.type ?? 'handel_klein'].speed) * (0.5 + 0.5 * hp / full) * dt;
+    const fr = this.fogRun.get(s.id);
     while (step > 0 && s.path.length) {
       const [tx, ty] = s.path[0];
       const dx = tx - s.x, dy = ty - s.y;
@@ -901,8 +1269,10 @@ export class Game {
       s.x += (dx / d) * m; s.y += (dy / d) * m;
       s.dir = Math.atan2(dx, dy);
       step -= m;
+      if (fr) fr.run += m;
       if (m >= d) s.path.shift();
     }
+    if (!s.path.length) { s.goal = undefined; this.fogRun.delete(s.id); }
   }
 
   // ---------- Handel ----------
@@ -948,6 +1318,20 @@ export class Game {
   canPlace(type: BuildingId, x: number, y: number, owner = HUMAN, ignoreShip = false): Check {
     const d = BUILDINGS[type];
     const s = d.size;
+    // Billige Prüfungen zuerst (Freischaltung, Geld): dann muss die Feldschleife gar nicht laufen –
+    // das glättet die Rechenspitzen der Computergegner, die viele Bauplätze nacheinander prüfen.
+    if (!this.isReady(type)) return { ok: false, reason: 'Das gibt es noch nicht' };
+    if (d.victory && (!this.unlocked.has(type) || this.buildings.filter((b) => b.type === type && b.owner === owner).length >= this.victories)) return { ok: false, reason: this.victories ? 'Ein Triumphbogen je Sieg' : 'Erst nach einem Sieg' };
+    if (d.category && d.unlock && (owner === HUMAN ? !this.isUnlocked(type) : this.maxPop(d.unlock.tier, owner) < d.unlock.n)) {
+      const u = d.unlock;
+      return { ok: false, reason: `Erst ab ${u.n} ${TIERS[u.tier].dat}` };
+    }
+    if (!this.inMap(x, y)) return { ok: false, reason: 'Außerhalb der Karte' };
+    if ((d.cost.taler ?? 0) > (this.players[owner]?.money ?? 0)) return { ok: false, reason: 'Zu wenig Taler' };
+    if (type !== 'kontor') {
+      const i0 = this.islandOf[this.idx(x, y)];
+      if (i0 >= 0) { const c = this.canAfford(d.cost, owner, i0); if (!c.ok) return c; }
+    }
     let isl = -2;
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
       const tx = x + i, ty = y + j;
@@ -957,16 +1341,12 @@ export class Game {
       if (owner === HUMAN && !this.seen[k]) return { ok: false, reason: 'Noch unentdeckt' };
       if (t === T.Wasser) return { ok: false, reason: 'Nicht auf dem Wasser' };
       if (t === T.Berg) return { ok: false, reason: 'Nicht auf dem Berg' };
-      if (this.occ[k] || this.roads[k]) return { ok: false, reason: 'Platz ist belegt' };
+      // ein Tor darf auf einen eigenen Weg (der Weg bleibt darunter und das Netz verbunden)
+      if (this.occ[k] || (this.roads[k] && !d.gate)) return { ok: false, reason: 'Platz ist belegt' };
       if (isl === -2) isl = this.islandOf[k];
       if (type === 'kontor') {
         if (this.own[k] >= 0 && this.own[k] !== owner) return { ok: false, reason: 'Das Land gehört schon jemand anderem' };
       } else if (this.own[k] !== owner) return { ok: false, reason: 'Außerhalb deines Gebiets – baue einen Marktplatz' };
-    }
-    if (d.victory && (!this.unlocked.has(type) || this.buildings.filter((b) => b.type === type && b.owner === owner).length >= this.victories)) return { ok: false, reason: this.victories ? 'Ein Triumphbogen je Sieg' : 'Erst nach einem Sieg' };
-    if (d.category && d.unlock && (owner === HUMAN ? !this.isUnlocked(type) : this.maxPop(d.unlock.tier, owner) < d.unlock.n)) {
-      const u = d.unlock;
-      return { ok: false, reason: `Erst ab ${u.n} ${TIERS[u.tier].dat}` };
     }
     if (type === 'kontor') {
       if (this.kontor(owner, isl)) return { ok: false, reason: 'Auf dieser Insel hast du schon ein Kontor' };
@@ -976,7 +1356,6 @@ export class Game {
       if (ignoreShip) return { ok: true };
       const ship = this.shipNear(owner, x + s / 2, y + s / 2);
       if (!ship) return { ok: false, reason: 'Ein Schiff muss in der Nähe liegen' };
-      if ((d.cost.taler ?? 0) > this.players[owner].money) return { ok: false, reason: 'Zu wenig Taler' };
       for (const k of ['holz', 'werkzeug'] as const) if (this.shipCargo(ship, k) < (d.cost[k] ?? 0)) return { ok: false, reason: `Zu wenig ${GOOD[k].name} an Bord` };
       return { ok: true };
     }
@@ -997,49 +1376,107 @@ export class Game {
     }
     if (d.deposit) {
       const il = this.islands[isl];
-      if (d.deposit === 'erz' && !(il?.erz > 0)) return { ok: false, reason: il && il.erz === 0 && this.hadOre(isl) ? 'Das Erzvorkommen ist erschöpft' : 'Diese Insel hat kein Erz im Berg' };
-      if (d.deposit === 'gold' && !il?.gold) return { ok: false, reason: 'Diese Insel hat kein Gold im Berg' };
-      if (d.deposit === 'tiefErz' && !this.hadOre(isl)) return { ok: false, reason: 'Diese Insel hat kein Erz im Berg' };
+      if (d.deposit === 'gold') { if (!il?.gold) return { ok: false, reason: 'Diese Insel hat kein Gold im Berg' }; }
+      else if (!il || !this.hadOre(isl)) return { ok: false, reason: 'Diese Insel hat kein Erz im Berg' };
+      else if (!this.depositLeft(il, d.deposit)) return { ok: false, reason: d.deposit === 'erz' && il.erzDeep > 0 ? 'Das Erzvorkommen ist oben erschöpft' : 'Das Erzvorkommen ist erschöpft' };
     }
     if (d.pflanze && this.fertility(type, x, y) <= 0) return { ok: false, reason: `Diese Insel ist nicht fruchtbar für ${PFLANZEN[d.pflanze].name}` };
     return this.canAfford(d.cost, owner, isl);
   }
 
-  private oreStart = new Map<number, number>();
-  hadOre(isl: number) { return (this.oreStart.get(isl) ?? 0) > 0; }
+  /** Hatte die Insel zu Spielbeginn Erz? */
+  hadOre(isl: number) { return (this.islands[isl]?.erzStart ?? 0) > 0; }
+
+  /** Ist im Berg noch etwas für diese Mine? (Erzmine: oberes Vorkommen; tiefe Mine: der Rest; Gold: solange es Gold gibt) */
+  depositLeft(isl: Island, dep: NonNullable<BuildingDef['deposit']>): boolean {
+    if (dep === 'gold') return !!isl.gold;
+    if (!isl.erzStart && !isl.erz) return false;
+    if (isl.erzEndlos) return true;
+    return dep === 'erz' ? isl.erz > 0 : isl.erzDeep > 0;
+  }
+
+  /** Ort eines Gebäudes für Meldungen */
+  private at(b: { type: BuildingId; x: number; y: number }): MsgAt { const [x, y] = this.center(b); return { x, y }; }
+
+  /**
+   * Gemeinsamer Kern von place, placeMany und placeNeutral: Gebäude setzen – ohne Prüfung,
+   * ohne Neuberechnung, ohne Meldungen. pay = Kosten abziehen (Kontor: Material aus dem nahen Schiff).
+   */
+  private putBuilding(type: BuildingId, x: number, y: number, owner: number, pay: boolean): { b: Building; cleared: number[] } {
+    const d = BUILDINGS[type];
+    const b = this.newBuilding(type, x, y, owner);
+    let ship: Ship | undefined;
+    if (pay) {
+      if (type === 'kontor') {
+        ship = this.shipNear(owner, x + d.size / 2, y + d.size / 2);
+        this.players[owner].money -= d.cost.taler ?? 0;
+        if (ship) for (const k of ['holz', 'werkzeug'] as const) this.shipTake(ship, k, d.cost[k] ?? 0);
+      } else this.pay(d.cost, owner, b.island);
+    }
+    if (LAGER.includes(type)) this.lager[`${owner}:${b.island}`] ??= zeroGoods();
+    const cleared: number[] = [];
+    for (let j = 0; j < d.size; j++) for (let i = 0; i < d.size; i++) {
+      const k = this.idx(x + i, y + j);
+      if (this.tiles[k] === T.Wald) { this.tiles[k] = T.Gras; cleared.push(k); }
+    }
+    this.buildings.push(b);
+    this.byId.set(b.id, b);
+    this.stamp(b, b.id);
+    if (type === 'haus') this.popCache.clear();
+    if (pay) {
+      const now = wallClock();
+      for (const [id, r] of this.recent) if (now - r.t > UNDO_SECONDS) this.recent.delete(id);
+      this.recent.set(b.id, { t: now, paid: { ...d.cost }, cleared, ship: ship?.id });
+    }
+    return { b, cleared };
+  }
+
+  /** nach jedem erfolgreichen Bau: die Spielteile (src/systems.ts) erfahren davon */
+  private afterPlace(b: Building) {
+    for (const s of SYSTEMS) s.afterPlace?.(this, b);
+  }
 
   place(type: BuildingId, x: number, y: number, owner = HUMAN): Check {
     const c = this.canPlace(type, x, y, owner);
     if (!c.ok) return c;
     const d = BUILDINGS[type];
-    const b = this.newBuilding(type, x, y, owner);
-    if (type === 'kontor') {
-      const ship = this.shipNear(owner, x + d.size / 2, y + d.size / 2)!;
-      this.players[owner].money -= d.cost.taler ?? 0;
-      for (const k of ['holz', 'werkzeug'] as const) this.shipTake(ship, k, d.cost[k] ?? 0);
-      this.lager[`${owner}:${b.island}`] ??= zeroGoods();
-    } else this.pay(d.cost, owner, b.island);
-    let treesChanged = false;
-    for (let j = 0; j < d.size; j++) for (let i = 0; i < d.size; i++) {
-      const k = this.idx(x + i, y + j);
-      if (this.tiles[k] === T.Wald) { this.tiles[k] = T.Gras; treesChanged = true; }
-    }
-    this.buildings.push(b);
-    this.byId.set(b.id, b);
-    this.stamp(b, b.id);
+    const { b, cleared } = this.putBuilding(type, x, y, owner, true);
     this.recompute();
     if (LAGER.includes(type) && owner === HUMAN) {
       const [cx, cy] = this.center(b);
       this.reveal(cx, cy, (d.radius ?? 8) + 3);
       if (this.seenDirty) { this.seenDirty = false; this.ev.seen(); }
     }
-    if (treesChanged) this.ev.trees();
+    if (cleared.length) this.ev.trees();
     this.ev.added(b);
     if (type === 'kontor' && owner === HUMAN) {
       this.focus = b.island;
-      this.ev.message(`Kontor auf ${this.islands[b.island].name} gegründet! Lade jetzt die Waren aus dem Schiff.`, 'good');
+      this.ev.message(`Kontor auf ${this.islands[b.island].name} gegründet! Lade jetzt die Waren aus dem Schiff.`, 'good', this.at(b));
     }
+    this.afterPlace(b);
     return { ok: true };
+  }
+
+  /**
+   * Gebäude für einen neutralen Besitzer setzen (Piratennest, Ureinwohner) – ohne Gebiets-, Freischalt-
+   * und Kostenprüfung. Das Gelände muss passen: Land derselben Insel, kein Berg, frei. null = geht hier nicht.
+   */
+  placeNeutral(type: BuildingId, x: number, y: number, owner: number): Building | null {
+    const s = BUILDINGS[type].size;
+    if (!this.inMap(x, y)) return null;
+    const isl = this.islandOf[this.idx(x, y)];
+    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) {
+      const tx = x + i, ty = y + j;
+      if (!this.inMap(tx, ty)) return null;
+      const k = this.idx(tx, ty);
+      const t = this.tiles[k];
+      if (t === T.Wasser || t === T.Berg || this.occ[k] || this.roads[k] || this.islandOf[k] !== isl) return null;
+    }
+    const { b, cleared } = this.putBuilding(type, x, y, owner, false);
+    this.recompute();
+    if (cleared.length) this.ev.trees();
+    this.ev.added(b);
+    return b;
   }
 
   /** Weg bauen: 'weg' = Feldweg, 'steinweg' = Pflasterweg (kostet 1 Stein, Karren schneller). Feldwege lassen sich pflastern. */
@@ -1061,11 +1498,17 @@ export class Game {
   placeRoads(cells: [number, number][], owner = HUMAN, type: 'weg' | 'steinweg' = 'weg'): number {
     let n = 0, trees = false, lastReason = '';
     const c = BUILDINGS[type].cost;
+    const now = wallClock();
+    for (const [k, r] of this.recentRoads) if (now - r.t > UNDO_SECONDS) this.recentRoads.delete(k);
     for (const [x, y] of cells) {
       const ch = this.canRoad(x, y, owner, type);
       if (!ch.ok) { lastReason = ch.reason ?? ''; continue; }
       const k = this.idx(x, y);
-      if (this.tiles[k] === T.Wald) { this.tiles[k] = T.Gras; trees = true; }
+      const wood = this.tiles[k] === T.Wald;
+      if (wood) { this.tiles[k] = T.Gras; trees = true; }
+      // für undoBuild merken, was vorher hier lag (beim Pflastern: der Feldweg)
+      const prev = this.recentRoads.get(k);
+      this.recentRoads.set(k, { t: now, owner, prev: prev ? prev.prev : this.roads[k], paid: prev ? addCost({ ...prev.paid }, c) : { ...c }, cleared: wood || !!prev?.cleared });
       this.roads[k] = type === 'steinweg' ? 2 : 1;
       this.players[owner].money -= c.taler ?? 0;
       if (c.stein) { const l = this.lagerOf(owner, this.islandOf[k]); if (l) l.stein -= c.stein; }
@@ -1073,16 +1516,41 @@ export class Game {
     }
     if (n) { this.recompute(); this.ev.roads(); }
     if (trees) this.ev.trees();
-    if (!n && lastReason && cells.length === 1 && owner === HUMAN) this.ev.message(lastReason, 'bad');
+    if (!n && lastReason && cells.length === 1 && owner === HUMAN) this.ev.message(lastReason, 'bad', { x: cells[0][0] + 0.5, y: cells[0][1] + 0.5 });
     return n;
   }
 
-  /** Mauern/Palisaden: viele 1×1-Bauteile auf einmal setzen */
+  /**
+   * Viele Teile auf einmal (Mauern, Palisaden, ein Feld voller Häuser): alles setzen, dann nur
+   * eine Neuberechnung und die Meldungen gesammelt am Ende. Gibt die Zahl der gebauten Teile zurück.
+   */
   placeMany(type: BuildingId, cells: [number, number][], owner = HUMAN): number {
-    let n = 0, last = '';
-    for (const [x, y] of cells) { const r = this.place(type, x, y, owner); if (r.ok) n++; else last = r.reason ?? ''; }
-    if (!n && last && owner === HUMAN) this.ev.message(last, 'bad');
-    return n;
+    let last = '', lastAt: MsgAt | undefined;
+    if (LAGER.includes(type)) {
+      // Kontor und Marktplatz verändern das Baugebiet: dann Teil für Teil (kommt kaum vor)
+      let n = 0;
+      for (const [x, y] of cells) { const r = this.place(type, x, y, owner); if (r.ok) n++; else { last = r.reason ?? ''; lastAt = { x: x + 0.5, y: y + 0.5 }; } }
+      if (!n && last && owner === HUMAN) this.ev.message(last, 'bad', lastAt);
+      return n;
+    }
+    // Die Prüfung bleibt ohne Neuberechnung gültig: belegte Felder, Geld und Lager ändern sich sofort mit
+    const placed: Building[] = [];
+    let trees = false;
+    for (const [x, y] of cells) {
+      const c = this.canPlace(type, x, y, owner);
+      if (!c.ok) { last = c.reason ?? ''; lastAt = { x: x + 0.5, y: y + 0.5 }; continue; }
+      const r = this.putBuilding(type, x, y, owner, true);
+      if (r.cleared.length) trees = true;
+      placed.push(r.b);
+    }
+    if (placed.length) {
+      this.recompute();
+      if (trees) this.ev.trees();
+      for (const b of placed) this.ev.added(b);
+      for (const b of placed) this.afterPlace(b);
+    }
+    if (!placed.length && last && owner === HUMAN) this.ev.message(last, 'bad', lastAt);
+    return placed.length;
   }
 
   // ---------- Kontor-Ausbau und Werft ----------
@@ -1097,6 +1565,8 @@ export class Game {
     this.pay(next.cost, b.owner, b.island);
     b.level = lv;
     this.recompute();
+    // die Darstellung soll die neue Kontorstufe zeigen können
+    this.ev.changed(b);
     return { ok: true };
   }
 
@@ -1139,40 +1609,176 @@ export class Game {
     for (let i = 0; i < sd.slots; i++) ship.slots.push({ g: null, n: 0 });
     this.ships.push(ship);
     w.job = undefined;
-    if (w.owner === HUMAN) this.ev.message(`⛵ ${sd.name} „${ship.name}“ ist vom Stapel gelaufen!`, 'good');
+    if (w.owner === HUMAN) this.ev.message(`⛵ ${sd.name} „${ship.name}“ ist vom Stapel gelaufen!`, 'good', { x: ship.x, y: ship.y });
   }
 
   demolish(x: number, y: number): boolean {
     if (!this.inMap(x, y)) return false;
     const k = this.idx(x, y);
-    if (this.roads[k] && this.area[k]) { this.roads[k] = 0; this.recompute(); this.ev.roads(); return true; }
+    // ein Gebäude geht vor (ein Tor kann auf einem Weg stehen: dann zuerst das Tor)
+    if (!this.occ[k] && this.roads[k] && this.area[k]) { this.roads[k] = 0; this.recentRoads.delete(k); this.recompute(); this.ev.roads(); return true; }
     const b = this.buildingAt(x, y);
     if (!b || b.owner !== HUMAN) return false;
-    if (b.type === 'kontor') { this.ev.message('Das Kontor kann nicht abgerissen werden', 'bad'); return false; }
+    if (b.type === 'kontor') { this.ev.message('Das Kontor kann nicht abgerissen werden', 'bad', this.at(b)); return false; }
     this.removeBuilding(b);
     return true;
   }
 
   /** Gebäude ohne Rückgabe von Baumaterial entfernen (zerstört im Kampf; auch Kontore) */
   forceRemove(b: Building) {
-    this.stamp(b, 0);
-    this.buildings = this.buildings.filter((o) => o !== b);
-    this.byId.delete(b.id);
+    this.takeDown(b, false);
     this.recompute();
     this.ev.removed(b);
   }
 
   removeBuilding(b: Building) {
     if (b.type === 'kontor') return;
-    const d = this.def(b);
-    const l = this.lagerOf(b.owner, b.island);
-    const cap = this.capOf(b.owner, b.island);
-    if (l) for (const k of BUILD_GOODS) l[k] = Math.min(l[k] + Math.floor((d.cost[k] ?? 0) / 2), Math.max(cap, l[k]));
+    this.takeDown(b, true);
+    this.recompute();
+    this.ev.removed(b);
+  }
+
+  /** Gebäude von der Karte nehmen (ohne Neuberechnung); refund = halbes Baumaterial ins Inselllager (bis zum Limit) */
+  private takeDown(b: Building, refund: boolean): Cost {
+    const back: Cost = {};
+    if (refund) {
+      const l = this.lagerOf(b.owner, b.island);
+      const cap = this.capOf(b.owner, b.island);
+      const r = halfRefund(this.def(b).cost);
+      if (l) for (const k of BUILD_GOODS) {
+        const v = Math.max(0, Math.min(l[k] + (r[k] ?? 0), Math.max(cap, l[k])) - l[k]);
+        if (v) { l[k] += v; back[k] = v; }
+      }
+    }
     this.stamp(b, 0);
     this.buildings = this.buildings.filter((o) => o !== b);
     this.byId.delete(b.id);
+    this.recent.delete(b.id);
+    if (b.type === 'haus') this.popCache.clear();
+    return back;
+  }
+
+  /**
+   * Bereich abreißen (Ecke x0/y0 bis x1/y1): eigene Gebäude (das Kontor bleibt stehen) und eigene Wege.
+   * dry = nur zählen (für die Rückfrage), nichts ändern. Ein recompute am Ende. refund = halbes Baumaterial.
+   */
+  demolishArea(x0: number, y0: number, x1: number, y1: number, dry = false, owner = HUMAN): AreaResult {
+    const res: AreaResult = { buildings: 0, roads: 0, kept: 0, refund: {} };
+    const ax = Math.max(0, Math.min(x0, x1)), bx = Math.min(this.size - 1, Math.max(x0, x1));
+    const ay = Math.max(0, Math.min(y0, y1)), by = Math.min(this.size - 1, Math.max(y0, y1));
+    const hit = new Set<Building>();
+    const roads: number[] = [];
+    for (let y = ay; y <= by; y++) for (let x = ax; x <= bx; x++) {
+      const k = this.idx(x, y);
+      const b = this.buildingAt(x, y);
+      if (b && b.owner === owner) hit.add(b);
+      if (this.roads[k] && this.own[k] === owner) roads.push(k);
+    }
+    const gone: Building[] = [];
+    for (const b of hit) {
+      if (b.type === 'kontor') { res.kept++; continue; }
+      res.buildings++;
+      if (dry) addCost(res.refund, halfRefund(this.def(b).cost));
+      else { addCost(res.refund, this.takeDown(b, true)); gone.push(b); }
+    }
+    res.roads = roads.length;
+    if (dry || (!gone.length && !roads.length)) return res;
+    for (const k of roads) { this.roads[k] = 0; this.recentRoads.delete(k); }
     this.recompute();
-    this.ev.removed(b);
+    for (const b of gone) this.ev.removed(b);
+    if (roads.length) this.ev.roads();
+    return res;
+  }
+
+  /**
+   * Rückgängig: eben Gebautes wieder entfernen und die vollen Kosten erstatten – nur innerhalb von
+   * UNDO_SECONDS echten Sekunden nach dem Bau. what = ein Gebäude, mehrere (z. B. eine Mauer) oder
+   * die Felder einer Wegstrecke. Gerodeter Wald wächst dabei sofort wieder.
+   */
+  undoBuild(what: Building | readonly Building[] | readonly (readonly [number, number])[], owner = HUMAN): UndoResult {
+    const list = (Array.isArray(what) ? what : [what]) as readonly (Building | readonly [number, number])[];
+    const res: UndoResult = { ok: false, n: 0, refund: {} };
+    if (!list.length) return { ...res, reason: 'Nichts zum Zurücknehmen' };
+    const now = wallClock();
+    let trees = false;
+    if (Array.isArray(list[0])) {
+      // Wegstrecke
+      for (const [x, y] of list as readonly (readonly [number, number])[]) {
+        if (!this.inMap(x, y)) continue;
+        const k = this.idx(x, y);
+        const r = this.recentRoads.get(k);
+        if (!r || r.owner !== owner || now - r.t > UNDO_SECONDS) continue;
+        this.roads[k] = r.prev;
+        this.refund(r.paid, owner, this.islandOf[k], res.refund);
+        if (r.cleared && !this.occ[k] && !r.prev) { this.tiles[k] = T.Wald; trees = true; }
+        this.recentRoads.delete(k);
+        res.n++;
+      }
+      if (!res.n) return { ...res, reason: 'Zu spät – zurücknehmen geht nur kurz nach dem Bau' };
+      this.recompute();
+      this.ev.roads();
+      if (trees) this.ev.trees();
+      return { ...res, ok: true };
+    }
+    const todo = (list as readonly Building[]).filter((b) => {
+      const r = this.recent.get(b.id);
+      return this.byId.get(b.id) === b && b.owner === owner && !!r && now - r.t <= UNDO_SECONDS;
+    });
+    if (!todo.length) return { ...res, reason: 'Zu spät – zurücknehmen geht nur kurz nach dem Bau' };
+    // ein Kontor erst prüfen, bevor irgendetwas geändert wird
+    for (const b of todo) if (b.type === 'kontor') {
+      const why = this.undoKontor(b, this.recent.get(b.id)!.ship, res.refund, true);
+      if (why) return { ...res, reason: why };
+    }
+    for (const b of todo) {
+      const r = this.recent.get(b.id)!;
+      if (b.type === 'kontor') this.undoKontor(b, r.ship, res.refund, false);
+      else this.refund(r.paid, owner, b.island, res.refund);
+      this.takeDown(b, false);
+      for (const k of r.cleared) if (!this.occ[k] && !this.roads[k]) { this.tiles[k] = T.Wald; trees = true; }
+    }
+    res.n = todo.length;
+    this.recompute();
+    for (const b of todo) this.ev.removed(b);
+    if (trees) this.ev.trees();
+    return { ...res, ok: true };
+  }
+
+  /** volle Kosten zurück: Taler an den Besitzer, Baumaterial ins Inselllager */
+  private refund(c: Cost, owner: number, island: number, sum: Cost) {
+    if (c.taler) { this.players[owner].money += c.taler; sum.taler = (sum.taler ?? 0) + c.taler; }
+    const l = this.lagerOf(owner, island);
+    if (l) for (const k of BUILD_GOODS) if (c[k]) { l[k] += c[k]!; sum[k] = (sum[k] ?? 0) + c[k]!; }
+  }
+
+  /**
+   * Kontor zurücknehmen: geht nur, solange auf der Insel sonst nichts gebaut ist und das Schiff
+   * daneben liegt – Baumaterial und alles im Lager kommen zurück an Bord.
+   * check = nur prüfen. Gibt den Grund zurück, wenn es nicht geht (sonst null).
+   */
+  private undoKontor(k: Building, shipId: number | undefined, sum: Cost, check: boolean): string | null {
+    if (this.buildings.some((o) => o !== k && o.owner === k.owner && o.island === k.island)) return 'Erst die anderen Gebäude auf der Insel abreißen';
+    const [cx, cy] = this.center(k);
+    const ship = this.ships.find((s) => s.id === shipId) ?? this.shipNear(k.owner, cx, cy);
+    if (!ship || Math.hypot(ship.x - cx, ship.y - cy) > DOCK_RANGE + 2) return 'Das Schiff muss noch am Kontor liegen';
+    const l = this.lagerOf(k.owner, k.island) ?? zeroGoods();
+    const cost = BUILDINGS.kontor.cost;
+    const load = new Map<GoodId, number>();
+    for (const g of GOODS) if (l[g.id] >= 1) load.set(g.id, Math.floor(l[g.id]));
+    for (const g of ['holz', 'werkzeug'] as const) load.set(g, (load.get(g) ?? 0) + (cost[g] ?? 0));
+    // passt alles an Bord? (Laderäume zu je SLOT_CAP Tonnen)
+    let need = 0;
+    for (const [g, n] of load) {
+      const room = ship.slots.filter((sl) => sl.g === g).reduce((a, sl) => a + SLOT_CAP - sl.n, 0);
+      if (n > room) need += Math.ceil((n - room) / SLOT_CAP);
+    }
+    if (need > ship.slots.filter((sl) => !sl.g).length) return 'An Bord ist nicht genug Platz für Lager und Baumaterial';
+    if (check) return null;
+    for (const [g, n] of load) this.shipAdd(ship, g, n);
+    this.players[k.owner].money += cost.taler ?? 0;
+    addCost(sum, cost);
+    delete this.lager[`${k.owner}:${k.island}`];
+    return null;
   }
 
   // ---------- Simulation ----------
@@ -1214,6 +1820,8 @@ export class Game {
   }
 
   tick(dt: number) {
+    // Änderungen von außen (Tests, Oberfläche) sicher mitbekommen
+    this.popCache.clear();
     this.prev.clear();
     for (const s of this.ships) this.prev.set(s.id, [s.x, s.y, s.dir]);
     for (const u of this.units) this.prev.set(u.id, [u.x, u.y, u.dir]);
@@ -1237,6 +1845,8 @@ export class Game {
     if (this.regenT >= 1) { this.regrow(this.regenT); this.regenT = 0; }
     this.cartT += dt;
     this.tickCarts(dt);
+    // Piraten ausgeschaltet (Spieleinstellung): sie tauchen nie auf
+    if (!this.opts.piraten) this.pirateT = Math.max(this.pirateT, 1e9);
     tickCombat(this, dt);
     for (const p of this.players) if (p.ai && p.brain) thinkAI(this, p, dt);
     for (const p of this.players) {
@@ -1246,6 +1856,7 @@ export class Game {
     this.unlockT += dt;
     if (this.unlockT > 1) { this.unlockT = 0; this.checkUnlocks(); }
     this.checkQuest();
+    for (const s of SYSTEMS) s.tick?.(this, dt);
   }
 
   private regrow(dt: number) {
@@ -1343,10 +1954,18 @@ export class Game {
           const ok = hv ? this.finishHarvest(b) : true;
           if (ok) b.stock = Math.min(this.def(b).stock ?? 4, b.stock + (p.amount ?? 1));
           const dep = this.def(b).deposit;
-          if (dep === 'erz') {
-            const il = this.islands[b.island];
-            il.erz = Math.max(0, il.erz - (p.amount ?? 1));
-            if (il.erz === 0) { b.eff = 0; if (b.owner === HUMAN) this.ev.message(`⛏️ Das Erzvorkommen auf ${il.name} ist erschöpft.`, 'bad'); }
+          const il = this.islands[b.island];
+          // Erz wird weniger (außer bei unerschöpflichen Vorkommen): oben für die Erzmine, darunter für die tiefe Mine
+          if (il && !il.erzEndlos && (dep === 'erz' || dep === 'tiefErz')) {
+            const key = dep === 'erz' ? 'erz' : 'erzDeep';
+            const before = il[key];
+            il[key] = Math.max(0, il[key] - (p.amount ?? 1));
+            if (before > 0 && il[key] === 0) {
+              for (const o of this.buildings) if (o.island === b.island && this.def(o).deposit === dep) o.eff = 0;
+              if (b.owner === HUMAN) this.ev.message(dep === 'erz'
+                ? `⛏️ Das Erzvorkommen auf ${il.name} ist erschöpft.${il.erzDeep > 0 && this.isUnlocked('tiefeErzmine') ? ' Eine tiefe Erzmine kommt noch an den Rest.' : ''}`
+                : `⛏️ Auf ${il.name} ist das Erz jetzt endgültig erschöpft – kaufe Erz beim Händler oder suche ein anderes Vorkommen.`, 'bad', this.at(b));
+            }
           }
           b.target = undefined;
         }
@@ -1380,10 +1999,10 @@ export class Game {
 
     if (h.happy > 0.85 && h.residents < tier.maxResidents) {
       h.growT += dt;
-      if (h.growT >= 6) { h.residents++; h.growT = 0; }
+      if (h.growT >= 6) { h.residents++; h.growT = 0; this.popCache.clear(); }
     } else if (h.happy < 0.45 && h.residents > 1) {
       h.growT -= dt;
-      if (h.growT <= -12) { h.residents--; h.growT = 0; }
+      if (h.growT <= -12) { h.residents--; h.growT = 0; this.popCache.clear(); }
     } else h.growT *= 0.98;
 
     const block = this.upgradeBlocker(h);
@@ -1393,9 +2012,10 @@ export class Game {
         this.pay(TIERS[h.tier + 1].upgradeCost, h.owner, h.island);
         h.tier++;
         h.upT = 0;
+        this.popCache.clear();
         for (const g of Object.keys(TIERS[h.tier].consumes) as GoodId[]) if (h.need[g] === undefined) h.need[g] = 1;
         this.ev.changed(h);
-        if (h.owner === HUMAN && this.housesByTier()[h.tier] === 1) this.ev.message(`Deine ersten ${TIERS[h.tier].name} sind eingezogen! 🎉`, 'good');
+        if (h.owner === HUMAN && this.housesByTier()[h.tier] === 1) this.ev.message(`Deine ersten ${TIERS[h.tier].name} sind eingezogen! 🎉`, 'good', this.at(h));
       }
     } else h.upT = 0;
   }
@@ -1444,7 +2064,7 @@ const tierGoal = (tier: number, n: number) => ({ done: (g: Game) => houses(g, ti
 
 /** Aufgaben führen Schritt für Schritt durch alle Stufen und Warenketten (wie die Lernkurve des Vorbilds) */
 export const QUESTS: Quest[] = [
-  step('Neues Land', 'Tippe dein Schiff an, dann aufs Meer, um loszusegeln. Erkunde die Inseln und gründe an der Küste einer guten Insel ein Kontor (Schiff antippen → „Kontor bauen“).',
+  step('Neues Land', 'Tippe dein Schiff an, dann aufs Meer oder auf eine Insel – es segelt so nah wie möglich heran. Erkunde die Inseln und gründe an der Küste einer guten Insel ein Kontor (Schiff antippen → „Kontor bauen“).',
     (g) => g.count('kontor') >= 1, (g) => `${Math.min(1, g.count('kontor'))}/1`, 300),
   step('Ladung löschen', 'Lade Werkzeug, Holz und Nahrung aus dem Schiff ins Kontor (Schiff antippen → „Alles ausladen“).',
     (g) => stored(g) >= 40, (g) => `${Math.min(40, Math.floor(stored(g)))}/40 t`, 100),
