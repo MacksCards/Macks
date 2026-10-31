@@ -375,11 +375,12 @@ export class UI {
       this.attack(b.owner, () => { shipAttack(g, me, b.id); sound.play('glocke'); this.toast(`💣 ${me.name} greift ${BUILDINGS[b.type].name} an`, 'info'); });
       return;
     }
-    // Schiff ausgewählt + aufs Meer getippt → hinsegeln
-    if (this.selShip && !b) {
-      const gt = this.view.pick(x, y, false);
-      if (gt && this.g.tiles[this.g.idx(gt[0], gt[1])] === 0) {
-        if (this.g.moveShip(this.selShip, gt[0] + 0.5, gt[1] + 0.5)) { this.toast('⛵ Kurs gesetzt', 'info'); sound.play('glocke'); }
+    // Schiff ausgewählt + aufs Meer, aufs Land oder auf ein fremdes Gebäude getippt → hinsegeln (an Land: bis an die nächste Küste)
+    if (this.selShip && (!b || b.owner !== HUMAN)) {
+      const gt = this.view.pick(x, y, false) ?? t;
+      if (gt) {
+        const water = this.g.tiles[this.g.idx(gt[0], gt[1])] === 0;
+        if (this.g.moveShip(this.selShip, gt[0] + 0.5, gt[1] + 0.5)) { this.toast(water ? '⛵ Kurs gesetzt' : '⛵ Kurs zur Küste', 'info'); sound.play('glocke'); }
         else this.toast('Dorthin findet das Schiff keinen Weg', 'bad');
         return;
       }

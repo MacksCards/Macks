@@ -869,12 +869,14 @@ export class Game {
     let gx = Math.floor(tx), gy = Math.floor(ty);
     const clamp = (v: number) => Math.min(this.size - 1, Math.max(0, v));
     gx = clamp(gx); gy = clamp(gy);
-    // Ziel an Land → nächstes Wasserfeld suchen
+    // Ziel an Land → so nah wie möglich heran: das Küstenwasser, das dem angetippten Punkt am nächsten liegt
+    // (bei Gleichstand das, was näher am Schiff liegt)
     if (!this.isWater(this.idx(gx, gy))) {
       let best: [number, number] | null = null, bd = 1e9;
-      for (let r = 1; r < 10 && !best; r++) for (let y = gy - r; y <= gy + r; y++) for (let x = gx - r; x <= gx + r; x++) {
+      for (let r = 1; r < 90 && !best; r++) for (let y = gy - r; y <= gy + r; y++) for (let x = gx - r; x <= gx + r; x++) {
+        if (Math.max(Math.abs(x - gx), Math.abs(y - gy)) !== r) continue; // nur der Ring
         if (!this.inMap(x, y) || !this.isWater(this.idx(x, y))) continue;
-        const d = Math.hypot(x - gx, y - gy);
+        const d = Math.hypot(x - gx, y - gy) + Math.hypot(x - s.x, y - s.y) * 0.02;
         if (d < bd) { bd = d; best = [x, y]; }
       }
       if (!best) return false;
