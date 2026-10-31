@@ -1,0 +1,992 @@
+{
+ "markdown": "# Abgleich mit 1602: „Neue Ufer“, Stand 31.10.2026\n\n**Zeichen in den Tabellen:** ✅ wie in 1602 · 🟡 anders oder nur teilweise · ❌ fehlt · ⭐ besser als 1602 · **Fehler** = funktioniert nicht richtig\n\n**Grundlage:** die Inhaltsliste von 1602 (docs/1602-INHALT.md mit den Recherchen), der Programmcode und viele Tests: Simulationen über mehrere Spielstunden, Hunderte Zufallswelten und Browser-Tests im iPhone-Querformat (852 × 393 Punkte, mit Touch). Was du bewusst anders willst, zählt nicht als Mangel: Schweinezucht statt Rinderfarm, Steine statt Ziegel, eine Weberei, die Brauerei und das schnellere Spiel.\n\n---\n\n## 1. Kurzfazit\n\n**Passt schon alles 1:1? Noch nicht.**\n\n- **Die Zahlen stimmen sehr gut.** Bei allem, was schon im Spiel ist, entsprechen Kosten, Unterhalt, Reichweiten, Freischaltungen, Verbrauch, Kampfwerte, Schiffe und Preise zu über 90 % dem Original.\n- **Der Spielablauf ist erst gut zur Hälfte da.** Es fehlen wichtige Stellschrauben (Steuersatz, Bankrott) und ganze Bereiche (Ureinwohner, Katastrophen, Handelsrouten, Prachtbauten, Endwertung). Die Computergegner sind noch schwach.\n- **Die Grafik ist gemischt.** Landschaft, Wasser und Kampf sind schon schöner als in 1602. Die Gebäude der Stadt liegen dagegen noch *unter* dem Niveau von 1602.\n\n| Bereich | Nähe zu 1602 (Schätzung) | Warum |\n|---|---|---|\n| Spielumfang & Inhalt | ≈ 65 % | Stufen, Waren, Ketten, Gebäudezahlen, Schiffe und Militär sind 1:1 da. Es fehlen Ureinwohner, Katastrophen, Prachtbauten, Handelsrouten, Endwertung und Szenarien. |\n| Wirtschaft | ≈ 55 % | Kein Steuersatz, kein Bankrott, Häuser verfallen nie. Ein Betrieb versorgt nur ¼ bis ⅓ so viele Bewohner wie in 1602. Handel nur per Sofort-Knopf. Fehler bei vollem Lager. |\n| Krieg | ≈ 65 % | Kampfwerte und Eroberung sind 1:1. Aber die Gegner sind kaum eine Bedrohung, es gibt kein Feuer, kein Piratennest und keine Auswahl mehrerer Einheiten, und Tore trennen das Wegenetz. |\n| Bedienoberfläche | ≈ 55 % | Die Infos sind klarer als in 1602. Steuerfenster, Statistik, Meldungsverlauf, Übersichtskarte und Schiffsliste fehlen; das Baumenü passt nicht auf den Bildschirm. |\n| Bedienung auf dem Handy (gemessen am Ziel) | ≈ 65 % | Gute Grundlage. Aber mehrere wichtige Knöpfe liegen unter dem Bildrand, die Hinweisleiste schluckt Tipps, es gibt kein Rückgängig. Schiff-auf-Land ist nur halb gelöst. |\n| Grafik & Details (Ziel: schöner als 1602) | ≈ 45 % | Landschaft, Wasser und Kampf ⭐. Die Gebäude sind noch einfache Formen, es gibt keinen Rauch, keine Felder und keine Bewohner. |\n| Performance (gemessen am Ziel) | ≈ 70 % | Die Spielrechnung ist sehr sparsam. Die Grafik zeichnet zu viel, es gibt ein Speicherleck und keine Anpassung ans Gerät. Noch nie auf einem echten iPhone gemessen. |\n| Übersicht & Spielfluss | ≈ 50 % | Die Infos zu einzelnen Gebäuden sind ⭐. Das Gesamtbild fehlt: Statistik, Warnungen, Ziele, mehrere Spielstände. |\n| Inselwelt, Computergegner, Ereignisse | ≈ 35 % | Der Weltgenerator ist sehr verlässlich. Aber die Wirtschaft der Gegner bricht ein und sie bleiben klein; Ureinwohner und alle Katastrophen fehlen. |\n| **Gesamt** | **≈ 55 %** | |\n\nDie Prozente sind eine grobe Schätzung: Wie viel vom Spielgefühl von 1602 ist in diesem Bereich schon da? Wichtige Punkte zählen mehr.\n\n> **Dein Beispiel: Schiff auf eine Insel tippen.** Seit dem letzten Stand fährt das Schiff bei einem Tipp auf Land an die Küste, aber nicht ganz so, wie du es willst:\n> - Es fährt zum Küstenwasser, das dem angetippten Punkt am nächsten liegt. Tippst du mitten auf eine Insel, kann es deshalb um die halbe Insel fahren.\n> - Tippst du auf ein eigenes Gebäude, wird das Gebäude ausgewählt, statt hinzusegeln.\n> - Findet es zu genau diesem Punkt keinen Weg, bleibt es stehen.\n> - Im Nebel verrät die Meldung „Kurs zur Küste“, dass dort Land ist.\n>\n> **Das wird zuerst behoben (Pakete L1 und U1):** Das Schiff fährt in Tipp-Richtung, so weit es kommt, und hält an der zugewandten Küste. Nur wenn das nicht geht, fährt es zur nächsten erreichbaren Küste.\n\n**Schon besser als 1602:** Rohstoffe, die sichtbar nachwachsen. Klare Info-Fenster („was fehlt und warum“). Wege per Tippen mit automatischem Umweg. Eine faire Vorwarnung vor Kriegen. Weiterspielen nach einer Niederlage. Landschaft, Wasser und Kampfgrafik.\n\n**Ehrlicher Hinweis:** Alle Zeiten wurden auf einem PC gemessen, mit Ersatz-Grafik. Auf dem iPhone dauern die Rechnungen etwa 2- bis 3-mal so lange. Ein Test auf deinem iPhone fehlt noch.\n\n---\n\n## 2. Punkt für Punkt\n\n### 2.1 Spielumfang & Inhalt\n\n| Punkt aus 1602 | 1602 | Neue Ufer | Status |\n|---|---|---|---|\n| Fünf Bevölkerungsstufen | Pioniere bis Aristokraten; je Stufe sind Waren und Gebäude Bedingung | gleich; Bedingungen und Schwellen gelten wie im Original je Insel | ✅ |\n| Waren | 23 Waren | alle 23 | ✅ |\n| Verbrauch | Werte des Originals | genau Original × 8 (das Spiel läuft schneller) | ✅ bewusst schneller |\n| Zahlen der Gebäude | rund 60 Gebäude mit Kosten, Unterhalt, Reichweite, Freischaltung | rund 45 Gebäude mit genau diesen Zahlen. Kleinigkeiten weichen ab: Kanonengießerei erst ab 300 Kaufleuten (Original: 400 Bürger, zusammen mit dem Kanonier), Reichweite Kapelle 9 statt 8 und Jagdhütte 7 statt 8, der Steinbruch kostet Unterhalt | 🟡 fast gleich |\n| Grundfläche der Gebäude | viele Gebäude länglich (z. B. Marktplatz 4 × 3); das Wohnhaus belegt vermutlich nur 1 Feld (Quelle unsicher) | alle Gebäude quadratisch, Wohnhaus 2 × 2. Falls das Original 1 Feld hat, versorgen Kapelle & Co. nur ein Viertel so viele Häuser | 🟡 prüfen |\n| Freischalt-Reihenfolge | 30 Pioniere bis 600 Aristokraten | gleich | ✅ |\n| Schiffe | 5 Typen, Laderaum, Kanonen, höchstens 20 | gleich, dazu +1 je Triumphbogen | ✅ |\n| Kontor I–IV | 30 / 50 / 75 / 100 t Lager | gleich | ✅ |\n| Feuerwehr, Arzt, Galgen | Schutz gegen Feuer, Pest und Verbrechen | fehlen (zusammen mit den Katastrophen, siehe 2.9) | ❌ |\n| Prachtbauten | Palast, Kathedrale, Denkmal, Zierbaum | fehlen; nach dem Theater haben Aristokraten kaum noch Ziele | ❌ |\n| Plätze, Brücken, Anlegesteg | Plätze I–III, Holz- und Steinbrücken über Flüsse, Steg | fehlen; nur Feldweg und Pflasterweg, keine Flüsse | ❌ |\n| Ureinwohner | Dörfer, Tauschhandel, Fluch | fehlen (siehe 2.9) | ❌ |\n| Punkte und Endwertung | Punkte für Einwohner, Kasse und Siege; Endwertung | fehlen; ein Sieg beendet das Spiel nicht, er schaltet nur den Triumphbogen frei | ❌ |\n| Szenarien | 26 Szenarien (+20 in der Erweiterung) | keine; nur das freie Spiel mit 24 Aufgaben | ❌ |\n| Mehrspieler, Karteneditor | ja (Editor in der Erweiterung) | fehlen, und sie stehen nicht als bewusste Abweichung in den Unterlagen | ❌ |\n| Rohstoffe wachsen nach | Wald nur über den Förster, Bestände unsichtbar | Bäume, Fische, Wild und Weide verbrauchen sich sichtbar und wachsen nach; Nachbarn teilen sich den Rohstoff; beim Bauen zeigt eine Skala die Ergiebigkeit | ⭐ |\n| Hilfe für Einsteiger | Handbuch | 24 Aufgaben mit Belohnung führen durch alle Ketten | ⭐ |\n\n### 2.2 Wirtschaft: Zufriedenheit, Steuern, Bilanz, Kosten, Handel\n\n| Punkt aus 1602 | 1602 | Neue Ufer | Status |\n|---|---|---|---|\n| Steuersatz | je Stufe einstellbar (Höchstsätze 48 % bis 35 %), Gesichter zeigen die Stimmung; das wichtigste Werkzeug fürs Geld | fest, kein Regler | ❌ |\n| Steuer je Einwohner | flach: ein Aristokrat zahlt etwa 1,4-mal so viel wie ein Pionier | steil: 6-mal so viel. Pioniere zahlen die Hälfte des Originals, Aristokraten mehr als das Doppelte (nirgends begründet) | 🟡 |\n| Hunger und Unzufriedenheit | Hunger macht unzufrieden, Bewohner ziehen aus, das Haus verfällt | Zufriedenheit, Steuer und Aufstieg sinken. Aber ab den Siedlern zieht wegen Hunger allein niemand aus, und Häuser steigen nie ab | 🟡 |\n| Bankrott | lange tief im Minus (etwa −10 000 Taler): Spiel verloren | Schulden haben keine Folgen außer einer roten Zahl und gesperrten Käufen | ❌ |\n| Einwohner je Betrieb | z. B. Weberei-Kette 283, Weingut 167, Schneiderei 457 Einwohner | nur ¼ bis ⅓ davon: Der Verbrauch ist 8-mal so schnell, die Herstellung nur 2- bis 3-mal. Man braucht etwa 3-mal so viele Betriebe | 🟡 |\n| Unterhalt im Betrieb und in Ruhe, Betrieb abschalten | ja (z. B. Weingut 35 im Betrieb, 15 in Ruhe) | ein fester Betrag, nichts lässt sich abschalten; Werften zahlen nur den Ruhebetrag | 🟡 |\n| Baumaterial an Bewohner sperren | Schalter am Kontor | fehlt; das Lager kann dabei sogar unter null fallen | ❌ |\n| Lager voll | der Betrieb hält an, nichts geht verloren | **Fehler:** Karren liefern weiter, die Ware verschwindet still, und der Betrieb meldet weiter „arbeitet“ | 🟡 Fehler |\n| Lager und Freischaltungen je Insel | ja | gleich | ✅ |\n| Kosten für den Haus-Aufstieg | Tabelle | gleich | ✅ |\n| Marktkarren | holen im Umkreis von 6 Feldern ums Kontor ab; Marktplätze nahe den Betrieben beschleunigen den Transport | sichtbare Karren ✅, auf Pflaster schneller ✅. Sie holen aber im ganzen Gebiet (16 Felder) ab, deshalb bringen Marktplätze dafür kaum etwas | 🟡 |\n| Felder | einzeln um Farm oder Plantage angelegt (5 Taler), müssen reifen | jede freie Wiese im Umkreis zählt unsichtbar und sofort reif als Feld und zugleich als Weide | 🟡 |\n| Wald pflanzen | der Förster pflanzt neu | niemand pflanzt; gerodeter Wald kommt nie zurück (die Unterlagen behaupten fälschlich „gleicher Effekt“) | 🟡 |\n| Rohstoffe zu den Werkstätten | Karren liefern an; der Weber holt die Wolle direkt beim Nachbarn | Rohstoffe „springen“ ohne Weg aus dem Lager in die Werkstatt; der Standort spielt keine Rolle | 🟡 |\n| Erz | Vorkommen 80 oder 240 t; die tiefe Mine baut den Rest ab | die normale Mine stimmt; die tiefe Mine fördert endlos | 🟡 |\n| Wachstum | allmählich | ein Haus kann in unter 5 Minuten zur vollen Aristokratenvilla werden | 🟡 |\n| Freier Händler | kommt mit dem Schiff und handelt nach deinen Aufträgen (Ware, Menge, Preis); Zahl der Plätze je Kontorstufe; verkauft nur, was jemand hergestellt hat (Ausnahme: Werkzeug, Erz) | Sofort-Knopf ±5 t am Kontor, feste Preise, verkauft alles, auch Kanonen und Schmuck | 🟡 |\n| Handelsrouten | Schiffe fahren automatisch zwischen Kontoren | fehlen; Einladen nur von Hand in 10-t-Schritten, Ausladen nur „alles“ | ❌ |\n| Handel mit Computergegnern | direkt, günstiger als beim Händler; Handelsvertrag | fehlt | ❌ |\n| Bilanz | Einnahmen und Ausgaben nach Arten | nur „Steuern“ und „Unterhalt“ (die Kosten des Heeres sind darin versteckt), kein Handel, kein Verlauf | 🟡 |\n| Waren-Statistik | Erzeugung und Verbrauch je Ware | fehlt; Raten stehen nur einzeln am Betrieb | ❌ |\n| Händlerpreise | Preistabelle | etwa 90 % davon, Kauf zu Verkauf etwa 3 : 2 | ✅ |\n| Preis für Frieden und für Schutz vor Piraten | richtet sich nach dem Vermögen | gleich | ✅ |\n| Gewinn einer Aristokratenstadt | etwa 32 % | etwa 32 % | ✅ |\n| Startgeld | 20 000 (leicht) bis 10 000 (schwer) | 8 000, dazu 25 800 aus den Belohnungen der Aufgaben | 🟡 |\n\n### 2.3 Krieg und seine Auswirkungen\n\n| Punkt aus 1602 | 1602 | Neue Ufer | Status |\n|---|---|---|---|\n| Kampfwerte | Soldaten, Türme, Burgen, Schiffe | 1:1 übernommen | ✅ |\n| Gefechte | der Turm schießt zuerst; ein Steinturm braucht etwa 8 Kanoniertreffer | passt im Test; zusätzlich gehen 15–25 % der Schüsse daneben (steht nicht in den Unterlagen) | ✅ |\n| Deckung | Kanoniere und Musketiere schießen nicht durch Wald | gleich | ✅ |\n| Seeschlacht, Truppentransport, Eroberung | fällt Kontor oder Marktplatz, wechselt die Insel den Besitzer | gleich und funktioniert (im Test fiel ein KI-Kontor samt 48 Gebäuden) | ✅ |\n| Triumphbogen | nach einem Sieg | gleich, dazu +1 Schiff | ✅ |\n| Computergegner im Krieg | bauen Burgen, Waffenketten und Flotten und greifen an | nur 2–4 Soldaten; Krieg erst nach etwa 90 Minuten und nur bei klarer Überlegenheit; Angriffe sind selten | 🟡 schwach |\n| Mauern und Tore | das Tor sitzt im Weg, Karren fahren hindurch | **Fehler:** Das Tor trennt das Wegenetz und lässt sich nicht auf einen Weg setzen. Das kleine Tor fehlt, das Stadttor kostet 3 statt 4 Steine | 🟡 Fehler |\n| Kanonen setzen in Brand, Feuerwehr | ja | Flammen gibt es nur als Bild, ohne Wirkung | ❌ |\n| Arzt heilt Verwundete | ja | Soldaten heilen überall im eigenen Gebiet von selbst | ❌ |\n| Piraten | Nest auf einer Insel (lässt sich zerstören), Bestechung gegen andere, Nahrung als Geschenk | Schiffe tauchen per Zufall auf und haben keine Heimat; man kann nur Schutz kaufen | 🟡 |\n| Weiße Flagge | friedliche Fahrt | fehlt | ❌ |\n| Beschädigte Schiffe | fahren langsamer | fahren mit voller Fahrt | ❌ |\n| Bäume fällen, Aufstellung | Soldaten roden die Schusslinie frei und stellen sich in einer Reihe auf | fehlt | ❌ |\n| Mehrere Einheiten wählen | Rahmen aufziehen, Gruppen, Patrouille | nur der Knopf „+N in der Nähe“; Schiffe nur einzeln | 🟡 |\n| Ausmustern | per Knopf | fehlt; der Sold läuft ewig weiter | ❌ |\n| Diplomatie | Handels- und Friedensvertrag; Krieg aus einem Anlass (Siedeln auf fremder Insel, Blockade) | nur Krieg und Frieden; die Gegner erklären Krieg nach Zeit, Stärke und Zufall | 🟡 |\n| Krieg und Handel | Blockaden stören den Handel | kein Einfluss; Waffen sind sofort beim Händler zu kaufen | 🟡 |\n| Heer in der Bilanz | sichtbar | im „Unterhalt“ versteckt | 🟡 |\n| Gegner ohne Land | wird zum Piraten | sitzt für immer still herum und gilt nicht als besiegt | 🟡 |\n| Vorwarnung vor Krieg | keine | 3 Minuten Vorwarnung mit Rat, was man bauen sollte | ⭐ |\n| Nach dem Verlust von allem | Spiel verloren | neues Schiff und 40 Minuten Ruhe | ⭐ |\n\n### 2.4 Bedienoberfläche im Vergleich zu 1602\n\n| Punkt aus 1602 | 1602 | Neue Ufer | Status |\n|---|---|---|---|\n| Baumenü | alle Kategorien und der Abriss-Hammer sind immer sichtbar | zeigt nur Nutzbares ⭐. Aber die Spalte ist zu lang: Militär und Abreißen liegen unter dem Bildrand, ohne Hinweis | 🟡 Fehler |\n| Steuerfenster | Tipp auf ein Haus zeigt die Steuer der Stufe | fehlt (siehe 2.2) | ❌ |\n| Kontor- und Lagerfenster | getrennte Ansichten | eine sehr lange Spalte; die Händlerliste steht vor Lager und Bilanz | 🟡 |\n| Warenleiste oben | zeigt die wichtigen Werte | 23 Symbole ohne Namen, nur 5–10 sichtbar, kein Hinweis aufs Weiterwischen; leere Waren werden nicht rot | 🟡 |\n| Schiff beladen | Laden je Ware, Routen | Einladen in 10-t-Schritten, Ausladen nur „alles“ | 🟡 |\n| Wohnhäuser bauen | ganze Wohnblöcke zügig | jedes Haus einzeln, 2 Tipps je Haus | 🟡 |\n| Abreißen | einen Bereich aufziehen | Feld für Feld, Rückfrage bei jedem Gebäude | 🟡 |\n| Kontor abreißen, Insel aufgeben | geht, wenn sonst nichts mehr auf der Insel steht | geht nie | 🟡 |\n| Wege und Mauern | mit der Maus ziehen | Start, Ziel, ✓; mit automatischem Umweg und Kostenanzeige | ⭐ |\n| Haus- und Betriebs-Info | Gesichter und Fragezeichen | sagt im Klartext, was fehlt und warum | ⭐ |\n| Hinweis auf Freischaltungen | (im Handbuch) | Schloss-Karte „ab N …“ ⭐, aber ohne deinen Stand („du hast 23“) und ohne „NEU“-Marke | 🟡 |\n| Texte | – | teils veraltet („Weg mit dem Finger ziehen“, „Schiff: tippe aufs Meer“) | 🟡 |\n| Bilder im Baumenü | Bilder der Gebäude | Emoji | 🟡 |\n\nStatistik, Meldungen, Übersichtskarte, Schiffsliste und Spielstände stehen in 2.8.\n\n### 2.5 Bedienung auf dem Handy\n\n| Punkt | 1602 / Ziel | Neue Ufer | Status |\n|---|---|---|---|\n| Schiff: Tipp auf eine Insel (dein Beispiel) | „fährt in die Richtung, so weit es kann“ | fährt an die Küste, aber an die, die dem Tipp am nächsten liegt (eventuell um die halbe Insel). Tipp auf ein eigenes Gebäude wählt das Gebäude aus. Gibt es keinen Weg, gibt es kein Ersatzziel. Im Nebel verrät die Meldung, dass dort Land ist | 🟡 |\n| Kerbe (Notch) und Home-Balken | – | werden überall beachtet; im Hochformat erscheint ein Hinweis | ✅ |\n| Wischen, Zoomen, Drehen | – | ein Finger schiebt (baut nie aus Versehen), zwei Finger zoomen und drehen ✅. Aber der Zoom wandert etwas weg, schon eine kleine Fingerdrehung dreht die Karte, und die Karte gleitet nach dem Wischen nicht nach | 🟡 |\n| Wichtige Knöpfe erreichbar | alles ist sichtbar | „Alles ausladen“, „Los geht's“ und „Schließen“ der Weltkarte liegen unter dem Bildrand, ebenso Militär und Abreißen | 🟡 Fehler |\n| Infofenster | am Rand | nimmt ⅓ der Breite ein und verdeckt oft das gewählte Objekt | 🟡 |\n| Hinweisleiste beim Bauen | – | sitzt mittig unten und schluckt Tipps genau dort, wo man bauen will | 🟡 |\n| Größe von Knöpfen und Schrift | Apple empfiehlt 44 Punkte je Knopf | Knöpfe 34–40, kleinste Schrift 10 px | 🟡 |\n| Rückgängig | (in 1602: Spielstand laden) | zweimal tippen baut sofort; es gibt kein Rückgängig | ❌ |\n| Zoomen mit einer Hand | – | nur mit zwei Fingern; keine Knöpfe + / −, kein Knopf für Norden | ❌ |\n| Hochformat | – | das Spiel läuft hinter dem Hinweis weiter | 🟡 |\n| Figuren antippen | – | beim Herauszoomen winzig; die Tippfläche wird in Spielfeldern gemessen statt in Fingerbreite | 🟡 |\n| Start ohne Internet | – | wartet auf die Schriften von Google | 🟡 |\n| Symbol auf dem Home-Bildschirm | – | fehlt | ❌ |\n| Größe, Start, Hintergrund | – | 887 KB, Start in etwa 2,5 s; speichert beim Verlassen; der Ton startet nach der ersten Berührung | ✅ |\n\n### 2.6 Grafik und Details\n\n*Dreiecke* sind die kleinen Flächen, aus denen ein 3D-Modell besteht. Mehr Dreiecke bedeuten mehr Details.\n\n| Punkt aus 1602 | 1602 | Neue Ufer | Status |\n|---|---|---|---|\n| Details der Gebäude | handgezeichnet, sehr detailreich | noch einfache Formen aus Code: im Schnitt etwa 150 Dreiecke, erlaubt wären 12 000 | 🟡 unter 1602 |\n| Jedes Gebäude erkennbar | ja | 27 von 52 Gebäudearten haben kein eigenes Aussehen (die Kirche sieht aus wie ein Wohnhaus) | ❌ |\n| Fünf Haustypen | 5 | **Fehler:** nur 3 sichtbar; Kaufleute und Aristokraten wohnen in Bürgerhäusern | 🟡 Fehler |\n| Kontor I–IV | sichtbar größer | sehen gleich aus | ❌ |\n| Stil (deine Regeln 2 und 6) | – | kantig („Low Poly“, also stark vereinfachte, kantige Formen); Bäume aus wenigen Kegeln und Kugeln | 🟡 |\n| Rauchende Schornsteine | ja | der Rauch ist fertig programmiert, aber nicht angeschlossen | ❌ |\n| Leben auf den Straßen | Marktkarren, Arbeiter, Tiere | Karren, Holzfäller, Jäger, Fischerboote und Tiere ✅; Bewohner fehlen (in modernen Anno-Teilen sind es viele) | 🟡 |\n| Man sieht, wer arbeitet | an vielen Betrieben | nur an Mühle (dreht sich immer), Holzfäller, Jäger und Fischer | 🟡 |\n| Felder und Weiden | sichtbar, wachsen und werden geerntet | unsichtbar (nur farbige Streifen am Hof) | ❌ |\n| Bauen | das Gebäude steht sofort (soweit bekannt) | genauso | ✅ (Idee: kurze Bau-Animation) |\n| Farbe des Besitzers | Fahnen in der Spielerfarbe | nur bei Militär, Schiffen und am Rand des Gebiets; jedes Kontor trägt eine blaue Fahne, auch das der Gegner | 🟡 |\n| Landschaft | gezeichnete Kacheln | echte Höhen, Wind in Bäumen und Gras, Nebel über Unentdecktem | ⭐ |\n| Berge | klar gezeichnet | verschwommen; verdecken Gebäude am Fuß des Berges | 🟡 |\n| Nord- und Südinseln | im Süden Palmen und eigene Farben | sehen gleich aus | ❌ |\n| Wasser | Wellen, Küste | schöne Farben und Schaum an der Küste ⭐; aber zu glatt, das Kielwasser ist einfach, am Kartenrand gibt es eine harte Kante | 🟡 |\n| Licht und Himmel | – | echter Himmel und weiche Schatten ⭐; keine Wolkenschatten, Möwen sind nur zu hören, Schatten flimmern beim Verschieben | 🟡 |\n| Wege | Feldweg und Pflaster sehen verschieden aus | flache, einfarbige Kacheln | 🟡 |\n| Gebäude im Gelände | stehen im Boden | stehen auf sichtbaren Platten wie Kacheln eines Brettspiels | 🟡 |\n| Menschen | kleine, lebendige Figuren | Soldaten sehr detailreich ⭐; Arbeiter sehen aus wie Holzfiguren | 🟡 |\n| Schiffe | gut zu unterscheiden | Masten, gewölbte Segel, Schaukeln, Untergang ⭐; Handels- und Kriegsschiff gleicher Größe sehen aber gleich aus, die Segel bewegen sich nicht | 🟡 |\n| Kampf | kleine Bilder | Mündungsfeuer, Kugeln im Bogen, Rauch, Feuer, Lebensbalken, sinkende Schiffe | ⭐ |\n| Rohstoffe sichtbar | nur Dekoration | Fischschwärme, Wild und fallende Bäume zeigen den echten Bestand | ⭐ |\n| Katastrophen | Brände, Sensenmann über dem Haus, vertrocknete Felder | fehlen (es gibt die Ereignisse noch nicht) | ❌ |\n| Wale, Delfine, Ruinen | ja | fehlen | ❌ |\n| Modelle von Meshy | – | Anschluss nur für Gebäude (getestet); Menschen, Tiere, Schiffe, Bäume und Bewegungen fehlen noch; die Liste der Modelle hat Lücken | 🟡 |\n\n### 2.7 Performance\n\n| Punkt | 1602 / Ziel | Neue Ufer | Status |\n|---|---|---|---|\n| Spielrechnung | flüssig auch bei 4-fachem Tempo | unter 1 ms je Schritt bei 570 Gebäuden; im großen Gefecht mit 115 Soldaten etwa 5 ms | ✅ |\n| Speicher | stundenlang stabil | **Fehler:** Solange ein Schiff mit Kurs ausgewählt ist, belegt jedes Bild neuen Speicher der Grafikkarte und gibt ihn nie frei (Speicherleck). „Neues Spiel“ räumt nicht alles auf | 🟡 Fehler |\n| Bäume und Gras | nur zeichnen, was man sieht | die Pflanzen ganzer Inseln werden immer gezeichnet, 5- bis 8-mal mehr als nötig | 🟡 |\n| Anpassung ans Gerät | – | keine: immer volle Auflösung und Schatten. Auch in Pause und Menü wird voll weitergezeichnet (kostet Akku, macht warm) | ❌ |\n| Bauen im Wald, Erkunden, Wege bauen | nur die betroffene Stelle neu zeichnen | jedes Mal werden alle Pflanzen und Bodenfarben neu aufgebaut (20–45 ms, ein spürbarer Ruckler), auch wenn die Gegner bauen | 🟡 |\n| Daten zur Grafikkarte | – | etwa 1,3 MB je Bild, auch wenn nichts passiert | 🟡 |\n| Gefechte hinter Mauern | – | Soldaten suchen immer wieder Wege, die es nicht gibt | 🟡 |\n| Große Stadt | – | jedes Gebäude ist ein eigener Befehl an die Grafikkarte; mit detailreichen Meshy-Modellen wird das riskant | 🟡 |\n| Computergegner | – | alle denken im selben Augenblick (kleine Ruckler, am Anfang ein Stoß bis 89 ms) | 🟡 |\n| Erster Gebrauch | – | Teile der Grafik werden erst beim ersten Bauen oder Kampf vorbereitet (kurzer Ruckler) | 🟡 |\n| Automatisches Speichern | – | 1,2 MB alle 20 s, auch ohne Änderung; Fehler bleiben unbemerkt | 🟡 |\n| Größe der App | klein | 887 KB, davon etwa 65 KB ungenutzt | ✅ |\n| Test auf dem iPhone | nötig | fehlt noch; bisher nur am PC gemessen | – |\n\n### 2.8 Übersicht und Spielfluss\n\n| Punkt aus 1602 | 1602 | Neue Ufer | Status |\n|---|---|---|---|\n| Warnungen bei Problemen | Fragezeichen, Gesichter | Symbole über einzelnen Gebäuden ✅; aber keine Meldung bei Warenmangel, Hunger, Auszug oder Minus in der Kasse | 🟡 |\n| Statistik | Fenster mit Bevölkerung, Waren und Bilanz | fehlt | ❌ |\n| Bevölkerung im Überblick | Stimmung je Stufe | nur Zahlen je Stufe (alle Inseln zusammen); was fehlt, sieht man nur Haus für Haus | ❌ |\n| Meldungen | Meldungszeile, Sprung zum Ort des Geschehens | kurze Einblendungen (höchstens 3, nach wenigen Sekunden weg), kein Verlauf, kein Sprung | ❌ |\n| Übersichtskarte | immer am Rand sichtbar | nur eine große Karte als eigenes Fenster: hält das Spiel an, zeigt keine Inselnamen, kein Erz und kein Gold | 🟡 |\n| Meine Schiffe und Inseln | schnell zu wählen, umbenennbar | keine Liste, kein Sprung, kein Umbenennen | ❌ |\n| Spielstände | mehrere | nur einer. „Neues Spiel“ im Verloren-Fenster löscht ohne Rückfrage; Fehler beim Speichern bleiben unbemerkt | 🟡 |\n| Einstellungen für ein neues Spiel | Schwierigkeit, Startbedingungen, Optionen | nur die Zahl der Gegner | 🟡 |\n| Spielstart | Schiff in einer unbekannten Welt | gleich ✅; aber kein Land in Sicht und kein Hinweis auf die Richtung | 🟡 |\n| Anleitung | Lehrgang in mehreren Teilen | ein langes Textfenster; „Los geht's“ liegt unter dem Rand | 🟡 |\n| Symbole über Gebäuden | ein Fragezeichen | 7 klare Symbole für die Ursache ⭐; aber ohne Dringlichkeit, in der Krise ein Haufen Symbole | 🟡 |\n| Aufgaben | die Ziele lassen sich jederzeit anzeigen | streng nacheinander, nur eine sichtbar; „Wehrhaft“ verlangt die Burg schon vor den Bürgern und kann lange hängen | 🟡 |\n| Erz, Gold, Fruchtbarkeit | Symbole auf entdeckten Inseln | nur im Insel-Fenster nach dem Antippen | 🟡 |\n| Zeit | Pause, Tempo | Pause und 1x/2x/4x ✅; keine Anzeige der Spielzeit, die Pause ist kaum zu erkennen | 🟡 |\n| Insel prüfen | Schiff hinfahren, warten, bis der Balken am „Auge“ voll ist | einfach antippen | ⭐ (einfacher) |\n| Beim Bauen | der Einflussbereich wird gezeigt | Begründung im Klartext, Radius, Skala für die Ergiebigkeit, fremdes Gebiet wird abgedunkelt | ⭐ |\n\n### 2.9 Inselwelt, Computergegner, Ereignisse\n\n| Punkt aus 1602 | 1602 | Neue Ufer | Status |\n|---|---|---|---|\n| Zufällige Inselwelt mit Nebel | ja | ja, sehr verlässlich: in 300 Testwelten immer alle Pflanzen und Erz, Gold in 97 %, keine Mini-Inseln | ⭐ |\n| Inselgrößen | 5 Größenklassen bis etwa 100 × 90 Felder | 3 Klassen, jede eine Klasse kleiner (die größte etwa 60 × 60) | 🟡 |\n| Inselformen und Gelände | viele Formen, Flüsse, Steppe, große Berge | rundliche Formen mit zufälligem Rand; keine Flüsse, keine Steppe; kleine Berge | 🟡 |\n| Klima Nord/Süd | eigene Fruchtbarkeit je Pflanze | gleich (zum Aussehen siehe 2.6) | ✅ |\n| Erste Insel | groß, mit Erz und einer Pflanze, die zu 100 % wächst | nicht garantiert: 8 % ohne Erz, 14 % ohne Pflanze mit 100 %; in 3 % der Welten gibt es gar kein Gold | 🟡 |\n| Computergegner: Wirtschaft | ihre Städte laufen über Stunden | **Fehler:** Wege nicht angeschlossen, Hunger, Pleite; nach 2 Stunden sind fast alle im Minus | 🟡 Fehler |\n| Computergegner: Wachstum | alle 5 Stufen, mehrere Inseln | bleiben bei den Siedlern, auf einer Insel und mit 9 Gebäudearten | 🟡 |\n| Computergegner: Wahl der Insel | – | sichern sich in den ersten 1–3 Minuten die großen Inseln | 🟡 |\n| Computergegner: Handel und Schiffe | handeln und fahren eigene Schiffe | handeln nie mit dir; ihre Schiffe stehen nach der Gründung still | ❌ |\n| Computergegner: Charakter | eigene Persönlichkeit, richten ihr Tempo nach dem Spieler | nur Name und Farbe | ❌ |\n| Computergegner gründen | – | zuverlässig und nach denselben Regeln wie du | ✅ |\n| Ureinwohner | Dörfer, Tausch Ware gegen Ware (etwa 1 : 1,5), Fluch bei Angriff | fehlen ganz | ❌ |\n| Feuer | Brände springen über, die Feuerwehr löscht | fehlt | ❌ |\n| Pest, Kriminalität | Arzt, Galgen | fehlen | ❌ |\n| Dürre, Schatz, Vulkan | ja (Vulkan in der Erweiterung) | fehlen | ❌ |\n| Abwechslung | Kartengrößen, Optionen | Start immer unten links, die Mischung der Inseln ist immer gleich, und die Namen verraten die Inselgröße | 🟡 |\n\n---\n\n## 3. Stärken: was schon gut oder besser ist\n\n- **Zahlen wie im Original:** rund 45 Gebäude mit genauen Kosten, Unterhalt, Reichweiten und Freischaltungen. Dazu Verbrauch je Stufe, Kosten für den Haus-Aufstieg, Kontor I–IV, alle Schiffe, alle Kampfwerte und die Händlerpreise.\n- **Der Kern von 1602 steht:** fünf Stufen mit denselben Bedingungen, alle 23 Waren und Ketten, Lager und Freischaltungen je Insel. Eine Aristokratenstadt trägt sich wie im Original (etwa 32 % Gewinn).\n- **Kampf nah am Original:** Gefechte rechnen wie in 1602, Wald gibt Deckung. Es gibt Seeschlachten, Truppen an Bord, Eroberung über Kontor oder Marktplatz, Krieg und Frieden, Schutz vor Piraten nach Vermögen und den Triumphbogen.\n- ⭐ **Lebendige Rohstoffe:** Bäume fallen und wachsen nach. Fischgründe, Wild und Weide haben sichtbare Bestände. Zu dicht gebaute Betriebe teilen sich den Rohstoff, und beim Bauen zeigt eine Skala, wie ergiebig der Platz ist.\n- ⭐ **Klare Infos:** Haus- und Betriebs-Info sagen im Klartext, was fehlt und warum. Warnsymbole nennen die Ursache, und beim Bauen begründet das Spiel jedes „Geht nicht“. 24 Aufgaben führen durch alle Ketten.\n- ⭐ **Gute Grundlage fürs Handy:** Kerbe und Home-Balken werden beachtet, ein Finger schiebt ohne Bauen aus Versehen, Wege baut man per Tippen mit Umweg-Suche. Vor teuren Schritten kommt eine Rückfrage, beim Verlassen pausiert und speichert das Spiel.\n- ⭐ **Fairer Ablauf:** 3 Minuten Vorwarnung vor Kriegen mit Rat, nach einem Totalverlust ein Rettungsschiff und 40 Minuten Ruhe; Piraten rauben, statt zu versenken.\n- **Verlässliche Inselwelt:** in 300 Testwelten immer alle Pflanzen und Erz, Gold in 97 %, keine Mini-Inseln, Inselinfo per Antippen (⭐).\n- **Schöne Teile der Grafik:** Berge und Täler, Wind in Bäumen und Gras, Schaum an der Küste, Nebel über Unentdecktem, echter Himmel und weiche Schatten. Burgen, Soldaten und Kampfeffekte sind sehr detailreich. Schiffe schaukeln, bekommen Schlagseite und sinken.\n- **Schlanke Technik:** Die ganze App hat 887 KB und startet in etwa 2,5 s. Die Spielrechnung ist sparsam, und der Speicher bleibt bis auf einen Fehler stabil. Wenn die Grafik auf dem iPhone kurz ausfällt, kommt sie wieder. Der Anschluss für Meshy-Gebäude funktioniert.\n\n## 4. Größte Schwächen: was zuerst angehen\n\n1. **Fehler und Stolpersteine im Spielgefühl:**\n   - Ein volles Lager vernichtet Ware, Tore trennen das Wegenetz, die Schiffsroute füllt den Speicher der Grafikkarte, und die Hausstufen 4 und 5 sehen aus wie Stufe 3.\n   - Militär, Abreißen, „Alles ausladen“ und „Los geht's“ liegen unter dem Bildrand, und die Hinweisleiste schluckt Tipps.\n   - Schiff-auf-Land ist nur halb gelöst.\n\n   → L1, U1, R1, G1\n2. **Der Wirtschaft fehlen die Stellschrauben von 1602:** kein Steuersatz, kein Bankrott, Hunger und Mangel haben kaum Folgen, Betriebe versorgen nur ¼ bis ⅓ so viele Bewohner. → L2, U2\n3. **Computergegner:** Ihre Wirtschaft bricht ein (Fehler), sie bleiben bei den Siedlern auf einer Insel, handeln nicht und sind im Krieg kaum eine Gefahr. → KI1, KI2, M2\n4. **Handel:** Es gibt nur einen Sofort-Knopf am Kontor, keine Händlerschiffe mit Aufträgen und keine Handelsrouten. Wirtschaften mit mehreren Inseln, der Kern von 1602, wird so mühsam. → S2, U5\n5. **Kein Überblick:** keine Statistik, keine Warnung bei Mangel, Meldungen verschwinden nach Sekunden, keine Übersichtskarte, keine Liste der Schiffe und Inseln. → S1, U2, U3\n6. **Die Stadt-Grafik liegt unter 1602:** einfache Formen, 27 Gebäudearten ohne eigenes Aussehen, kein Rauch, keine Felder, keine Bewohner; Nord- und Südinseln sehen gleich aus. → G1, G2, G3, G3b, G4a (und Meshy)\n7. **Ganze Bereiche von 1602 fehlen:** Ureinwohner, Feuer, Pest, Kriminalität, Dürre, Prachtbauten, Piratennest, Endwertung, Szenarien. → S3, S4, L3, M2, S5, F2\n8. **Die Grafik-Leistung ist nicht abgesichert:** Die Pflanzen ganzer Inseln werden immer gezeichnet, Bauen im Wald ruckelt, die Grafik passt sich nicht ans Gerät an und zeichnet auch in der Pause voll weiter. → R1, R2\n9. **Warenwege einfacher als in 1602:** Felder entstehen unsichtbar von selbst, Wald lässt sich nicht pflanzen, Rohstoffe „springen“ in die Werkstatt, Marktplätze bringen kaum etwas. → L2, L4\n10. **Die Welt ist kleiner und gleichförmiger:** Inseln eine Größenklasse kleiner, keine Flüsse und keine Steppe, Start immer unten links. → L5\n\n## 5. So geht es weiter\n\nDie Schwächen sind auf 35 Arbeitspakete verteilt. Zu jedem gibt es eine eigene Liste mit Einzelschritten und Dateien. Die Pakete laufen in vier Wellen. Innerhalb einer Welle können mehrere Helfer gleichzeitig arbeiten.\n\n| Welle | Inhalt | Pakete |\n|---|---|---|\n| 1 – Fehler & Spielgefühl | Fehler beheben, Schiff wie gewünscht, Stolpersteine auf dem Handy weg, Wirtschaft der Gegner reparieren, Grafik-Leistung, Fehler an Gebäuden, Unterlagen bereinigen | L1, U1, KI1, R1 → R2, G1, D1 |\n| 2 – Kern von 1602 | Steuern, Bankrott und Kosten; Statistik und Warnungen; Händlerschiffe und Routen; Kampfregeln; Gegner wachsen; die passenden Fenster; Gebäude neu gestalten; Rauch, Fahnen und Symbole; Plan für Meshy | L2, S1, S2, M1, KI2, U2–U5, G2, G3, G5a |\n| 3 – fehlende Inhalte | Katastrophen, Ureinwohner, Endwertung, Prachtbauten, Felder, Förster und Anlieferung, Piratennest und Diplomatie, Spielstart und Spielstände, sichtbare Bewohner und Felder, Landschaft, Wasser und Licht, Klänge | S3, S4, S5, L3, L4, M2, P1, G3b, G4a, G4b, A1 |\n| 4 – Feinschliff | Meshy-Modelle im Spiel, Inselgrößen und Flüsse, Bilder der Gebäude und App-Symbol, Szenarien, Unterlagen nachziehen | G5b, L5, F1, F2, D2 |\n\nDamit sich die Helfer nicht gegenseitig stören:\n\n- **Andockstellen (Paket L1):** Neue Spielteile (Ereignisse, Statistik, Händler, Punkte, Ureinwohner) bekommen je eine eigene Datei, die an einer festen Stelle im Spiel eingehängt wird. Neue Gebäude stehen schon vorbereitet in der Datentabelle und erscheinen erst, wenn ihr Spielteil fertig ist (Regel 8).\n- **Bausteine der Oberfläche (Paket U1):** Die große Datei der Oberfläche wird zerlegt. Jedes Fenster bekommt eine eigene Datei mit eigener Gestaltung.\n- Wo zwei Pakete dieselbe Datei brauchen, wartet das eine auf das andere; das ist in der Liste vermerkt. Die Unterlagen ändern nur D1 (jetzt) und D2 (am Ende).\n- Jedes Paket endet mit Typprüfung, Bau und Browser-Test. Danach prüft der unabhängige Prüf-Agent gegen ANFORDERUNGEN.md.\n\n**Was du beitragen kannst:**\n\n- die sechs Fragen beantworten,\n- den Meshy-Schlüssel bereitstellen, wenn Meshy loslegen soll,\n- nach Paket R1 einmal auf deinem iPhone spielen. Mit „?debug“ in der Adresse erscheint eine kleine Anzeige, wie lange ein Bild braucht.\n\n## 6. Deine Entscheidungen (Kurzfassung)\n\n1. **Steuern wie in 1602**, also ein Regler je Stufe und eine flache Steuerkurve? Empfehlung: ja.\n2. **Wirtschaftstempo angleichen:** die Betriebe schneller machen, damit einer wieder ähnlich viele Bewohner versorgt wie in 1602? Empfehlung: ja.\n3. **Felder:** Die Farm legt beim Bau sichtbare Felder an, man kann nachbessern. Empfehlung: ja.\n4. **Grafik:** zuerst eine Meshy-Probe mit 3 Modellen? Empfehlung: ja (dafür brauchen wir den Schlüssel).\n5. **Stärke der Gegner und Schwierigkeit beim Start wählbar?** Empfehlung: ja, Standard „normal“, Katastrophen „mild“.\n6. **Inselgrößen wie in 1602?** Empfehlung: ja, aber erst nach der Arbeit an der Grafik-Leistung und einem Test auf dem iPhone.\n\nBis du antwortest, planen wir mit der Empfehlung.\n",
+ "workPackages": [
+  {
+   "name": "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen",
+   "goal": "Fehler in der Spiellogik beheben, das Schiff wie gewünscht steuern (Tipp aufs Land: in diese Richtung so weit es geht) und feste Andockstellen schaffen, damit spätere Pakete parallel in eigenen Dateien arbeiten können.",
+   "priority": 1,
+   "size": "groß",
+   "items": [
+    "Schiffskurs (Wunsch des Nutzers): moveShip neu. Bei Landziel zuerst die Linie vom Schiff zum Tippunkt verfolgen, Ziel = letztes erreichbares Wasserfeld vor der Küste der angetippten Insel. Geht das nicht: Flächensuche über Wasser ab dem Schiff, Ziel = kleinster Wert aus Abstand zum Tippunkt + 0,5 × Fahrweg. Nie ‚kein Weg', solange das Schiff sich bewegen kann. Test (Vorlage /tmp/claude-0/-home-user-Macks/ea64aae4-b1e0-5446-8929-cd495394d32c/scratchpad/abgleich/mobil/shiptest.ts): Tipp mitten auf eine Insel → Schiff hält an der zugewandten Küste und fährt nicht um die Insel.",
+    "Nebel: die Seeweg-Suche behandelt unentdeckte Felder als befahrbar (Option in findSeaPath, path.ts); stößt das Schiff auf neu gesichtetes Land, plant tickShip den Kurs neu. So verrät der Kurs nichts über unentdeckte Inseln.",
+    "Beschädigte Schiffe fahren langsamer: Tempo × (0,5 + 0,5 × Treffer / volle Treffer) in tickShip.",
+    "Fehler Lager voll: assignCart überspringt Betriebe, deren Ware im Inselspeicher (capOf) am Limit ist; tickCarts lädt nur so viel ab, wie Platz ist (Rest bleibt im Karren bzw. Betrieb). Dann setzt tickProduction von selbst ‚lagerVoll'. Keine Ware geht mehr verloren.",
+    "Fehler Tore: eigene Tore zählen im Wegenetz wie Weg (recompute-Flutung und roadPath); ein Tor darf auf ein eigenes Wegfeld gesetzt werden (canPlace). Test (Vorlage …/abgleich/krieg/gate.ts): Mauer quer über eine Straße mit Tor, der Marktkarren erreicht den Betrieb dahinter.",
+    "Hochschule ersetzt die Schule in ihrer Reichweite (recompute, wie Kirche/Kapelle).",
+    "placeMany: ein recompute und gesammelte Meldungen am Ende statt je Teil (100 Mauerteile von ≈ 160 ms auf ≈ 5 ms).",
+    "kontorUpgrade meldet die Änderung (ev.changed), damit die Grafik später die Kontorstufe zeigen kann.",
+    "canPlace: maxPop einmal vor der Feldschleife berechnen und Geld früh prüfen (glättet die Rechenspitzen der KI).",
+    "Spielstart: in Game.create ein Stück Küste der nächsten geeigneten Insel aufdecken (reveal), damit Land in Sicht ist.",
+    "world.ts: Heimatinsel des Spielers = nächste mittlere/große Insel mit Erz, dort mindestens eine Pflanze auf 100 %, markiert als Island.heimat; Welt ohne Gold bekommt Gold auf einer kleinen Berginsel; tiefe Erzmine baut den Rest ab (Island.erzDeep, Ende bei 3 × Startmenge), ≈ 15 % der Vorkommen unerschöpflich; export WORLD_SIZES (vorerst nur [240]).",
+    "Spielstände sicher: Inseldaten (Erz, Gold, Fruchtbarkeit, Klima, Größe, Heimat) im Spielstand mitspeichern, damit spätere Änderungen am Weltgenerator alte Stände nicht verändern; Version erhöhen, ältere Stände weiter laden. Game.load prüft die Version richtig (Schlüssel v4, Prüfung v3) und sichert einen unlesbaren Stand unter eigenem Schlüssel, statt ihn nach 20 s überschreiben zu lassen.",
+    "Datenfehler: Kanonengießerei auf B(400) (gleichzeitig mit dem Kanonier); Stadttor 4 Steine; neues kleines Tor 'steintor_klein' (15 Taler, 3 Steine, ab 200 Siedlern, gate).",
+    "Texte: Feldweg, Palisade, Steinmauer (‚Tippe Start und Ziel, dann ✓'); Aufgabe ‚Neues Land' (‚Tippe dein Schiff an, dann aufs Meer oder auf eine Insel').",
+    "Hilfen für die Oberfläche: undoBuild(b) (volle Rückerstattung, wenn jünger als 10 s), demolishArea(x0, y0, x1, y1) mit Summe der Rückerstattung und einem recompute, unloadGood(schiff, ware, menge), placeNeutral(typ, x, y, besitzer) ohne Gebiets- und Kostenprüfung (für Piratennest und Ureinwohner).",
+    "Andockstelle Spielteile: neue Datei src/systems.ts mit einer Liste von Spielteilen {tick, afterPlace, save, load, bereit}; Game.tick ruft tick, place ruft afterPlace, SaveData bekommt ext je Spielteil. Gerüste anlegen und eintragen (Funktionen vorhanden, aber ohne Wirkung; Signaturen später nur erweitern, nicht ändern): src/events.ts (ignite, iconFor, infoLines, curse, droughtOn), src/stats.ts (book, flows, trend, popSummary, ledger), src/trade.ts (orders, route, visit, notFaktor = 1), src/score.ts (score, GOALS = [Endlos]), src/natives.ts (village, open).",
+    "Andockstelle Meldung mit Ort: GameEvents.message(text, kind, at?: {x, y}); vorhandene Meldungen in game.ts mit Ort versehen.",
+    "Andockstelle Spieloptionen: Game.create(seed, gegner, opts?) mit opts {schwierigkeit, startgeld, piraten, ereignisse, ziel, weltgroesse}; Standard = heutiges Verhalten (8 000 Taler); im Spielstand gespeichert.",
+    "Weitere Andockstellen: Änderungszähler g.buildVersion (bei Bauen und Abriss), gespeicherter Zufallsgenerator g.rng(), Kennzeichen Player.trader und Player.natives.",
+    "Vorbereitete Gebäude mit Kennzeichen geplant (Werte aus docs/1602-INHALT.md §5): feuerwehr, arzt, galgen, palast, kathedrale, denkmal, zierbaum, huette, haeuptling. isUnlocked, canPlace und nextUnlock blenden sie aus, bis ihr Spielteil sie in ‚bereit' meldet (Prachtbauten gibt L3 frei).",
+    "Abschluss: npm run check, npm run build, node scripts/smoke.mjs; Schiffs-Test als scripts/schiff-test.ts ins Projekt."
+   ],
+   "files": [
+    "src/game.ts",
+    "src/path.ts",
+    "src/world.ts",
+    "src/data.ts",
+    "src/systems.ts (neu)",
+    "src/events.ts (neu, Gerüst)",
+    "src/stats.ts (neu, Gerüst)",
+    "src/trade.ts (neu, Gerüst)",
+    "src/score.ts (neu, Gerüst)",
+    "src/natives.ts (neu, Gerüst)",
+    "scripts/schiff-test.ts (neu)"
+   ],
+   "dependsOn": []
+  },
+  {
+   "name": "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes",
+   "goal": "Die große Oberflächen-Datei in Bausteine teilen, damit spätere Pakete parallel arbeiten können, und die schlimmsten Bedienprobleme auf dem iPhone beheben.",
+   "priority": 1,
+   "size": "groß",
+   "items": [
+    "Zuerst ohne sichtbare Änderung: src/ui.ts aufteilen in src/ui/hud.ts (Oberleiste, linke Spalte, Warenleiste, Aufgabe, Pause/Tempo), build.ts (Bau-, Wege- und Abriss-Werkzeug, Hinweisleiste, Baumenü-Karten), info.ts (Gebäude-, Haus-, Kontor- und Insel-Info), ship.ts (Schiffsfenster), units.ts (Soldatenfenster), windows.ts (Menü, Weltkarte, Hilfe, Verloren-Fenster), diplomacy.ts (Krieg & Frieden). Im Kern ui.ts bleiben Tippen, Auswahl, toast, ask und closeModal; öffentliche Methoden bleiben gleich. Danach Smoke-Test.",
+    "Gerüste mit Einstiegen, versteckt solange leer: src/ui/stats.ts (Tipp auf Geld bzw. Einwohner), log.ts (Glocke 🔔), fleet.ts (Knopf ⛵ und Tipp auf den Inselnamen), trade.ts (Reiter ‚Handel' im Kontor, Routen im Schiffsfenster), settings.ts (der heutige Dialog ‚Neues Spiel' zieht dorthin um), score.ts (Menüpunkt ‚Punkte'), natives.ts (Tipp auf eine Häuptlingshütte). toast() reicht jede Meldung an log.add(text, art, ort) weiter; message() nimmt den Ort an.",
+    "Gestaltung je Baustein in eigener CSS-Datei (src/ui/*.css, wird beim Bau eingebettet), damit sich spätere Pakete nicht in style.css stören.",
+    "Schiff (Wunsch des Nutzers, Teil Oberfläche): Schiff gewählt + Tipp auf eigenes Gebäude → hinsegeln (am Kontor anlegen); die Gebäude-Info öffnet dann ein zweiter Tipp. Tipp außerhalb der Karte: kurze Meldung, Schiff bleibt gewählt. Ziel im Nebel: immer ‚Kurs gesetzt' (verrät kein Land). Hilfe-Text: ‚Tippe aufs Meer oder auf eine Insel – das Schiff segelt so nah wie möglich heran'.",
+    "Linke Baumenü-Spalte: ab 8 Knöpfen zweispaltig (je 44 × 44, nur Symbol, Name beim Antippen); ‚Abreißen' als fester Knopf 💥 in die Oberleiste; die leere Fläche der Spalte lässt Wischen zur Karte durch (pointer-events).",
+    "Dialoge: Hauptknopf (Los geht's, Schließen, Weiterspielen) fest am unteren Rand, ✕ oben rechts, Tipp auf den dunklen Hintergrund schließt Menü, Karte und Hilfe (nicht die Rückfragen); Weltkarte mit 100dvh statt 100vh. Hilfe auf 3 kurze Karten (Segeln, Kontor, Bauen) plus ‚Mehr Hilfe'.",
+    "Schiffsfenster: am Kontor ganz oben ‚Alles ausladen' und Einladen mit +10 / +50 / Max; Kanonen- und Soldatenblock einklappbar.",
+    "Bau-Hinweis: Text oben unter der Leiste (nicht antippbar), unten rechts nur ✓ und ✕ (je 48 px); Wege-Hinweis einzeilig. Ein zweiter Tipp auf dieselbe Stelle baut erst nach 0,5 s (gegen Fehltipps).",
+    "Infofenster: Breite clamp(220px, 28vw, 270px), ▾ zum Einklappen; die Kamera weicht bei jeder Auswahl aus (keepLeft auch für Gebäude, Schiff und Insel).",
+    "Tippziele mindestens 44 px (Knöpfe, Waren, Kategorien, Händler- und Ladeknöpfe), Geld und Einwohner als echte Knöpfe; kleinste Schrift 12 px; Warenleiste mit Verlauf am Rand als Hinweis aufs Weiterwischen.",
+    "Gesten (input.ts): Mausrad zoomt zum Zeiger; beim Zwei-Finger-Zoom bleibt der Punkt zwischen den Fingern fest (gemessene Drift prüfen); Drehen erst ab 8–10° Fingerdrehung; Nachgleiten nach dem Wischen; ein Tipp gilt bis 1 s; Doppeltipp auf die Karte zoomt eine Stufe näher.",
+    "Knöpfe + / − und Kompass 🧭 (Antippen: Norden, lang drücken: zum Kontor) unten rechts; sie weichen dem Infofenster aus.",
+    "Verloren-Fenster: ‚Neues Spiel' nur nach Rückfrage.",
+    "Schriften (IM Fell English SC, Alegreya Sans) als kleine eingebettete Dateien (nur Latein, font-display: swap) statt Google-Link in index.html; das Spiel startet ohne Internet.",
+    "Abschluss: npm run check und build, scripts/smoke.mjs, Touch-Test 852 × 393 und 667 × 375 mit simulierten Notch-Rändern: alle Knöpfe sichtbar, Militär und Abreißen erreichbar, ‚Los geht's' ohne Scrollen, Tipps neben der Hinweisleiste kommen an."
+   ],
+   "files": [
+    "src/ui.ts",
+    "src/ui/ (neu: hud.ts, build.ts, info.ts, ship.ts, units.ts, windows.ts, diplomacy.ts, stats.ts, log.ts, fleet.ts, trade.ts, settings.ts, score.ts, natives.ts, je eine .css)",
+    "src/style.css",
+    "src/input.ts",
+    "index.html"
+   ],
+   "dependsOn": []
+  },
+  {
+   "name": "KI1 Computergegner: Wirtschaft reparieren",
+   "goal": "Die Städte der Computergegner funktionieren auf Dauer: angeschlossene Wege, genug Nahrung, keine Pleite, keine Rechenspitzen.",
+   "priority": 1,
+   "size": "mittel",
+   "items": [
+    "Wege: im Kern um das Kontor (≈ 12 Felder) auch durch Wald bauen; nach jedem neuen Betrieb eine Anschlussstraße zum angeschlossenen Netz legen; Standorte nur an angeschlossenen Wegen wählen (g.roadLinked).",
+    "Nach Ist-Leistung planen: Nahrung = Summe der angeschlossenen, arbeitenden Betriebe; neue Häuser nur, solange 4 × Häuser < Nahrungsleistung + 30.",
+    "Kasse: beim Händler nur kaufen, wenn Geld > 2 500, nie auf Vorrat; Wegefelder gestaffelt; bei Geld < 0 nur noch Einnahmequellen bauen.",
+    "Rechenspitzen: Denkzeitpunkte der Gegner versetzen (Spielernummer × THINK / Anzahl + Zufall); in tryPlace zuerst Geld prüfen und nur im eigenen Land suchen; Küstenfelder je Insel einmal berechnen.",
+    "Vorlage: getestete Änderung /tmp/claude-0/-home-user-Macks/ea64aae4-b1e0-5446-8929-cd495394d32c/scratchpad/abgleich/welt/fix/ai.ts (Gegenprobe mit 60 Gegnern: Einwohner stabil ≈ 127, im Minus nur 2/4/16 statt 31/51/58 nach 20/60/120 min).",
+    "Messen: Simulation als scripts/ki-sim.ts ins Projekt (Vorlagen …/abgleich/welt/ki7.ts und …/abgleich/umfang/ai_sim.ts); Ziel nach 20/60/120 min höchstens 10 % im Minus, Einwohner ≥ 120, KI-Entscheidung < 0,5 ms, Anfangsstoß < 5 ms."
+   ],
+   "files": [
+    "src/ai.ts",
+    "scripts/ki-sim.ts (neu)"
+   ],
+   "dependsOn": []
+  },
+  {
+   "name": "R1 Grafik-Leistung: Lecks, Akku und Qualitätsstufen",
+   "goal": "Kein Speicherleck mehr, weniger Akku und Wärme, und das Bild passt sich dem iPhone an.",
+   "priority": 1,
+   "size": "groß",
+   "items": [
+    "Fehler Schiffsroute (ships.ts): feste Puffer (Position für 128 Punkte, lineDistance) einmal anlegen, je Bild nur Zahlen schreiben, Strecke selbst aufsummieren, setDrawRange; lange Routen vollständig zeigen. Test: Zahl lebender Grafikpuffer bleibt über 300 Bilder gleich (Messhilfe /tmp/claude-0/-home-user-Macks/ea64aae4-b1e0-5446-8929-cd495394d32c/scratchpad/abgleich/leistung/glspy.js).",
+    "Neues Spiel räumt auf: Wasser (Gitter, floor, Material, beide Texturen), Gebiets-Material in onTerritory, renderer.renderLists.dispose() in setGame (Pflanzen und Gelände folgen in R2).",
+    "Zeichnen drosseln: in Pause, Menü und Hochformat nur neu zeichnen, wenn sich Kamera oder Bild ändert (sonst höchstens 10 Bilder/s); Hochformat pausiert das Spiel wie ein offenes Menü (main.ts, matchMedia).",
+    "Qualität automatisch (neue Datei src/render/quality.ts): Bildzeit glätten; über 20 ms eine Stufe tiefer (Pixelverhältnis 2 → 1,5 → 1,25 → 1, dann Schattenkarte 2048 → 1024 → aus), lange unter 12 ms wieder höher; view.setQuality('auto' oder 'hoch' oder 'sparsam') für das spätere Einstellungsmenü; ‚sparsam' = 30 Bilder/s.",
+    "Messhilfe: mit ?debug in der Adresse eine kleine Bildzeit-Anzeige für den Test auf dem echten iPhone.",
+    "Daten zur Grafikkarte: Teile ohne Figuren unsichtbar schalten; nur den belegten Bereich hochladen (addUpdateRange) in units.ts, life.ts, fx.ts; Teilchen nur aktualisieren, wenn welche leben (Ziel: Leerlauf < 0,1 MB je Bild statt 1,3 MB).",
+    "Speichermüll je Bild vermeiden: Objekte und Listen wiederverwenden (life.ts walk, units.ts Map/Set, forEach → Schleifen, Gebäudemitte merken); Instanzgrößen in units.ts (128) und life.ts an echten Bedarf anpassen.",
+    "Grafik-Programme vorwärmen: nach buildWorld alle Materialvarianten (Bau-Vorschau, Ringe, Wegvorschau, Warnsymbol, Fallen/Sinken, Teilchen) einmal unsichtbar zeigen und renderer.compileAsync aufrufen; dazu kurzer Hinweis ‚Insel wird vorbereitet'.",
+    "Schatten und Himmel: Wasser empfängt keine Schatten; Sonnenposition auf das Raster der Schattenkarte runden, Ausschnitt nur in festen Stufen ändern (kein Flimmern); Himmel nach dem Wasser zeichnen.",
+    "Modell-Lader (glb.ts) erst laden, wenn manifest.json Einträge hat (spart ≈ 65 KB).",
+    "Selbstsicherung (main.ts): nur speichern, wenn die Spielzeit weitergelaufen ist; nach zwei Fehlversuchen Meldung ‚Speichern nicht möglich'.",
+    "Abschluss: Messskripte (Vorlagen …/abgleich/leistung/b*.mjs) als scripts/perf.mjs ins Projekt; Zeichenaufrufe, Dreiecke, Puffer und Bildzeit vorher/nachher festhalten."
+   ],
+   "files": [
+    "src/render/ships.ts",
+    "src/render/units.ts",
+    "src/render/life.ts",
+    "src/render/fx.ts",
+    "src/render/glb.ts",
+    "src/render/scene.ts",
+    "src/render/quality.ts (neu)",
+    "src/main.ts",
+    "scripts/perf.mjs (neu)"
+   ],
+   "dependsOn": []
+  },
+  {
+   "name": "R2 Pflanzen und Boden: nur Sichtbares zeichnen, nur Geändertes neu bauen",
+   "goal": "Bäume, Gras und Boden kosten nur so viel, wie man sieht; Bauen, Roden und Erkunden ruckeln nicht mehr. Grundlage für schönere Bäume und größere Inseln.",
+   "priority": 1,
+   "size": "groß",
+   "items": [
+    "Pflanzen in Blöcke von 16 × 16 Feldern mit eigener Hüllkugel (three.js blendet Unsichtbares dann selbst aus); Instanzzahl je Block vorher zählen (+15 %).",
+    "Ferne: ab Zoom 25 kein Gras, ab 45 jeder zweite Baum (etwas größer), ab 70 einfache Kreuzflächen; Schatten nur für Blöcke bis ≈ 35 Felder Abstand.",
+    "Teil-Neuaufbau: onTreesChanged, onRoadsChanged und onSeen erkennen geänderte Felder selbst (Vergleich mit gemerkter Kopie), bündeln die Änderungen eines Bildes und bauen nur betroffene Blöcke sowie das 3 × 3-Umfeld der Bodenfarbe neu; zweites veg.refresh() in onRoadsChanged entfernen; Nebel-Textur nur im neu aufgedeckten Rechteck schreiben; life.rebuild nur für betroffene Inseln. Ziel: Bauen im Wald < 1 ms statt 20–45 ms, auch bei Bauten der Gegner.",
+    "Wegfelder: Instanzen klein starten (2 048) und bei Bedarf verdoppeln statt 57 600.",
+    "Gelände in Blöcke von 32 × 32 Feldern mit Sicht-Ausblendung; Gelände wirft Schatten nur in Blöcken mit Berg.",
+    "Farbprogramm des Bodens sparen: Untergründe mit Gewicht < 0,02 überspringen, ein gemeinsames Rauschen für alle Untergründe, einfacheres Nebelrauschen, ab Abstand 50 nur 2 Stufen (Ziel −10 bis −15 % Bildzeit).",
+    "Neues Spiel gibt Puffer, Geometrien und Materialien von Pflanzen und Gelände frei.",
+    "Messen (scripts/perf.mjs erweitern): Dreiecke bei Zoom 8/30/70 (Ziel Pflanzen −80 % bei Zoom 8), Zeit je Bau im Wald, Bildzeit."
+   ],
+   "files": [
+    "src/render/vegetation.ts",
+    "src/render/terrain.ts",
+    "src/render/scene.ts",
+    "src/render/life.ts",
+    "scripts/perf.mjs"
+   ],
+   "dependsOn": [
+    "R1 Grafik-Leistung: Lecks, Akku und Qualitätsstufen"
+   ]
+  },
+  {
+   "name": "G1 Gebäude-Grafik: sichtbare Fehler und weicherer Look",
+   "goal": "Alle fünf Hausstufen sehen verschieden aus, Schornsteine bekommen Rauchpunkte, Gebäude stehen ohne Brettspiel-Platten im Gelände und wirken weniger kantig.",
+   "priority": 1,
+   "size": "mittel",
+   "items": [
+    "Fehler Hausstufen: Math.min(tier, 2) in models/index.ts entfernen; Stufe 4 Kaufmannshaus (Backstein, Treppengiebel, weiße Fensterrahmen, Kranbalken) und Stufe 5 Aristokratenvilla (Mansarddach, Sandstein, Gesimse, Zierbeet) neu; Stufen 1–3 aufwerten (Schornstein, Fensterläden, Tür mit Stufe).",
+    "Rauchpunkte nicht mehr wegwerfen (smoke: [] in models/index.ts); Schornsteine an Wohnhaus ab Stufe 2, Bäckerei, Schmiede, Fleischerei, Erzschmelze und Werkstätten.",
+    "buildingModel(type, tier, opts?: {level, variant}) vorbereiten (vorerst ohne Wirkung), damit G2 und G3 Kontorstufe und Varianten durchreichen können.",
+    "Weichere Schattierung: flatShading aus (materials.ts), runde Teile mit mergeVertices und computeVertexNormals; harte Kanten bleiben bei Quadern. Wirkt auch auf Figuren, Tiere und Schiffe – Vergleichsbilder prüfen.",
+    "Oberflächenmuster mit Relief: aus dem Ziegel- und Fugenmuster eine Höhe ableiten (dFdx/dFdy), leichte Verwitterung unten, Farbvariation ±6 % je Gebäude; Fensterglas glänzend.",
+    "Bodenplatten weg: ground() nur noch für echte Höfe (Pflaster, Acker); Fundament nur am Hang sichtbar.",
+    "Kommentare ‚Low-Poly' in kit.ts und models_old.ts ändern.",
+    "Vergleichsbilder vorher/nachher mit scripts/modelshot.mjs; Dreiecke je Typ zählen (Vorlage /tmp/claude-0/-home-user-Macks/ea64aae4-b1e0-5446-8929-cd495394d32c/scratchpad/abgleich/tris/entry.ts)."
+   ],
+   "files": [
+    "src/render/models/index.ts",
+    "src/render/models_old.ts",
+    "src/render/materials.ts",
+    "src/render/kit.ts"
+   ],
+   "dependsOn": []
+  },
+  {
+   "name": "D1 Unterlagen bereinigen und Ziele festschreiben",
+   "goal": "Die Unterlagen widersprechen dem Spiel nicht mehr, und der Prüf-Agent kennt die neuen Ziele aus diesem Abgleich.",
+   "priority": 1,
+   "size": "klein",
+   "items": [
+    "docs/SPIELDESIGN.md oben als veraltet kennzeichnen (‚Maßgeblich: 1602-INHALT.md und ANFORDERUNGEN.md') oder auf den heutigen Stand bringen (Steinmetz/Ziegel, Köhlerei, Trupps, Schiffsnamen, Burg 4 × 4, Steuertabelle, Ureinwohner nur ‚Ansehensstrafe').",
+    "docs/1602-INHALT.md §12: Werft-Zeile korrigieren (die große Werft baut 1,6-mal schneller); Forsthaus-Zeile korrigieren (kein ‚gleicher Effekt' – Wald wächst nur auf Waldfeldern nach); bewusste Abweichungen eintragen: Inselinfo per Antippen, sichtbare Fehlschüsse (Schaden wird in M1 ausgeglichen), Mehrspieler und Editor vorerst nicht; offene Entscheidungen (Steuern, Raten, Felder, Inselgrößen, Schwierigkeit) als ‚offen' markieren; Freischaltung der Kanonengießerei in §5/§6 vereinheitlichen (400 Bürger).",
+    "Recherche klären und festhalten: Grundfläche des Wohnhauses im Original (1 Feld?) und längliche Grundflächen (Marktplatz 4 × 3 usw.) – Ergebnis als Vorgabe für L5.",
+    "docs/OFFEN.md: alle neuen Lücken aus diesem Abgleich mit Paketnamen aufnehmen (Lager-voll-Fehler, Tore, Hausstufen, Schiffsroute, Startinsel, Felder, Förster, Anlieferung, Inselgrößen, Statistik, Meldungen, Übersichtskarte, Endwertung, Spielstände, Klänge, Bewohner, Rauch).",
+    "docs/ANFORDERUNGEN.md: neue prüfbare Anforderungen ergänzen (Steuersatz je Stufe, Bankrott, Handelsrouten, Händlerschiff mit Aufträgen, Statistik, Warnungen, Meldungsverlauf mit Sprung, Übersichtskarte, Ereignisse, Ureinwohner, Endwertung, mehrere Spielstände, Rückgängig, Verhalten ‚Schiff auf Land tippen'); B6 von 40 auf 44 px.",
+    "Antworten des Nutzers auf die offenen Fragen eintragen, sobald sie vorliegen."
+   ],
+   "files": [
+    "docs/SPIELDESIGN.md",
+    "docs/1602-INHALT.md",
+    "docs/OFFEN.md",
+    "docs/ANFORDERUNGEN.md"
+   ],
+   "dependsOn": []
+  },
+  {
+   "name": "G5a Meshy-Plan: Liste, Budget und Ankerpunkte",
+   "goal": "Bevor Meshy Geld kostet: vollständige Modell-Liste, passende Beschreibungen und ein Grafikbudget, das auf dem iPhone hält.",
+   "priority": 2,
+   "size": "klein",
+   "items": [
+    "assets/modelle.json: die 33 fehlenden Gebäudetypen ergänzen oder bewusst als ‚bleibt Code' markieren; je Hausstufe 2–3 Varianten (haus-1a, haus-1b …); Kontor I–IV; neue Gebäude (Feuerwehr, Arzt, Galgen, Palast, Kathedrale, Denkmal, Zierbaum, Ureinwohner-Hütten); Palme.",
+    "Beschreibungen ohne Bodenplatte (‚no ground plate, flat bottom') im Stil ‚realistic' (Regel 6).",
+    "Budget in docs/GRAFIK.md: Gebäude 4 000–6 000 Dreiecke plus zwei einfachere Fernstufen (ab Zoom 40 ≈ 600, ab 80 Kiste), Szene höchstens ≈ 1 Mio. Dreiecke im Hauptbild und 0,5 Mio. im Schattenbild; Texturen 512 px (Kleinteile 256) als KTX2; Ziel < 200 MB Grafikspeicher.",
+    "assets/anker.json je Modell: Rauchpunkte, Fahnenpunkt, Mühlenachse, Eingang.",
+    "scripts/meshy.mjs: Animationsnamen der Meshy-Bibliothek eintragen, Rigging nur für Zweibeiner, Probelauf mit 3 Modellen (haus-1, kontor, schaf) mit Kostenanzeige; Gesamtlauf erst nach Freigabe durch den Nutzer (Frage 4)."
+   ],
+   "files": [
+    "assets/modelle.json",
+    "assets/anker.json (neu)",
+    "scripts/meshy.mjs",
+    "docs/GRAFIK.md",
+    "public/models/ (nur Probelauf)"
+   ],
+   "dependsOn": []
+  },
+  {
+   "name": "L2 Wirtschaft wie 1602: Steuern, Zufriedenheit, Bankrott, Kosten",
+   "goal": "Die Wirtschaft bekommt die Stellschrauben und Folgen von 1602: Steuersatz je Stufe, echte Folgen von Hunger und Schulden, Unterhalt aktiv und ruhend, stimmige Raten.",
+   "priority": 2,
+   "size": "groß",
+   "items": [
+    "Steuersatz je Stufe: Player.tax[5] (gespeichert), TierDef.maxTax 48/45/38/36/35 %; der tragbare Satz sinkt mit fehlenden Waren (z. B. Bürger mit 2 von 4 Waren ≈ 20 %); ein Satz über dem tragbaren senkt das Zufriedenheitsziel bis zum Auszug. Standardsatz so wählen, dass die Einnahmen heute gleich bleiben; die KI nutzt einen festen Satz.",
+    "Steuer je Einwohner nach Entscheidung des Nutzers (Frage 1); Empfehlung 1602-Kurve 1,95/2,11/2,44/2,53/2,65 × Spielfaktor.",
+    "Raten nach Entscheidung (Frage 2); Empfehlung: prod.time der Bedarfsketten verkürzen, bis ein Betrieb 60–100 % der Original-Einwohner versorgt (Weberei 12 → 5 s, Schneiderei 12 → 5, Rumbrennerei 12 → 5, Tabakwaren 14 → 6, Weingut 22 → 9, Gewürze und Kakao 20 → 8, Jagdhütte 16 → 8); REGEN.feld/weide prüfen; nachmessen mit /tmp/claude-0/-home-user-Macks/ea64aae4-b1e0-5446-8929-cd495394d32c/scratchpad/abgleich/umfang/rates.ts.",
+    "Hunger: Nahrung ist Pflicht (Zufriedenheitsziel ≤ 0,3, Auszug, Grund ‚Hunger'); Grundbedarf (TierDef.core) stärker gewichtet als Luxus; Steuerfaktor happy^1,3.",
+    "Abstieg: Zufriedenheit < 0,25 über 90 s und Haus bei den Mindestbewohnern → eine Stufe tiefer (ev.changed, Meldung ‚Haus verfällt: … fehlt').",
+    "Aufstiegstempo: Aufstieg nur, wenn der Vorrat jeder Ware der neuen Stufe mindestens 2 Minuten reicht.",
+    "Bankrott: Warnung bei −2 000 und −5 000 (Meldung mit Rat), unter −10 000 länger als 10 Spielminuten → p.defeated mit Grund ‚bankrott' (Fenster in U3); Schuldenerlass-Funktion (Kasse auf 0, Punktabzug-Zähler für S5); Computergegner verlieren nicht, sie sperren nur das Bauen.",
+    "Unterhalt aktiv/ruhend: BuildingDef.upkeepIdle (Werte aus 1602-INHALT §5, sonst 0,3 × upkeep); Ruhewert bei Stillstand (active < 0,2), Status ≠ ok oder Building.off; Werften 100/150 nur bei Auftrag, sonst 20/30; Steinbruch 0.",
+    "Betrieb ruhen lassen: Building.off – tickProduction überspringt den Betrieb, Karren holen nichts ab.",
+    "Baumaterial-Sperre je Insel (Schalter am Kontor): upgradeBlocker meldet ‚Baumaterial gesperrt'; die Bezahlung prüft erneut, das Lager fällt nie unter 0.",
+    "Händler-Sortiment: g.produced (gespeichert); Sofortkauf nur für Hergestelltes plus Werkzeug, Erz, Holz und Nahrung; trade() rechnet mit trade.notFaktor() (Gerüst = 1, S2 hebt ihn, sobald Händlerschiffe fahren); trade() bucht ins Kassenbuch (stats.book).",
+    "Aufgaben: ‚Wehrhaft' umformulieren (nicht mehr ‚beim Händler kaufen') und hinter ‚Bürger' schieben; Nebenaufgaben über Quest.parallel (Wehrhaft, Flotte, Kanonen); Belohnungen × Schwierigkeitsfaktor aus opts.",
+    "Marktkarren: BuildingDef.pickup (Kontor 8, Marktplatz 12) statt Gebietsradius; Status ‚zuWeit'; Karren 10 t.",
+    "Daten an 1602 angleichen: Kapelle Reichweite 8, Jagdhütte 8, Fleischerei mit 10 Steinen, Pflasterweg 1,3 × (oder als Abweichung melden).",
+    "Kontor abreißen erlauben, wenn auf der Insel sonst nichts mehr steht (Lager verfällt, Gebiet wird frei).",
+    "incomePerMinute liefert zusätzlich {army, buildings, byTier}.",
+    "Abschluss: Wirtschafts-Simulation als scripts/wirtschaft-sim.ts (Vorlagen …/abgleich/wirtschaft/exp5.ts und bot.ts): Aristokratenstadt ≈ 30 % Gewinn, Kosten der Ketten 26–45 % der Steuer."
+   ],
+   "files": [
+    "src/game.ts",
+    "src/data.ts",
+    "scripts/wirtschaft-sim.ts (neu)"
+   ],
+   "dependsOn": [
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen"
+   ]
+  },
+  {
+   "name": "S1 Statistik, Kassenbuch und Warnungen (Logik)",
+   "goal": "Das Spiel weiß, wohin Geld und Waren fließen, und warnt rechtzeitig – Grundlage für Statistikfenster und Meldungen.",
+   "priority": 2,
+   "size": "mittel",
+   "items": [
+    "src/stats.ts füllt das Gerüst aus L1, ohne game.ts zu ändern: jede Sekunde Werte erfassen, jede Spielminute einen Messpunkt speichern (letzte 120 im Spielstand über ext).",
+    "Kassenbuch je Minute: Steuern je Stufe, Unterhalt für Betriebe, Dienste und Militär (unitUpkeep), Handel ein/aus (über book()), Rest als ‚Bauen und Sonstiges'.",
+    "Warenfluss je Insel und Ware: Erzeugung pro Minute aus arbeitenden Betrieben (Menge × 60 / Zeit × Auslastung), Verbrauch aus Häusern und Werkstatt-Eingängen, Saldo, ‚reicht noch N Minuten'.",
+    "Bevölkerung je Stufe und Insel: Häuser, Einwohner von Maximum, mittlere Zufriedenheit, Liste ‚Es fehlt' mit Anzahl betroffener Häuser, aufstiegsbereite Häuser; popByTier(insel).",
+    "Warnungen alle 5 s, je Ware und Insel höchstens alle 5 min: ‚Nahrung reicht noch 1 Minute auf …', ‚Auf … ziehen Bewohner weg: … fehlt', ‚Lager voll: Holz 30/30 auf …', ‚Kasse im Minus' – mit Ort und Warnzeichen (löst den Alarmton aus).",
+    "Vergleich mit den Gegnern (nur entdeckte): Einwohner, Vermögen, Stärke.",
+    "Schnittstelle für U2 und U3 kurz im Dateikopf beschreiben."
+   ],
+   "files": [
+    "src/stats.ts"
+   ],
+   "dependsOn": [
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen"
+   ]
+  },
+  {
+   "name": "S2 Handel wie 1602: Händlerschiff, Aufträge, Handelsrouten (Logik)",
+   "goal": "Handel läuft wie in 1602 über Schiffe: freie Händler handeln nach den Aufträgen am Kontor, eigene Schiffe fahren automatische Routen.",
+   "priority": 2,
+   "size": "groß",
+   "items": [
+    "Freier Händler als neutraler Spieler (Player.trader, weiße Flagge, unangreifbar): erscheint ab dem ersten Kontor alle 3–6 min an jedem Kontor mit Küste, liegt ≈ 40 s im Hafen; Meldung ‚Händler im Hafen'.",
+    "Aufträge je Kontor (gespeichert): Ware, Kaufen oder Verkaufen, Schwelle (‚kaufe bis X t' bzw. ‚verkaufe über X t'), Preis 70–105 % des Grundpreises; Plätze je Kontorstufe 4/3, 7/4, 8/6, 11/8.",
+    "Preise: Grundpreis ± 15 %, verschieben sich langsam; je 10 t ändert sich der Preis um 8 % und erholt sich in 5 min; höchstens 40 t je Ware und Besuch.",
+    "Sortiment: der Händler verkauft nur, was es auf der Karte gibt (eigene Liste, sobald ein Lager die Ware hatte) plus Werkzeug und Erz; Waffen knapp und teuer (höchstens 10 t, 3-facher Preis).",
+    "Blockade: liegt ein bewaffnetes feindliches Schiff im Umkreis von 10 Feldern um das Kontor, kommt der Händler nicht (Meldung ‚Blockiert von …').",
+    "Notverkauf: notFaktor() = 1,4, sobald Händlerschiffe fahren (der alte Sofort-Knopf wird so zum teuren Notbehelf).",
+    "Handelsrouten: je Schiff 2–4 Halte, je Halt laden/entladen je Ware bis 100 t; das Schiff fährt allein (moveShip), lädt und entlädt am Kontor (loadGood, unloadGood); Meldung ‚Route blockiert' bei vollem Ziel oder leerer Quelle; Pause und Weiter.",
+    "Schiff abwracken am eigenen Kontor (Ladung vorher ausladen, Hälfte von Holz und Stoffen zurück).",
+    "Alle Käufe und Verkäufe ins Kassenbuch (stats.book); die Händler-Funktion visit() so schreiben, dass M2 sie für KI-Händler (Handelsvertrag) mit anderer Preistabelle nutzen kann."
+   ],
+   "files": [
+    "src/trade.ts"
+   ],
+   "dependsOn": [
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen"
+   ]
+  },
+  {
+   "name": "M1 Kampf-Regeln wie 1602 (Logik)",
+   "goal": "Die fehlenden Kampfregeln aus 1602 ergänzen und Gefechte flüssig halten.",
+   "priority": 2,
+   "size": "groß",
+   "items": [
+    "Weiße Flagge: Zustand je Schiff (nicht gespeichert, wie im Original); Piraten und KI-Kriegsschiffe ignorieren es, verfolgende Piraten lassen ab, eigene Kanonen schießen dann nicht selbst.",
+    "Spieler mit Kennzeichen trader oder natives (aus L1) sind nie Ziel von Piraten oder KI; Ureinwohner-Gebäude nur auf direkten Befehl des Spielers.",
+    "Piraten fliehen unter 30 % Trefferpunkten (beschädigt = langsamer, aus L1).",
+    "Bäume fällen: orderFell(einheiten, feld) – Soldat läuft hin, hackt ≈ 4 s (Klang ‚axt'), danach wird das Feld Gras (tiles, trees, ev.trees).",
+    "Aufstellung: orderMove mit ‚Reihe' (quer zur Laufrichtung) und ‚Block'; Kanoniere hinten, Nahkämpfer vorn; irreführenden Kommentar ‚Formation' korrigieren.",
+    "Ausmustern: dismiss(einheiten) entfernt still (ohne Todes-Effekt), der Sold endet.",
+    "Patrouille: Schiff pendelt zwischen Start und Punkt und greift Feinde in Reichweite an.",
+    "Arzt: im Radius eines eigenen Arztes heilen Soldaten 1,0 Leben/s und kosten keinen Sold; außerhalb nur noch 0,03/s; Gebäude reparieren sich von selbst nur noch bis 75 %.",
+    "Kanonentreffer (Turm, Schiff, Kanonier) an Holzgebäuden: mit 25 % events.ignite(b) (wirkt, sobald S3 fertig ist).",
+    "Meldungen mit Ort: alle ev.message-Aufrufe in combat.ts bekommen Koordinaten (Angriff, Plünderung, Versenkung, Piraten gesichtet, Kriegserklärung).",
+    "Wegsuche im Gefecht: nach fehlgeschlagener Suche Sperre (noPathUntil = Zeit + 6 s, Ziel merken); begehbare Gebiete nummerieren (neu bei geändertem g.buildVersion) und vor der Suche vergleichen; selbst gewählte Ziele mit höchstens 2 000 Knoten; Neuberechnung je Soldat zeitlich versetzen. Ziel: Spielschritt im Gefecht ≈ 3 ms statt 9–19 ms.",
+    "Trefferchance ausgleichen: Schaden ÷ Trefferchance (0,85 / 0,8 / 0,75), damit der Erwartungswert dem Original entspricht.",
+    "Zufall über g.rng() statt Math.random (wiederholbare Spielstände, Vorbereitung für Mehrspieler).",
+    "Test: Rechnungen aus /tmp/claude-0/-home-user-Macks/ea64aae4-b1e0-5446-8929-cd495394d32c/scratchpad/abgleich/krieg/duel.ts und conquer.ts erneut (Steinturm ≈ 8, Holzturm ≈ 6 Kanoniertreffer im Mittel); perf.ts für das große Gefecht."
+   ],
+   "files": [
+    "src/combat.ts"
+   ],
+   "dependsOn": [
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen"
+   ]
+  },
+  {
+   "name": "KI2 Computergegner wachsen, siedeln und kämpfen wie in 1602",
+   "goal": "Die Computergegner entwickeln sich bis zu Kaufleuten und Aristokraten, besiedeln weitere Inseln, haben Charakter und sind im Krieg eine echte Bedrohung – einstellbar nach Schwierigkeit.",
+   "priority": 2,
+   "size": "groß",
+   "items": [
+    "Bedarfs-Planer je Stufe aus TIERS: fehlende Ketten setzen (Alkohol über Brauerei und Getreide oder Weingut/Zuckerrohr je Fruchtbarkeit; Steinbruch; Stoffe; Tabakwaren oder Gewürze; Kakao; Kleidung; Schmuck) und Dienste (Wirtshaus, Schule, Kirche, Badehaus, Hochschule, Theater); Hausgrenze 40 an Inselgröße und Marktabdeckung koppeln.",
+    "Fehlende Waren zuerst beim Händler, später zweites Kontor: Phase ‚erweitern' ab ≈ 150 Einwohnern und Geld > 3 000 (Insel nach Mangelware wählen); kleine Werft ab 120 Siedlern für ein zweites Schiff.",
+    "Persönlichkeit je Gegner (Tabelle in ai.ts): Hendrik = Händler (friedlich), Morwenna = Eroberin (rüstet früh), Baron = Baumeister (wächst schnell); wirkt auf Bautempo, Truppen und Kriegsneigung; Anzeige im Diplomatie-Menü (Text liefern, die Anzeige baut M2).",
+    "Tempo an den Spieler koppeln: KI-Einwohner ≤ Spieler × 1,3 + 150; Stärke nach opts.schwierigkeit.",
+    "Fairer Start: die KI wählt ihre Insel erst nach 3–6 min oder nach dem ersten Kontor des Spielers; die Heimatinsel des Spielers (Island.heimat aus L1) ist für die KI gesperrt; Inselwahl im Umkreis ≈ 110 Felder der eigenen Startecke.",
+    "Militär (combat.ts tickAIMilitary): Soll-Truppen aus eigener Größe, Spielerstärke und Persönlichkeit (6 bis 30); Kosten wirklich zahlen, nur mit Reserve; ab 200 Siedlern eigene Burg und Türme; Waffen kaufen oder schmieden; Angriffswellen mit Kanonieren und bis zu 3 Kriegsschiffen.",
+    "Krieg: nur bei positiver eigener Bilanz und passender Persönlichkeit, Zeitpunkt gestreut; Auslöser wie in 1602 (Kontor des Spielers auf einer KI-Insel, Soldaten länger als 60 s an Land, bewaffnetes Schiff näher als 3 Felder am KI-Kontor) → Vorwarnung wie bisher.",
+    "Kontor verloren: mit Schiff und Material neu gründen (Phase ‚suchen'), sonst wird das Schiff zum Piraten; checkDefeat zählt Schiffe ohne Kanonen und ohne Kontor-Ladung nicht mehr.",
+    "Feuerwehr und Arzt bauen, sobald freigeschaltet (isUnlocked).",
+    "Messen (scripts/ki-sim.ts): bei ‚normal' nach 60 min ≥ 300 Einwohner und Kasse > 0, nach 90 min erste Bürger, nach 120 min mindestens eine zweite Insel; die Eroberin erklärt früher Krieg als der Händler."
+   ],
+   "files": [
+    "src/ai.ts",
+    "src/combat.ts",
+    "scripts/ki-sim.ts"
+   ],
+   "dependsOn": [
+    "KI1 Computergegner: Wirtschaft reparieren",
+    "M1 Kampf-Regeln wie 1602 (Logik)"
+   ]
+  },
+  {
+   "name": "U2 Fenster: Steuern, Bilanz, Statistik, Bevölkerung",
+   "goal": "Man sieht wie in 1602 (und klarer) Steuern je Stufe, Bilanz, Waren und Stimmung – und kann eingreifen.",
+   "priority": 2,
+   "size": "groß",
+   "items": [
+    "Statistik-Fenster (ui/stats.ts, hält das Spiel an) mit Reitern: Bilanz (Steuern, Betriebe, Dienste, Militär, Handel, Netto, Verlauf der letzten 30 min, teuerste Gebäude wie ‚Weingut: −35, produziert nichts'), Waren (Lager, + Erzeugung, − Verbrauch, Saldo mit Pfeil, ‚reicht noch …', rote Zeile bei Minus), Bevölkerung (Karte je erreichter Stufe: Häuser, Einwohner, Gesicht, ‚Es fehlt: Alkohol bei 14 von 22 Häusern' mit Sprung zum ersten Haus, aufstiegsbereite Häuser), Vergleich mit den Gegnern.",
+    "Steuern: je Stufe −/+ 5 % mit Gesicht (😊/😐/😠) und Vorschau ‚Einnahmen jetzt / mit neuem Satz'; Hinweis ‚Kasse leer? Steuern erhöhen' bei Minus.",
+    "Haus-Info: Gesicht und Steuersatz der Stufe, roter Balken bei Hunger, Knopf ‚Wo?' bei fehlender Ware oder fehlendem Dienst (öffnet die passende Kategorie oder springt zum Hersteller).",
+    "Betriebs-Info: Schalter ‚⏸ Ruhen lassen / ▶ Betreiben', ‚Unterhalt jetzt 35 (ruhend 15)', neue Status-Texte (‚Kontor-Lager voll – ausbauen, verschiffen oder verkaufen', ‚Zu weit vom Kontor oder Marktplatz', ‚wartet auf Lieferung'), bei ‚Kein Weg' Knopf ‚Weg bauen'.",
+    "Kontor-Fenster in Reitern: Lager (Standard, kompaktes Raster, rot bei Mangel, gelb bei voll, Inselname im Titel) / Handel (Andockstelle für U5) / Bilanz / Ausbau; Schalter ‚🏠 Baumaterial an Bewohner'; Einwohner ‚auf dieser Insel / insgesamt'; Abreißen-Knopf auch beim Kontor (die Logik entscheidet).",
+    "Andockstelle in der Gebäude-Info für Zusatzzeilen anderer Spielteile (events.infoLines, Ureinwohner).",
+    "Infofenster nur Zahlen und Balken aktualisieren statt neu aufbauen (data-Attribute); komplett neu bauen nur, wenn sich der Aufbau ändert."
+   ],
+   "files": [
+    "src/ui/stats.ts",
+    "src/ui/stats.css",
+    "src/ui/info.ts",
+    "src/ui/info.css"
+   ],
+   "dependsOn": [
+    "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes",
+    "L2 Wirtschaft wie 1602: Steuern, Zufriedenheit, Bankrott, Kosten",
+    "S1 Statistik, Kassenbuch und Warnungen (Logik)"
+   ]
+  },
+  {
+   "name": "U3 Überblick: Meldungen, Minikarte, Flotte & Inseln, Warenleiste",
+   "goal": "Nichts Wichtiges geht mehr verloren: Meldungen mit Sprung zum Ort, die Karte immer im Blick, schneller Zugriff auf Schiffe und Inseln.",
+   "priority": 2,
+   "size": "groß",
+   "items": [
+    "Meldungsverlauf (ui/log.ts): Glocke 🔔 mit Zähler ungelesener Meldungen, Liste der letzten 60 (Spielzeit, Farbe nach Art), 📍 ‚Hinschauen' springt sanft zum Ort; wichtige Meldungen (Warnung, Krieg, Piraten, Bankrott) bleiben stehen, bis man sie antippt; Einblendungen einzeilig links unten statt in der Mitte; letzte 30 im Spielstand.",
+    "Minikarte ≈ 96 × 96 px unten rechts (ausgeblendet bei offenem Infofenster): Sichtfeld als Viereck aus den Bildecken, eigene Kontore, Schiffe, Feinde rot, Piraten schwarz, Kämpfe blinkend; Tippen oder Ziehen setzt die Kamera; neu zeichnen höchstens einmal je Sekunde.",
+    "Große Weltkarte ohne Spielpause (als Überlagerung, nicht als Fenster), volle Höhe, mit Inselnamen, Kontor-Zeichen, Symbolen für Erz, Gold und Pflanzen, Gegnern in ihrer Farbe und eigenen Soldaten; einblendbar: Ergiebigkeit (Fisch, Wald); Tipp auf eine Insel öffnet die Inselinfo mit ‚Hinschauen'.",
+    "Flotte & Inseln (ui/fleet.ts, Knopf ⛵ und Tipp auf den Inselnamen): Schiffe (Name, Ort/Ziel, Ladung als Symbole, Kanonen, Zustand; Hinschauen, Wählen, ‚Kamera folgt') und Inseln mit Kontor (Einwohner, Warnpunkt, Lager-voll-Zeichen; Hinschauen, Kontor öffnen); Schiff und Insel per Stift umbenennen.",
+    "Warenleiste: immer Holz, Werkzeug, Steine, Nahrung plus alles, was knapp (< 2 min, rot pulsierend) oder voll ist; Knopf ‚📦 Alle'; Tipp auf eine Ware zeigt Name, Menge von Limit und Fluss (‚Wolle 24/40 · +2,1/min'); Trendpfeile aus S1.",
+    "Oberleiste: Bilanz-Schrift 14 px; Uhr mit der Spielzeit; großes Banner ‚PAUSE'; der Tempo-Knopf beendet die Pause mit dem zuletzt gewählten Tempo.",
+    "Aufgabenleiste: Haupt- und eine Nebenaufgabe; Tipp öffnet die Liste aller Aufgaben (erledigt, aktuell, gesperrt mit ‚ab 200 Siedlern'); Knopf ‚Zeig mir' (Kamera hin, passender Knopf pulsiert); überdeckt nie das Infofenster; nur bei Änderung neu schreiben.",
+    "Start: solange kein Kontor steht, Pfeil am Bildrand zur nächsten unentdeckten Insel; die ersten drei Aufgaben mit pulsierendem Ring (Schiff, ‚Kontor bauen', Kategorie Nahrung).",
+    "Verloren-Fenster nennt den Grund (alles verloren oder Bankrott) mit ‚Weiterspielen mit neuem Schiff' bzw. ‚Schuldenerlass mit Punktabzug'."
+   ],
+   "files": [
+    "src/ui/log.ts",
+    "src/ui/log.css",
+    "src/ui/fleet.ts",
+    "src/ui/fleet.css",
+    "src/ui/hud.ts",
+    "src/ui/hud.css",
+    "src/ui/windows.ts",
+    "src/ui/windows.css"
+   ],
+   "dependsOn": [
+    "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes",
+    "L2 Wirtschaft wie 1602: Steuern, Zufriedenheit, Bankrott, Kosten",
+    "S1 Statistik, Kassenbuch und Warnungen (Logik)"
+   ]
+  },
+  {
+   "name": "U4 Bauen und Kämpfen mit dem Finger",
+   "goal": "Bauen, Abreißen und Truppen führen gehen auf dem Handy so zügig wie mit der Maus in 1602 – mit Rückgängig.",
+   "priority": 2,
+   "size": "groß",
+   "items": [
+    "Rückgängig: nach jedem Bau und jeder Wegstrecke 8 s lang ‚↩ Rückgängig' in der Meldung (g.undoBuild, volle Kosten zurück).",
+    "Häuserfeld-Werkzeug (Kategorie Wohnen): Ecke 1 und Ecke 2 tippen → Raster aus Häusern mit Wegstreifen (4 × 2-Blöcke) grün/rot mit Anzahl und Gesamtkosten; ✓ baut alles (g.placeMany).",
+    "Abriss-Bereich: Ecke 1 und Ecke 2 → rotes Rechteck mit ‚7 Gebäude, 12 Wege – Rückerstattung …' und einer gemeinsamen Rückfrage (g.demolishArea); Einzeltipp mit einer Rückfrage wie bisher; das Kontor nicht mehr in der Oberfläche ausschließen (die Spiel-Logik entscheidet).",
+    "Baumenü: Schloss-Karte mit Stand (‚ab 50 Siedlern – du hast 23 auf dieser Insel') und Balken; Punkt ‚NEU' an Kategorie und Karte, bis das Gebäude einmal gebaut wurde; eine nicht bezahlbare Karte nennt den Grund (‚Zu wenig Holz'); Hinweistext nur bei Änderung neu schreiben.",
+    "Weg-Werkzeug: Knopf ‚Ziel ändern'; Suchfenster um Start und Ziel von 12 auf 30 Felder.",
+    "Soldaten (ui/units.ts): Knöpfe ‚Alle', ‚Gleiche Art', ‚⬚ Rahmen' (zwei Tipps), Gruppen 1–3 (lang drücken = speichern), ‚Reihe' und ‚Block', ‚🚪 Ausmustern' (Rückfrage), ‚Zum Arzt'; Tipp auf Wald mit gewählten Soldaten → ‚Bäume fällen' (im Frieden auf fremdem Gebiet mit Rückfrage).",
+    "Schiffe: mehrere wählen (selShips zusätzlich zu selShip), gemeinsam in Linie angreifen, Patrouille setzen.",
+    "Angriff auf Ureinwohner-Gebäude nur nach deutlicher Rückfrage (‚Der Handel endet für immer, ein Fluch droht')."
+   ],
+   "files": [
+    "src/ui/build.ts",
+    "src/ui/build.css",
+    "src/ui/units.ts",
+    "src/ui/units.css",
+    "src/ui.ts",
+    "src/input.ts"
+   ],
+   "dependsOn": [
+    "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes",
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen",
+    "M1 Kampf-Regeln wie 1602 (Logik)"
+   ]
+  },
+  {
+   "name": "U5 Handel bedienen: Kontor-Aufträge, Routen, Ladung",
+   "goal": "Die neuen Handelsregeln lassen sich mit wenigen Tipps einstellen.",
+   "priority": 2,
+   "size": "mittel",
+   "items": [
+    "Reiter ‚Handel' im Kontor (ui/trade.ts): Auftragsliste nach Kontorstufe (z. B. 4 Kauf / 3 Verkauf), je Zeile Ware, Richtung, Schwelle (Regler ‚kaufe bis X t' bzw. ‚verkaufe über X t') und Preis-Regler mit Farbbalken; Anzeige ‚Händler im Hafen' oder ‚Blockiert von …'; Notverkauf klein darunter.",
+    "Schiffsfenster: je Ware −10 / +10 / Max, je Laderaum ‚⬇ ausladen' (g.unloadGood).",
+    "Routen-Editor im Schiffsfenster: 2–4 Kontore antippen, je Halt Ware und Menge laden/entladen (Schritte ±10, bis 100 t), ▶/⏸, Status ‚blockiert: …'.",
+    "Schalter ‚🏳️ Weiße Flagge' und ‚Abwracken' (mit Rückfrage) im Schiffsfenster."
+   ],
+   "files": [
+    "src/ui/trade.ts",
+    "src/ui/trade.css",
+    "src/ui/ship.ts",
+    "src/ui/ship.css"
+   ],
+   "dependsOn": [
+    "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes",
+    "S2 Handel wie 1602: Händlerschiff, Aufträge, Handelsrouten (Logik)",
+    "M1 Kampf-Regeln wie 1602 (Logik)"
+   ]
+  },
+  {
+   "name": "G2 Alle Gebäude detailreich und unterscheidbar",
+   "goal": "Jedes Gebäude hat eine eigene, sofort erkennbare Gestalt mit Fenstern, Türen, Fachwerk, Dachziegeln und Beigaben – schöner als 1602 (Regeln 2 und 6). Gebraucht, solange Meshy fehlt, und für alles, was Meshy nicht liefert.",
+   "priority": 2,
+   "size": "groß",
+   "items": [
+    "Neue Datei src/render/models/gebaeude.ts mit Bausteinen aus kit.ts (Sockel, Fachwerk, Fenster mit Läden und Bank, Tür mit Stufe in Figurenhöhe, Dachüberstand mit Firstziegeln, Gauben, Schornstein, Fässer, Kisten, Holzstapel, Zaun, Blumenkästen); je Typ 1 500–4 000 Dreiecke.",
+    "Eigene Gestalt und Erkennungsmerkmal je Typ: Kirche (Langhaus, Turm mit Spitze), Theater (Säulen, Giebel, Fahnen), Schule (Glockenreiter), Badehaus (Zuber, Dampf), Hochschule (Uhrturm), Brauerei (Kupferkessel, Fässer), Schneiderei (Stoffbahnen), Rumbrennerei (Kupferblase), Tabakwaren (Trockengestell), Erzschmelze (Esse), Waffenschmieden (Waffen und Rohre), Goldschmied (Schild), Jagdhütte (Geweihe, Felle), Fleischerei (Schinken), Minen (Stollenmund, Lore), Werften (Helling mit halbem Rumpf), Plantagen (eigenes Wirtschaftsgebäude je Pflanze, ohne die alten Beet-Balken – Felder zeigt G3b).",
+    "Kontor I–IV über opts.level: Holzschuppen mit Steg → zweite Halle mit Kran → Steinbau mit langem Kai → Kontorhaus mit Turm, Fässern und Kisten; feste blaue Fahne entfernen (Fahne in Besitzerfarbe kommt in G3).",
+    "2–3 Varianten je Typ über opts.variant (Dachfarbe, gespiegelt, Anbau), damit Straßen nicht aus Kopien bestehen; Farbakzent je Kategorie für den Überblick.",
+    "Modelle für die neuen Gebäude aus L1: Feuerwehr, Arzt, Galgen, Palast, Kathedrale, Denkmal, Zierbaum, Ureinwohner-Hütte, Häuptlingshütte, kleines Tor.",
+    "Gestalt deckt sich mit den Meshy-Beschreibungen (G5a), damit Meshy später 1:1 ersetzen kann; Ziel-Dreiecke je Typ als Kommentar; models_old.ts danach löschen.",
+    "Bilder aller Typen mit scripts/modelshot.mjs zum Vergleich."
+   ],
+   "files": [
+    "src/render/models/gebaeude.ts (neu)",
+    "src/render/models/index.ts",
+    "src/render/kit.ts",
+    "src/render/models_old.ts"
+   ],
+   "dependsOn": [
+    "G1 Gebäude-Grafik: sichtbare Fehler und weicherer Look",
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen"
+   ]
+  },
+  {
+   "name": "G3 Stadtleben 1: Rauch, Fahnen, Bau-Animation, Symbole",
+   "goal": "Die Stadt zeigt, was passiert: Schornsteine rauchen bei Arbeit, Fahnen zeigen den Besitzer, Gebäude wachsen beim Bauen hoch, Symbole zeigen die Dringlichkeit.",
+   "priority": 2,
+   "size": "mittel",
+   "items": [
+    "Rauch: Smoke aus smoke.ts einbinden; Rauchpunkte aus dem Modell mit Position und Drehung merken; nur ausstoßen bei Status ‚ok', Auslastung > 0 und Kameraabstand < 45; Stärke je Art (Schmiede und Erzschmelze dunkel und kräftig, Bäckerei hell, Wohnhaus dünn).",
+    "Die Mühle dreht sich nur, wenn sie arbeitet.",
+    "Fahnen in Besitzerfarbe an Kontor, Marktplatz, Werft und Burg (auch für Meshy-Modelle).",
+    "Kontorstufe und Variante an buildingModel durchreichen; changedBuilding baut auch bei neuer Kontorstufe neu.",
+    "Kurze Bau-Animation (rein optisch, 1–2 s): das Gebäude wächst aus dem Boden, dazu Staub und Hammerklang; Hausaufstieg mit kurzem Gerüst-Effekt; Abriss mit Staub und Einsinken.",
+    "Warnsymbole: Ringfarbe nach Dringlichkeit (rot: steht still oder Bewohner ziehen weg, gelb: eingeschränkt, grau: Hinweis); Häuser mit gelbem Gesicht unter 0,7 und rotem unter 0,45 Zufriedenheit; ab Zoom 40 eine Sammelmarke mit Zahl je 6 × 6 Felder; Andockstelle events.iconFor (z. B. 💀 Pest, 🔥 Brand).",
+    "Insel-Symbole nach dem Entdecken: Hacke (Erz), Goldbarren (Gold), Pflanzen mit Prozent über der Inselmitte, ab Zoom 20 sichtbar.",
+    "Beim Antippen eines fertigen Betriebs farbiger Ergiebigkeits-Ring am Boden.",
+    "Antippen in Fingerbreite: Tippradius für Soldaten = max(Basis, 24 px / Pixel je Feld); ab Abstand 45 eigene Soldaten als 28-px-Marke, die man antippen kann.",
+    "Startkamera zeigt Schiff und die aufgedeckte Küste.",
+    "Andockstellen für die Ebenen ‚Bewohner' und ‚Felder' (G3b) in buildWorld und frame."
+   ],
+   "files": [
+    "src/render/scene.ts",
+    "src/render/smoke.ts"
+   ],
+   "dependsOn": [
+    "R2 Pflanzen und Boden: nur Sichtbares zeichnen, nur Geändertes neu bauen",
+    "G1 Gebäude-Grafik: sichtbare Fehler und weicherer Look"
+   ]
+  },
+  {
+   "name": "G3b Stadtleben 2: Bewohner, Arbeiter, sichtbare Felder",
+   "goal": "Menschen laufen durch die Stadt, Arbeiter arbeiten sichtbar, Felder und Weiden wachsen und werden geerntet (Regeln 2 und 10).",
+   "priority": 3,
+   "size": "groß",
+   "items": [
+    "src/render/figures.ts: Figuren-Baukasten aus den Soldaten (Kopf mit Gesicht und Haar, Körper, Arme) für alle Menschen; Kleidung nach Beruf (Holzfäller, Fischer, Träger, Bauer, Händler) und Stufe (Pioniere grob, Aristokraten Samt und Hut); 3–4 Gesichts- und Haarvarianten; units.ts nutzt dieselben Teile.",
+    "src/render/people.ts: Bewohner je Haus ≈ Einwohner / 6, höchstens 120 nahe der Kamera; sie laufen über Wege zu Markt, Kapelle, Wirtshaus, Kirche oder Kontor, bleiben kurz stehen und gehen zurück; auf Pflaster etwas schneller; in der Pause stehen sie; dazu Hunde, Hühner und spielende Kinder.",
+    "Arbeit sichtbar (life.ts): Bauer läuft zum Feld und erntet mit der Sichel, Hirte bei den Schafen, Lore an Mine und Steinbruch mit Staub, glühende Esse mit Funken an den Schmieden, Bäcker am Ofen, Weber im offenen Giebel; ohne Arbeit keine Bewegung.",
+    "src/render/fields.ts: Feldreihen je Pflanze (Getreide, Weinstöcke an Pfählen, Tabak, Zuckerrohr, Baumwolle, Kakao, Gewürze) nach Bestand: Saat → grün → reif → nach der Ernte kahl; Weide kurz gemäht.",
+    "Karrenzieher und Tiere weicher und detailreicher (Fellmuster, Schweinsohren, Ringelschwanz).",
+    "Dorfbewohner der Ureinwohner (Spieler mit Kennzeichen natives) und Feuerwehrwagen als Karren-Variante, sobald events (S3) einen Brand meldet.",
+    "Leistung: alles als gemeinsame Instanzen, nur nahe der Kamera, mit Obergrenzen; Messung mit scripts/perf.mjs (Bildzeit darf nicht über den R2-Wert steigen)."
+   ],
+   "files": [
+    "src/render/figures.ts (neu)",
+    "src/render/people.ts (neu)",
+    "src/render/fields.ts (neu)",
+    "src/render/life.ts",
+    "src/render/carts.ts",
+    "src/render/units.ts"
+   ],
+   "dependsOn": [
+    "G3 Stadtleben 1: Rauch, Fahnen, Bau-Animation, Symbole"
+   ]
+  },
+  {
+   "name": "G4a Landschaft: Berge, Klima, Bäume, Höfe",
+   "goal": "Echte Berge, unterscheidbare Nord- und Südinseln, natürliche Bäume und Gebäude, die im Gelände stehen.",
+   "priority": 3,
+   "size": "groß",
+   "items": [
+    "Berge: Fels von drei Seiten projiziert (keine gestreckten Wände), scharfe Schichtkanten, Risse; an Bergen 3 Gitterpunkte je Feld; Geröllhalden und Felsbrocken am Bergfuß; Baumgrenze (Wald endet unter ≈ 2,5); Schnee nur auf den höchsten Graten im Norden; Vorplatz vor Mine und Steinbruch eingeebnet mit Geröll und Erde.",
+    "Klima sichtbar: im Süden gelbgrüneres Gras, hellerer Sand, rotbrauner Fels, Palmen (gebogener Stamm, Wedel), Bananenstauden, Büsche; im Norden Kiefer, Fichte, Eiche, Birke, dunkleres Grün.",
+    "Bäume neu: 4 Arten je Klima mit 300–600 Dreiecken, unregelmäßige Astlagen, Kronen aus 8–12 Kugelstücken mit weichem Licht und dunklerem Inneren; die Fernstufen aus R2 beibehalten.",
+    "Höfe und Wege im Boden: Ton ‚festgetretene Erde/Kies' als weicher Ring um Gebäude und entlang der Wege (mit Rauschkante); eigener Kanal für Wege, damit G4b die Kachel-Wege ersetzen kann; dunkler Schattenfleck unter Häusern und Bäumen.",
+    "Dürre-Färbung: bräunlicher Boden auf betroffenen Inseln, solange events.droughtOn (S3) es meldet.",
+    "Messen: Bildzeit und Dreiecke dürfen nicht über die R2-Werte steigen."
+   ],
+   "files": [
+    "src/render/terrain.ts",
+    "src/render/vegetation.ts"
+   ],
+   "dependsOn": [
+    "R2 Pflanzen und Boden: nur Sichtbares zeichnen, nur Geändertes neu bauen"
+   ]
+  },
+  {
+   "name": "G4b Wasser, Licht, Schiffe, Meerestiere",
+   "goal": "Wasser, Wellen, Wind und Licht wirken lebendig und realistisch; Schiffe sind auf einen Blick unterscheidbar.",
+   "priority": 3,
+   "size": "groß",
+   "items": [
+    "Wasser: Neigung je Bildpunkt aus den Rauschstufen → Himmelsspiegelung und Sonnenglitzer als kleine Punkte; Flachwasser durchsichtiger mit Lichtmuster am Grund; Weltrand über ≈ 20 Felder weich auslaufen lassen.",
+    "Kielwasser: V-förmiger Schaumstreifen und Gischt an Bug und Heck (fx.ts), Bugwelle.",
+    "Wege: die Kachel-Wege durch den Boden-Kanal aus G4a ersetzen (Pflaster mit Bordstein, Feldweg mit Spurrillen, Gras und Steine am Rand).",
+    "Licht: Wolkenschatten (wanderndes Muster auf Gelände und Wasser), sonnengefärbter Dunst ab Zoom 40, Tageszeit optional und abschaltbar (abends leuchten Fenster); 20–40 Möwen um Kontor, Fischerboote und Küste.",
+    "Berge verdecken nichts: Mindestneigung der Kamera, wenn ein Berg zwischen Kamera und Ziel liegt.",
+    "Schiffe: Kriegsschiffe schmaler mit zwei Reihen Geschützpforten, Galionsfigur, roten Zierstreifen; Handelsschiffe bauchig mit Ladeluke und Fässern; Segel wehen leicht; 2–3 Matrosen (figures.ts); weißes Tuch bei weißer Flagge (M1); Tippradius in Fingerbreite und Fernmarke für eigene Schiffe.",
+    "Meerestiere: 2–4 Gruppen Wale (tauchen mit Fontäne auf) und Delfine (Sprünge) im tiefen Wasser, nur nahe der Kamera.",
+    "Ruinen: zerstörte Gebäude hinterlassen für einige Minuten verkohlte Reste mit Rauchfahne (rein optisch)."
+   ],
+   "files": [
+    "src/render/scene.ts",
+    "src/render/ships.ts",
+    "src/render/fx.ts",
+    "src/render/life.ts"
+   ],
+   "dependsOn": [
+    "G3 Stadtleben 1: Rauch, Fahnen, Bau-Animation, Symbole",
+    "G3b Stadtleben 2: Bewohner, Arbeiter, sichtbare Felder",
+    "G4a Landschaft: Berge, Klima, Bäume, Höfe"
+   ]
+  },
+  {
+   "name": "S3 Ereignisse wie 1602: Feuer, Pest, Kriminalität, Dürre, Schatz",
+   "goal": "Große Städte haben wieder Gegenspieler wie in 1602 – mit Feuerwehr, Arzt und Galgen als Schutz und einstellbarer Häufigkeit.",
+   "priority": 3,
+   "size": "groß",
+   "items": [
+    "Feuerwehr, Arzt und Galgen in ‚bereit' melden (Gebäudewerte aus L1).",
+    "Feuer: je Spieler ab 20 Einwohnern alle 8–15 min ein Haus (häufiger ohne Feuerwehr in Reichweite, bei Unzufriedenen und bei dichter Bebauung); alle 20 s mit 30 % Sprung auf Häuser im Abstand ≤ 2 (Stein und Pflaster bremsen); der Brand senkt die Trefferpunkte (die vorhandenen Flammen erscheinen dadurch von selbst); Feuerwehr in Reichweite mit Weganschluss löscht in ≈ 10–15 s, sonst ist das Haus nach 60 s abgebrannt (ohne Rückerstattung); ignite() für Kanonentreffer.",
+    "Pest: Häuser ab Siedlern in dichter Lage (> 15 Häuser im Umkreis 5) mit ≈ 5 % je 10 min; −1 Einwohner alle 15 s, Ansteckung im Abstand 3; ein Arzt in Reichweite heilt in ≈ 20 s; Kirche und Badehaus halbieren das Risiko; Symbol 💀 über iconFor.",
+    "Kriminalität: Häuser ohne Galgen in Reichweite und mit Zufriedenheit < 0,5 → selten Diebstahl (50–150 Taler oder 1–3 t aus einer Karrenladung).",
+    "Dürre: alle 30–50 min für 3–4 min auf einer Insel; Feld- und Weidebestand bleibt 0 (Getreide, Plantagen, Schafe und Schweine stehen; Fischer, Jäger und Holzfäller laufen weiter); droughtOn() für die Bodenfarbe (G4a).",
+    "Schatz: mit 1 % je neuem Gebäude (nicht Weg oder Kontor) ‚Schatz gefunden: +1 000 Taler' mit Münzklang (afterPlace).",
+    "Fluch-Schnittstelle für die Ureinwohner (Faktor × 3 für 20 min).",
+    "Häufigkeit über opts.ereignisse (aus / mild / normal), Standard nach Entscheidung des Nutzers (Frage 5); Meldungen mit Ort und Alarmton; Info-Zeilen über infoLines (‚Brennt – Feuerwehr fehlt', ‚Pest – Arzt fehlt'); Zustand im Spielstand.",
+    "Test-Skript: Feuer mit und ohne Feuerwehr, Pest mit und ohne Arzt, Dürre verschont die Fischer."
+   ],
+   "files": [
+    "src/events.ts"
+   ],
+   "dependsOn": [
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen"
+   ]
+  },
+  {
+   "name": "S4 Ureinwohner wie 1602: Dörfer, Tausch, Fluch",
+   "goal": "Auf manchen Inseln leben Ureinwohner; man tauscht mit ihnen Waren – wer sie angreift, verliert den Handel für immer und wird verflucht.",
+   "priority": 3,
+   "size": "groß",
+   "items": [
+    "Dörfer auf 20–30 % der freien Inseln (nicht Start-, Heimat- oder KI-Inseln), aus der Startzahl bestimmt: neutraler Spieler (Kennzeichen natives), 6–10 Hütten und eine Häuptlingshütte (Typen aus L1, in ‚bereit' melden, gesetzt mit placeNeutral); die Hütten belegen ihre Felder.",
+    "Wünsche und Gaben nach Klima (Süden gibt Gewürze und Kakao, Norden Tabakwaren und Wein; gewünscht werden Stoffe, Alkohol, Werkzeug) – eigene Festlegung, da die Quellen unvollständig sind.",
+    "Tausch (ui/natives.ts, Tipp auf die Häuptlingshütte): ‚Gib X, bekomme 1,5 × Y' (aufgerundet, auch kleine Mengen), mit Schiff in 5 Feldern Abstand oder eigenem Kontor plus Weg auf der Insel.",
+    "Angriff: sinken die Trefferpunkte einer Hütte durch den Spieler → Fluch für 20 min (events.curse), Handel für immer beendet, Gold der Insel versiegt; Meldung mit Ort.",
+    "Zustand im Spielstand (ext)."
+   ],
+   "files": [
+    "src/natives.ts",
+    "src/ui/natives.ts",
+    "src/ui/natives.css"
+   ],
+   "dependsOn": [
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen",
+    "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes"
+   ]
+  },
+  {
+   "name": "S5 Endwertung: Punkte, Sieg, Rangliste",
+   "goal": "Das Spiel hat wie 1602 eine Endwertung und auf Wunsch ein Ziel – man weiß, wie gut man steht.",
+   "priority": 3,
+   "size": "mittel",
+   "items": [
+    "score(g, besitzer) nach 1602 (docs/recherche/quelle-b-militaer.md §6): Einwohner je Stufe (60/80/100/150/200 Punkte je 100), Kassenstufen 50 000 bis 10 Mio. = 1 000 bis 5 000 Punkte, Kampfpunkte (verschwundene feindliche Einheiten und Schiffe zählen, eigene Verluste ab), 1 500 je besiegtem Gegner, Inselfläche, Anzahl der Prachtbauten, Abzug für Schuldenerlass.",
+    "Ziele (GOALS): Endlos, ‚500 Kaufleute', ‚alle Gegner besiegen', ‚Zeitlimit 2 Stunden'; Prüfung je Sekunde; Sieg-Fenster mit Punkten, ‚Weiterspielen' und ‚Neues Spiel'.",
+    "Fenster ‚Punkte' (ui/score.ts, im Menü): Aufschlüsselung und Rangliste mit den Computergegnern.",
+    "Zähler im Spielstand (ext)."
+   ],
+   "files": [
+    "src/score.ts",
+    "src/ui/score.ts",
+    "src/ui/score.css"
+   ],
+   "dependsOn": [
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen",
+    "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes"
+   ]
+  },
+  {
+   "name": "L3 Stadt-Inhalte: Prachtbauten, Plätze, Anlegesteg",
+   "goal": "Die Endspiel-Bauten und Stadtplätze aus 1602 kommen dazu – Aristokraten haben wieder Ziele.",
+   "priority": 3,
+   "size": "mittel",
+   "items": [
+    "Palast (ab 1 500 Aristokraten, 5 000 Taler, 20 Holz, 15 Werkzeug, 50 Steine, Unterhalt 40, nur einmal) und Kathedrale (ab 2 500 Aristokraten, 7 500 Taler, 25 Holz, 25 Werkzeug, 70 Steine, Unterhalt 90, Radius 22, nur einmal): nach Fertigstellung 20–30 min +25 % Steuer auf der Insel; Einmaligkeit in canPlace (wie Triumphbogen).",
+    "Denkmal (ab 200 Bürgern, baubar nach 30 min Zufriedenheit > 0,9) und Zierbaum (ab 250 Kaufleuten, 5 Taler, 1 Stein): Zufriedenheit im Umkreis + 0,02.",
+    "Plätze I–III (ab 200 Siedlern bzw. 250 Kaufleuten): Wegart 3, Karren doppelt so schnell und auch diagonal; im Wege-Werkzeug wählbar (ui/build.ts).",
+    "Anlegesteg (15 Taler, 2 Steine): Schiffe legen auch dort an (shipDock).",
+    "Freigabe der vorbereiteten Gebäude; Aufgaben ergänzen (Palast, Kathedrale)."
+   ],
+   "files": [
+    "src/game.ts",
+    "src/data.ts",
+    "src/ui/build.ts"
+   ],
+   "dependsOn": [
+    "L2 Wirtschaft wie 1602: Steuern, Zufriedenheit, Bankrott, Kosten",
+    "U4 Bauen und Kämpfen mit dem Finger"
+   ]
+  },
+  {
+   "name": "L4 Warenwege wie 1602: Felder, Förster, Anlieferung",
+   "goal": "Felder, Wald und Warenwege funktionieren wie in 1602: Felder belegen Platz und reifen, Wald lässt sich pflanzen, Rohstoffe werden zu den Werkstätten gebracht.",
+   "priority": 3,
+   "size": "groß",
+   "items": [
+    "Felder nach Entscheidung des Nutzers (Frage 3); Empfehlung: beim Bau legt die Farm oder Plantage auf freiem Land im Radius sichtbare Felder ihrer Pflanze an (5 Taler je Feld). Sie belegen den Platz, starten unreif (Bestand 0) und reifen mit REGEN.feld; Nachbessern mit einem Feld-Werkzeug (wie Wege: Start, Ziel, ✓). resOk('feld') zählt nur eigene Felder; Weide nur auf Gras ohne Feld; Sand ist kein Acker; die Ergiebigkeitsskala zeigt ‚x von y Feldern'.",
+    "Wald pflanzen: der Holzfäller (oder ein Forsthaus) setzt in Pausen Setzlinge auf freies Gras im Radius, bis ≈ 60 % Wald sind; Wild kommt mit; die Grafik baut nur die betroffenen Felder neu (R2).",
+    "Anlieferung: jeder Verarbeiter hat ein kleines Eingangslager; liegt ein passender Erzeuger höchstens 2–3 Felder entfernt, holt der Betrieb die Ware direkt; sonst bringt ein Marktkarren sie vom Kontor oder Markt (Auftrag ‚liefern', zuerst der Betrieb, der am längsten wartet); Status ‚wartet auf Lieferung'; Burg und Werft nehmen weiter direkt aus dem Lager.",
+    "render/fields.ts zeigt nur noch echte Felder.",
+    "Computergegner legen Felder an und bauen Verarbeiter nahe den Erzeugern (ai.ts).",
+    "Spielstand-Version erhöhen; Wirtschafts-Simulation (scripts/wirtschaft-sim.ts) erneut laufen lassen und die Raten aus L2 nachjustieren."
+   ],
+   "files": [
+    "src/game.ts",
+    "src/data.ts",
+    "src/ai.ts",
+    "src/render/fields.ts",
+    "src/ui/build.ts"
+   ],
+   "dependsOn": [
+    "L3 Stadt-Inhalte: Prachtbauten, Plätze, Anlegesteg",
+    "M2 Piraten und Diplomatie wie 1602",
+    "G3b Stadtleben 2: Bewohner, Arbeiter, sichtbare Felder"
+   ]
+  },
+  {
+   "name": "M2 Piraten und Diplomatie wie 1602",
+   "goal": "Piraten haben ein Nest, das man zerstören kann, und lassen sich bestechen; mit den Computergegnern gibt es Handelsverträge, Tribut und nachvollziehbare Kriegsgründe.",
+   "priority": 3,
+   "size": "groß",
+   "items": [
+    "Piratennest: beim ersten Auftauchen eine unbesiedelte Insel mindestens 70 Felder von allen Startecken wählen; dort Piraten-Kontor, 2 Türme und eine Fischerhütte (placeNeutral). Schiffe starten dort und bringen Beute zurück; Nachschub nur, solange das Nest steht. Sind Türme und Hütten zerstört: keine Piraten mehr, die Insel wird frei, der Sieg zählt (Triumphbogen statt ‚3 versenkte Schiffe').",
+    "Bestechung: ‚Piraten gegen <Gegner> schicken' (Preis nach Vermögen) → 10 min jagen sie dessen Schiffe; ‚Nahrung oder Alkohol schenken' (50 t) = Ruhe; der Schutzkauf bleibt; mit unbewaffnetem Schiff am Nest auch direkt.",
+    "Piraten-Einstellungen aus opts (an/aus, Start nach Schwierigkeit).",
+    "Handelsvertrag (ui/diplomacy.ts): kostet einmalig ≈ 500–1 500 Taler und endet bei Krieg; dann besucht ein KI-Handelsschiff alle ≈ 6 min dein Kontor und handelt zu KI-Preisen (docs/recherche/quelle-c-schiffe-handel.md §2.5, 10–20 % besser als der freie Händler; nutzt visit() aus S2); die KI kauft nur, was ihr fehlt. Dadurch fahren KI-Schiffe auch im Frieden.",
+    "Tribut zahlen (setzt eine Ruhezeit der KI); Anzeige, was die KI verärgert (Kriegsgründe und Persönlichkeit aus KI2); Bündnis nur vormerken.",
+    "Die KI kauft ein Schiff, wenn sie keins und keine Werft hat."
+   ],
+   "files": [
+    "src/combat.ts",
+    "src/ai.ts",
+    "src/ui/diplomacy.ts",
+    "src/ui/diplomacy.css"
+   ],
+   "dependsOn": [
+    "KI2 Computergegner wachsen, siedeln und kämpfen wie in 1602",
+    "S2 Handel wie 1602: Händlerschiff, Aufträge, Handelsrouten (Logik)",
+    "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes"
+   ]
+  },
+  {
+   "name": "P1 Spielstart, Schwierigkeit und Spielstände",
+   "goal": "Wie im Endlosspiel von 1602 wählt man Schwierigkeit und Optionen; es gibt mehrere Spielstände, die nicht verloren gehen.",
+   "priority": 3,
+   "size": "groß",
+   "items": [
+    "Fenster ‚Neues Spiel' (ui/settings.ts): Schwierigkeit leicht / normal / schwer (Empfehlung Startgeld 20 000 / 15 000 / 10 000, Belohnungsfaktor 1 / 0,5 / 0, KI-Stärke, Piratenstart, Ereignisse; endgültige Werte nach Frage 5), Gegner 0–3, Piraten an/aus, Ereignisse aus / mild / normal, Spielziel (aus GOALS), Weltgröße (aus WORLD_SIZES, nur sichtbar bei mehr als einem Eintrag), Kartenzahl zum Teilen; eigener Knopf ‚Los!'; vorher Rückfrage ‚Aktuellen Stand sichern?'.",
+    "Spielstände (src/saves.ts): größerer Speicher im Browser (IndexedDB) statt localStorage; ‚Auto 1' und ‚Auto 2' abwechselnd alle 5 min, 3 eigene Plätze; Liste mit Datum, Spielzeit, Einwohnern und Geld; Laden, Speichern, Löschen; Stände komprimiert speichern; Export und Import als Text; navigator.storage.persist() anfragen; der alte Stand aus localStorage wird übernommen.",
+    "Einstellungen: Grafik Auto / Hoch / Sparsam (view.setQuality aus R1), Ton und Musik; Hinweis ‚Für Vollbild: Teilen → Zum Home-Bildschirm'.",
+    "main.ts: Selbstsicherung über saves.ts; Meldung bei Fehlern."
+   ],
+   "files": [
+    "src/saves.ts (neu)",
+    "src/ui/settings.ts",
+    "src/ui/settings.css",
+    "src/main.ts"
+   ],
+   "dependsOn": [
+    "R1 Grafik-Leistung: Lecks, Akku und Qualitätsstufen",
+    "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes",
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen"
+   ]
+  },
+  {
+   "name": "A1 Klänge: Gebäude, Schiffe, Musikstücke",
+   "goal": "Wie im Original hat jedes Gebäude sein Geräusch, Schiffe knarzen, und die Musik besteht aus festen, ruhigen Stücken (Regel 12).",
+   "priority": 3,
+   "size": "mittel",
+   "items": [
+    "Gebäude-Klänge selbst erzeugt (lizenzfrei): Amboss (Schmieden), Säge und Hobel (Werft), knarrende Mühle, Blöken und Grunzen (Schaffarm, Schweinezucht), Glocke (Kapelle, Kirche), Stimmengewirr (Markt), Becher und Lachen (Wirtshaus), Spitzhacke (Steinbruch, Minen), Plätschern (Fischer), Prasseln und Feuerglocke (Brand).",
+    "Beim Öffnen der Gebäude-Info den passenden Klang abspielen (ui/info.ts, eine Zeile).",
+    "Nah herangezoomt (Abstand < 25) jede Sekunde 1–2 arbeitende Gebäude im Bild leise hörbar machen (main.ts, sound.near).",
+    "Schiffe: Knarzen, flatternde Segel und Bugwelle für das gewählte oder ein nahes fahrendes Schiff.",
+    "Musik: 4–6 feste Stücke (Aufbau, Abend, Seefahrt, Bedrohung bei Krieg oder Piraten) mit Pausen und sanftem Übergang statt Zufallsfolge.",
+    "Lautstärkeregler für Musik, Atmosphäre und Effekte (ui/settings.ts)."
+   ],
+   "files": [
+    "src/audio.ts",
+    "src/ui/info.ts",
+    "src/main.ts",
+    "src/ui/settings.ts"
+   ],
+   "dependsOn": [
+    "P1 Spielstart, Schwierigkeit und Spielstände",
+    "U2 Fenster: Steuern, Bilanz, Statistik, Bevölkerung"
+   ]
+  },
+  {
+   "name": "G5b Meshy-Modelle im Spiel, Gebäude gemeinsam zeichnen",
+   "goal": "Meshy-Modelle ersetzen die Code-Modelle überall (Gebäude, Menschen, Tiere, Schiffe, Bäume), mit Bewegungen und ohne das iPhone zu überlasten.",
+   "priority": 4,
+   "size": "groß",
+   "items": [
+    "Ankerpunkte (assets/anker.json) an Meshy-Gebäude hängen: Rauch, Fahne, Mühlenflügel als Code-Teil am Gehäuse.",
+    "units.ts, life.ts, ships.ts und vegetation.ts fragen zuerst lib.other(id); Bäume als gemeinsame Gruppe aus der Meshy-Form; Reiter und Tiere behalten die Bewegung aus Code, nur der Körper kommt von Meshy.",
+    "Bewegungen: gltf.animations speichern; AnimationMixer je Figur nur in Nahaufnahme, sonst Standbild.",
+    "Fernstufen je Modell (nah ≤ 4 000 Dreiecke, ab Abstand 35 ≈ 600, ab 80 Kiste oder Bild); Schatten mit der einfachen Stufe.",
+    "Gleiche Gebäude gemeinsam zeichnen: je Typ, Stufe und Variante eine Instanzgruppe (Besitzerfarbe je Instanz, Auswahl über instanceId); Mühle und Burgen mit Fahnen bleiben einzeln; Antippen über eine einfache Hüllbox.",
+    "Texturen als KTX2 (KTX2Loader), alle Modelle eines Typs in einem Atlas.",
+    "Automatischer Test (scripts/meshy-test.mjs): 300 Gebäude laden, Zeichenaufrufe, Dreiecke und Speicher prüfen (Ziel < 100 Aufrufe, < 1 Mio. Dreiecke, < 200 MB)."
+   ],
+   "files": [
+    "src/render/glb.ts",
+    "src/render/scene.ts",
+    "src/render/units.ts",
+    "src/render/life.ts",
+    "src/render/ships.ts",
+    "src/render/vegetation.ts",
+    "src/render/models/index.ts",
+    "scripts/meshy-test.mjs (neu)"
+   ],
+   "dependsOn": [
+    "G5a Meshy-Plan: Liste, Budget und Ankerpunkte",
+    "G2 Alle Gebäude detailreich und unterscheidbar",
+    "G4b Wasser, Licht, Schiffe, Meerestiere",
+    "G3b Stadtleben 2: Bewohner, Arbeiter, sichtbare Felder"
+   ]
+  },
+  {
+   "name": "L5 Welt wie 1602: Inselgrößen, Formen, Flüsse, Steppe",
+   "goal": "Die Inselwelt bekommt die Größen und Vielfalt von 1602 (fünf Größenklassen, Flüsse mit Brücken, Steppe), ohne das iPhone zu überfordern.",
+   "priority": 4,
+   "size": "groß",
+   "items": [
+    "Fünf Größenklassen nach Entscheidung des Nutzers (Frage 6): riesig ≈ 100 × 90 (eine je Welt, eher unfruchtbar, kaum Gold), groß ≈ 70 × 60, mittel ≈ 50 × 50, klein ≈ 40 × 40, winzig ≈ 30 × 30 (fruchtbar, oft Gold, mindestens 450 Landfelder); WORLD_SIZE 320–360 mit 18–24 Inseln; WORLD_SIZES für das Fenster ‚Neues Spiel' ergänzen.",
+    "Formen: 2–3 Kreise je Insel (lang gestreckt, Halbmond), Buchten, Inselketten mit Meerengen; Berge als Rücken von 10–25 Feldern.",
+    "Steppe (T.Steppe, Fruchtbarkeit × 0,5, häufiger im Süden) und Flüsse vom Berg zur Küste (T.Fluss) mit Holzbrücke (2 Holz, 10 Taler, kann brennen) und Steinbrücke (2 Steine, 15 Taler), automatisch gesetzt, wenn ein Weg den Fluss quert (Wegsuche in ui/build.ts, canRoad, Karren über Brücken); Bodenfarben für Steppe und Fluss (terrain.ts).",
+    "Zufall: Zusammensetzung, Startecke des Spielers und Namen gemischt; Startpunkte mindestens 25 Felder vom Rand; Startzahl aus crypto.getRandomValues.",
+    "Garantien in der Erzeugung mit Neuwurf (Gold ≥ 1, Erz ≥ 1, jede Pflanze auf ≥ 1 Insel, Testvorlage /tmp/claude-0/-home-user-Macks/ea64aae4-b1e0-5446-8929-cd495394d32c/scratchpad/abgleich/umfang/worlds.ts); Vulkan nur mit Schalter (später).",
+    "Grundflächen nach der Klärung aus D1 (Wohnhaus 1 Feld? längliche Gebäude mit Drehen-Knopf) prüfen und, falls nötig, als eigenes Folgepaket planen.",
+    "Spielstand-Version erhöhen; Leistung auf dem iPhone messen, bevor ‚groß' Standard wird."
+   ],
+   "files": [
+    "src/world.ts",
+    "src/game.ts",
+    "src/data.ts",
+    "src/path.ts",
+    "src/render/terrain.ts",
+    "src/ui/build.ts"
+   ],
+   "dependsOn": [
+    "L4 Warenwege wie 1602: Felder, Förster, Anlieferung",
+    "G4a Landschaft: Berge, Klima, Bäume, Höfe",
+    "P1 Spielstart, Schwierigkeit und Spielstände",
+    "F1 Feinschliff: Gebäudebilder, Warensymbole, App-Symbol"
+   ]
+  },
+  {
+   "name": "F1 Feinschliff: Gebäudebilder, Warensymbole, App-Symbol",
+   "goal": "Das Baumenü zeigt Bilder der echten Gebäude, Waren haben einheitliche Symbole, und das Spiel lässt sich als App auf den Home-Bildschirm legen.",
+   "priority": 4,
+   "size": "mittel",
+   "items": [
+    "src/render/thumbs.ts: beim Start jedes Gebäudemodell einmal klein zeichnen (128 × 128, schräg von oben, durchsichtiger Hintergrund); Baumenü und Info-Karte zeigen das Bild statt Emoji; neue Meshy-Modelle ändern die Bilder automatisch.",
+    "Waren als einheitliche, selbst gezeichnete Symbole (SVG) statt Emoji (Warenleiste, Karten, Lager).",
+    "Symbol 180 × 180 (Anker), apple-touch-icon, manifest.webmanifest (display fullscreen, orientation landscape, theme_color) in index.html und public/."
+   ],
+   "files": [
+    "src/render/thumbs.ts (neu)",
+    "src/ui/build.ts",
+    "src/ui/hud.ts",
+    "index.html",
+    "public/icon-180.png (neu)",
+    "public/manifest.webmanifest (neu)"
+   ],
+   "dependsOn": [
+    "G2 Alle Gebäude detailreich und unterscheidbar",
+    "U3 Überblick: Meldungen, Minikarte, Flotte & Inseln, Warenleiste",
+    "U4 Bauen und Kämpfen mit dem Finger",
+    "L4 Warenwege wie 1602: Felder, Förster, Anlieferung"
+   ]
+  },
+  {
+   "name": "F2 Szenarien",
+   "goal": "Wie in 1602 Szenarien mit festen Zielen anbieten.",
+   "priority": 4,
+   "size": "mittel",
+   "items": [
+    "Datenmodell src/scenarios.ts: Name, Startzahl, Startgeld, Gegner, Ziel (Stufe, Anzahl, Zeit), Texte; Game.create mit den Szenario-Optionen.",
+    "5–8 Starter-Szenarien: ‚Erste Siedler' (200 Siedler), ‚Handelsmacht' (3 Inseln besiedeln), ‚Pirateninsel' (Nest zerstören), ‚Aristokraten' (500 Aristokraten), ‚Krieg' (einen Gegner besiegen).",
+    "Auswahl im Fenster ‚Neues Spiel'; Sieg über score.ts."
+   ],
+   "files": [
+    "src/scenarios.ts (neu)",
+    "src/ui/settings.ts"
+   ],
+   "dependsOn": [
+    "S5 Endwertung: Punkte, Sieg, Rangliste",
+    "P1 Spielstart, Schwierigkeit und Spielstände",
+    "A1 Klänge: Gebäude, Schiffe, Musikstücke",
+    "M2 Piraten und Diplomatie wie 1602"
+   ]
+  },
+  {
+   "name": "D2 Unterlagen nachziehen",
+   "goal": "Nach der Umsetzung stimmen Unterlagen und Spiel wieder überein.",
+   "priority": 4,
+   "size": "klein",
+   "items": [
+    "docs/1602-INHALT.md §12: alle tatsächlich umgesetzten Abweichungen eintragen (Steuerkurve, Raten, Felder, Inselinfo, Fehlschüsse, Schwierigkeitswerte, Bau-Animation, Grundflächen, Mehrspieler).",
+    "docs/OFFEN.md: Erledigtes streichen, Restpunkte stehen lassen.",
+    "docs/ANFORDERUNGEN.md und docs/GRAFIK.md an den Stand anpassen; docs/SPIELDESIGN.md endgültig angleichen oder entfernen.",
+    "Anleitung im Spiel mit den neuen Funktionen abgleichen; fehlende Texte als Hinweis an ein UI-Paket melden."
+   ],
+   "files": [
+    "docs/1602-INHALT.md",
+    "docs/OFFEN.md",
+    "docs/ANFORDERUNGEN.md",
+    "docs/GRAFIK.md",
+    "docs/SPIELDESIGN.md"
+   ],
+   "dependsOn": [
+    "L1 Spiellogik: Fehler, Schiffskurs und Andockstellen",
+    "U1 Oberfläche: Bausteine trennen und Handy-Sofortfixes",
+    "KI1 Computergegner: Wirtschaft reparieren",
+    "R1 Grafik-Leistung: Lecks, Akku und Qualitätsstufen",
+    "R2 Pflanzen und Boden: nur Sichtbares zeichnen, nur Geändertes neu bauen",
+    "G1 Gebäude-Grafik: sichtbare Fehler und weicherer Look",
+    "D1 Unterlagen bereinigen und Ziele festschreiben",
+    "G5a Meshy-Plan: Liste, Budget und Ankerpunkte",
+    "L2 Wirtschaft wie 1602: Steuern, Zufriedenheit, Bankrott, Kosten",
+    "S1 Statistik, Kassenbuch und Warnungen (Logik)",
+    "S2 Handel wie 1602: Händlerschiff, Aufträge, Handelsrouten (Logik)",
+    "M1 Kampf-Regeln wie 1602 (Logik)",
+    "KI2 Computergegner wachsen, siedeln und kämpfen wie in 1602",
+    "U2 Fenster: Steuern, Bilanz, Statistik, Bevölkerung",
+    "U3 Überblick: Meldungen, Minikarte, Flotte & Inseln, Warenleiste",
+    "U4 Bauen und Kämpfen mit dem Finger",
+    "U5 Handel bedienen: Kontor-Aufträge, Routen, Ladung",
+    "G2 Alle Gebäude detailreich und unterscheidbar",
+    "G3 Stadtleben 1: Rauch, Fahnen, Bau-Animation, Symbole",
+    "G3b Stadtleben 2: Bewohner, Arbeiter, sichtbare Felder",
+    "G4a Landschaft: Berge, Klima, Bäume, Höfe",
+    "G4b Wasser, Licht, Schiffe, Meerestiere",
+    "S3 Ereignisse wie 1602: Feuer, Pest, Kriminalität, Dürre, Schatz",
+    "S4 Ureinwohner wie 1602: Dörfer, Tausch, Fluch",
+    "S5 Endwertung: Punkte, Sieg, Rangliste",
+    "L3 Stadt-Inhalte: Prachtbauten, Plätze, Anlegesteg",
+    "L4 Warenwege wie 1602: Felder, Förster, Anlieferung",
+    "M2 Piraten und Diplomatie wie 1602",
+    "P1 Spielstart, Schwierigkeit und Spielstände",
+    "A1 Klänge: Gebäude, Schiffe, Musikstücke",
+    "G5b Meshy-Modelle im Spiel, Gebäude gemeinsam zeichnen",
+    "L5 Welt wie 1602: Inselgrößen, Formen, Flüsse, Steppe",
+    "F1 Feinschliff: Gebäudebilder, Warensymbole, App-Symbol",
+    "F2 Szenarien"
+   ]
+  }
+ ],
+ "questions": [
+  {
+   "question": "Steuern: Sollen sie wie in 1602 funktionieren? Das heißt: Je Stufe gibt es einen Regler mit Höchstsätzen von 48 % bis 35 %, zu hohe Steuern machen die Bewohner unzufrieden, und die Steuer steigt mit der Stufe nur wenig an. Ein Aristokrat zahlt dann etwa 1,4-mal so viel wie ein Pionier, heute ist es das 6-Fache.",
+   "hypothesis": "Empfehlung: Regler und die Original-Kurve übernehmen. In 1602 ist der Steuersatz das wichtigste Werkzeug für Geld und Zufriedenheit, und mit der flachen Kurve bleiben auch die unteren Stufen wertvoll. Die Einnahmen insgesamt stellen wir so ein, dass das Spiel dadurch nicht schwerer wird.",
+   "options": [
+    "Regler und flache Kurve wie in 1602 (Empfehlung)",
+    "Regler, aber die heutige steile Kurve behalten",
+    "Kein Regler, feste Steuern wie jetzt"
+   ]
+  },
+  {
+   "question": "Wirtschaftstempo: Die Bewohner verbrauchen 8-mal so schnell wie im Original, die Betriebe arbeiten aber nur 2- bis 3-mal so schnell. Deshalb versorgt ein Betrieb nur ¼ bis ⅓ so viele Bewohner wie in 1602, und man braucht etwa 3-mal so viele Betriebe. Wie sollen wir das angleichen?",
+   "hypothesis": "Empfehlung: Die Betriebe schneller machen, bis einer wieder 60–100 % so viele Bewohner versorgt wie in 1602. Dann stimmen die Verhältnisse wie im Original, und die Städte bleiben übersichtlich.",
+   "options": [
+    "Betriebe schneller machen, Verhältnisse wie in 1602 (Empfehlung)",
+    "Verbrauch der Luxuswaren senken",
+    "So lassen (bewusst mehr Betriebe) und als Abweichung festhalten"
+   ]
+  },
+  {
+   "question": "Felder: In 1602 legt man um Farmen und Plantagen einzelne Felder an (5 Taler je Feld). Sie belegen Platz und müssen erst reifen. In Neue Ufer zählt jede freie Wiese im Umkreis unsichtbar und sofort reif als Feld. Wie soll es werden?",
+   "hypothesis": "Empfehlung: Die Farm legt beim Bau automatisch sichtbare Felder an (5 Taler je Feld, sie müssen erst reifen), und mit einem Feld-Werkzeug kann man nachbessern. Das ist nah an 1602 und spart auf dem Handy viele Tipps.",
+   "options": [
+    "Farm legt sichtbare Felder automatisch an, Nachbessern möglich (Empfehlung)",
+    "Felder wie in 1602 selbst setzen (Start, Ziel, ✓ wie bei Wegen)",
+    "So lassen und die Felder nur sichtbar machen"
+   ]
+  },
+  {
+   "question": "Grafik der Gebäude: Sie sind noch einfache Formen aus Code. Der Anschluss für Meshy-Modelle ist fertig, es wurden aber noch keine Modelle erzeugt, weil dein Meshy-Schlüssel fehlt. Wie sollen wir vorgehen?",
+   "hypothesis": "Empfehlung: Die sichtbaren Fehler im Code sofort beheben (alle 5 Hausstufen, Rauch, keine Bodenplatten) und eine Meshy-Probe mit 3 Modellen machen (Wohnhaus, Kontor, Schaf). Überzeugt das Ergebnis, erzeugen wir alle Modelle mit Meshy und bauen nur nach, was Meshy nicht liefern kann. Dafür brauchen wir deinen Meshy-Schlüssel.",
+   "options": [
+    "Meshy-Probe mit 3 Modellen, danach alle (Schlüssel kommt) (Empfehlung)",
+    "Zuerst alle Gebäude im Code detailreich nachbauen, Meshy später",
+    "Beides gleichzeitig"
+   ]
+  },
+  {
+   "question": "Stärke der Gegner und Schwierigkeit: In 1602 wachsen die Gegner bis in hohe Stufen, besiedeln mehrere Inseln und greifen an. Wie stark sollen sie bei dir sein? Und wie hart sollen Katastrophen wie Feuer, Pest und Dürre sein?",
+   "hypothesis": "Empfehlung: beim Spielstart wählbar (leicht / normal / schwer, Startgeld wie im Original 20 000 / 15 000 / 10 000). Bei „normal“ wachsen die Gegner bis zu Kaufleuten, besiedeln 2–3 Inseln und greifen nach einer Vorwarnung an. Katastrophen standardmäßig „mild“: selten und mit Feuerwehr und Arzt gut zu beherrschen. Kampf bleibt dabei ein Kernbestandteil (Regel 1).",
+   "options": [
+    "Wählbar, Standard „normal“ mit milden Katastrophen (Empfehlung)",
+    "Immer so stark und hart wie im Original",
+    "Eher zurückhaltend, der Aufbau steht im Vordergrund"
+   ]
+  },
+  {
+   "question": "Inselgrößen: Die Inseln sind eine Größenklasse kleiner als in 1602 (die größte etwa 60 × 60 statt 100 × 90 Felder). Ein Kontor und 2–3 Marktplätze decken eine große Insel fast ganz ab. Sollen wir auf die Größen des Originals gehen? Das braucht mehr Leistung auf dem iPhone.",
+   "hypothesis": "Empfehlung: Ja, fünf Größenklassen wie im Original und eine größere Welt. Aber erst nach der Arbeit an der Grafik-Leistung (R1, R2) und nach einem Test auf deinem iPhone. Die Weltgröße wird beim Spielstart wählbar.",
+   "options": [
+    "Größen wie in 1602, nach der Leistungsarbeit und einem iPhone-Test (Empfehlung)",
+    "Nur etwas größer (eine Größenklasse mehr)",
+    "So lassen"
+   ]
+  }
+ ]
+}
