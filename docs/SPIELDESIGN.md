@@ -1,5 +1,23 @@
 # Spielkonzept – Neue Ufer
 
+> **Achtung, veraltet.** Dieses Dokument ist der erste Entwurf vom Beginn des Projekts. Es ist **nicht mehr maßgeblich**. Maßgeblich sind `docs/1602-INHALT.md` (so funktioniert das Vorbild), `docs/ANFORDERUNGEN.md` (was geprüft wird), `docs/ABGLEICH-1602.md` (Vergleich und Entscheidungen) und `docs/OFFEN.md` (was noch fehlt). Wo dieses Dokument ihnen widerspricht, gelten sie. Die Beschreibung des Spielgefühls (Abschnitt 1) und die Ideen zu Bedienung und Ereignissen sind weiter brauchbar; die Zahlen, Namen und Etappen unten sind es nicht.
+>
+> **Was heute anders ist als hier beschrieben** (Stand 31.10.2026):
+>
+> | Hier steht | Heute im Spiel / maßgeblich |
+> |---|---|
+> | Steinmetz und Ziegel; „Stein zählt wie Ziegel“ | **Steine ohne Steinmetz** (Steinbruch liefert direkt Steine; sie ersetzen Ziegel überall) |
+> | Köhlerei, Holzkohle, Weinkelter, Musketenbauer | gibt es nicht: Erzschmelze nimmt Holz und Erz, das Weingut liefert direkt Alkohol, der Büchsenmacher baut Musketen |
+> | Trupps von etwa 6 Mann, Rahmen aufziehen | einzelne Soldaten wie im Vorbild (Schwertkämpfer, Reiter, Musketier, Kanonier), Mehrfachauswahl per Knopf |
+> | Schiffsnamen Kutter, Kogge, Karacke, Schaluppe, Galeone | Kleines/Großes Handelsschiff, Kleines/Großes Kriegsschiff, Piratenschiff mit den Werten des Vorbilds |
+> | Burg 4 × 4, alle Gebäude mit eigenen Größen | alle Grundflächen sind heute quadratisch (Burg 2 × 2, Große Burg und Festung 3 × 3); länglich nur geplant, siehe `ABGLEICH-1602.md` 2.1a |
+> | Steuertabelle in Abschnitt 2 (1,2 bis 6,5 Taler, steil) und feste Schwellen | Steuern, Schwellen und Verbrauch in `src/data.ts`; Steuer wie 1602 mit Regler je Stufe und flacher Kurve ist entschieden (Paket L2) |
+> | Bedürfnisse nach Stufen anders verteilt (z. B. Stoffe erst für Siedler, Tabakwaren für Kaufleute) | Verteilung und Aufstiegsbedingungen wie im Vorbild, siehe `1602-INHALT.md` Abschnitt 2 |
+> | Freischaltungen nach „eigenen Festlegungen“ | Schwellen des Vorbilds, siehe `1602-INHALT.md` Abschnitt 6 |
+> | Ureinwohner: nur Ansehensstrafe bei Angriff | wie im Vorbild: Tauschhandel, bei Angriff ein **Fluch** (Dürre, Brände, Seuchen); noch nicht umgesetzt (Paket S4) |
+> | Etappen 1 bis 4 | neue Etappen in `CLAUDE.md`: 1) Kernablauf, 2) fünf Stufen, Handel, Piraten, 3) Kampf, 4) Feinschliff, Szenarien, Endwertung. Kampf ist inzwischen weitgehend umgesetzt. |
+> | Computergegner einstellbar „leicht, mittel, schwer“ | Schwierigkeit wählbar (leicht/normal/schwer, Startgeld 20 000/15 000/10 000) ist entschieden, noch nicht umgesetzt (Paket P1) |
+
 Dieses Dokument beschreibt, wie das Spiel sich anfühlen und funktionieren soll. Es orientiert sich inhaltlich eng am Klassiker „Anno 1602“ (1998) und übernimmt nur dessen allgemeine Spielregeln (die sind nicht geschützt). Alle Namen, Texte und Zahlen sind eigen. Wo ich mir beim Original nicht sicher bin, steht **(eigene Festlegung)**.
 
 **Kleines Wörterbuch:** *Kontor* = dein Hafenlager auf einer Insel. *Warenkette* = eine Reihe von Betrieben, die aus einem Rohstoff Schritt für Schritt ein Endprodukt machen. *Bedürfnis* = etwas, das Bewohner haben wollen, sonst sind sie unzufrieden. *Balancing* = das Feintuning aller Zahlen, damit das Spiel fair und spannend bleibt.

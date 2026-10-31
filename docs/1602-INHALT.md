@@ -159,7 +159,7 @@ Kosten: Holz / Ziegel / Werkzeug / Taler. Unterhalt: aktiv/ruhend pro Zyklus. Re
 | Weberei | 200 Bürger | 3/7/4/200 | 20/10 | 2 Wolle → Stoffe (schneller) |
 | Schneiderei | 200 Bürger | 6/2/3/150 | 10/5 | Stoffe → Kleidung |
 | Goldschmiede | 250 Kaufleute | 2/10/7/1500 | 45/20 | 2 Gold → 4 Schmuck |
-| Kanonengießerei | 300 Kaufleute (Tabelle: 400 Bürger) | 5/15/6/750 | 60/25 | Holz + Eisen → Kanone |
+| Kanonengießerei | 400 Bürger (so die Tabelle, ebenso wie beim Kanonier; eine Freischalt-Liste im Netz nennt 300 Kaufleute – wir folgen der Tabelle) | 5/15/6/750 | 60/25 | Holz + Eisen → Kanone |
 | Büchsenmacher | 400 Kaufleute | 4/10/9/600 | 45/20 | Holz + 2 Eisen → Musketen |
 | Wassermühle | 75 Siedler (nur Erweiterung) | 6/–/3/100 | 5/0 | 2 Getreide → Mehl |
 
@@ -223,8 +223,9 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 | 150 Bürger | Kirche, Goldmine |
 | 200 Bürger | Baumwollplantage, Weberei, Schneiderei, Kakaoplantage |
 | 210 Bürger | Badehaus |
+| 400 Bürger | Kanonengießerei (und die Einheit Kanonier) |
 | 250 Kaufleute | Hochschule, Goldschmiede, Plätze II/III, Zierbaum, Kontor IV |
-| 300 Kaufleute | Theater, Kanonengießerei |
+| 300 Kaufleute | Theater |
 | 400 Kaufleute | Tiefe Erzmine, Büchsenmacher, große Burg |
 | 500 Kaufleute | Große Werft |
 | 600 Aristokraten | Festung |
@@ -283,21 +284,34 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 - Spielgeschwindigkeit, Statistiken, Infomodus („?“) für jedes Gebäude.
 
 ## 12. Was „Neue Ufer“ daraus macht (Abweichungen)
-| Original | Neue Ufer | Grund |
-|---|---|---|
-| Rinderfarm → Fleischerei | **Schweinezucht → Fleischerei** | Wunsch des Nutzers (Regel 3) |
-| Steinbruch + Steinmetz → Ziegel | **Steinbruch → Steine** (ohne Steinmetz) | Wunsch des Nutzers (Regel 11) |
-| Forsthaus pflanzt Bäume | Holzfäller fällt reife Bäume, Setzlinge wachsen von selbst nach | einfacher, gleicher Effekt |
-| Webstube + Weberei (zwei Gebäude) | eine Weberei für Schafwolle und Baumwolle | vereinfacht |
-| – | **Brauerei**: Getreide → Alkohol | zusätzliche Alkohol-Quelle für Inseln ohne Wein/Zuckerrohr |
-| Bäckerei 2 Mehl → 1 Nahrung, Fleischerei 2 Rinder → 1 Nahrung | 1 → 2 (Spiel läuft schneller, kleinere Mengen) | Balancing für Handy-Spielzeit |
-| Ausbildung 200/140/100 s | 100/70/50 s | Spiel läuft schneller |
-| Soldaten belegen Laderaum | eigene Truppenplätze je Schiff (8/6/12/16) | übersichtlicher |
-| KI baut Burgen und Waffenketten | KI wirbt Soldaten an (höchstens einen pro Minute) und bekommt im Krieg ein Kriegsschiff ohne Werft | KI siedelt langsamer als der Spieler |
-| Schiffsbauzeiten 120/150/105/140 s, kleine und große Werft verschieden schnell | 60/75/55/70 s, eine Zeit je Schiff | Spiel läuft schneller, einfacher |
-| Schiff beladen langsamer (100/60) | gleiches Tempo leer und beladen; großes Handelsschiff 85 statt 80, Piraten 95 statt 90 | einfacher |
-| Ausbessern an der Werft mit Holz und Stoffen | nur mit Holz | einfacher |
-| Piraten versenken Handelsschiffe | Piraten rauben Handelsschiffe aus und plündern Kontore, versenken bzw. zerstören sie aber nicht; Kriegsschiffe kämpfen | fairer Einstieg auf dem Handy |
-| Markennamen, Texte, Grafik | eigene Namen/Texte, realistische 3D-Grafik | rechtlich sauber |
+
+Stand 31.10.2026 (nach dem 1:1-Abgleich, Details und Status je Punkt: `docs/ABGLEICH-1602.md`). Spalte „Art“: **Wunsch** = Wunsch des Nutzers, **Vereinfachung** = von uns entschieden (jederzeit änderbar), **Technik** = durch das Handy oder die Rechtslage bedingt.
+
+| Original | Neue Ufer | Grund | Art |
+|---|---|---|---|
+| Rinderfarm → Fleischerei | **Schweinezucht → Fleischerei** | Regel 3 | Wunsch |
+| Steinbruch + Steinmetz → Ziegel | **Steinbruch → Steine** (ohne Steinmetz); Steine ersetzen Ziegel überall (Pflasterwege, Mauern, Kirche …) | Regel 11 | Wunsch |
+| Forsthaus pflanzt Bäume | Holzfäller fällt reife Bäume, Setzlinge wachsen auf Waldfeldern von selbst nach. Wald, den ein Gebäude oder Weg überbaut hat, kommt nicht zurück (das ist **nicht** der gleiche Effekt wie beim Förster) | einfacher; ein Förster ist offen (Paket L4) | Vereinfachung |
+| Webstube + Weberei (zwei Gebäude) | eine Weberei für Schafwolle und Baumwolle | vereinfacht | Vereinfachung |
+| – | **Brauerei**: Getreide → Alkohol | zusätzliche Alkohol-Quelle für Inseln ohne Wein oder Zuckerrohr | Vereinfachung |
+| Bäckerei 2 Mehl → 1 Nahrung, Fleischerei 2 Rinder → 1 Nahrung | 1 → 2 (Spiel läuft schneller, kleinere Mengen) | Spielzeit auf dem Handy | Vereinfachung |
+| Verbrauch der Bewohner | Original × 8, gerundet | Spiel läuft schneller | Vereinfachung |
+| Ausbildung 200/140/100 s | 100/70/50 s | Spiel läuft schneller | Vereinfachung |
+| Soldaten belegen Laderaum | eigene Truppenplätze je Schiff (8/6/12/16) | übersichtlicher | Vereinfachung |
+| KI baut Burgen und Waffenketten | KI wirbt Soldaten an (höchstens einen pro Minute) und bekommt im Krieg ein Kriegsschiff ohne Werft | KI siedelt langsamer als der Spieler; wird in Paket KI2 und M1 überarbeitet | Vereinfachung |
+| Schiffsbauzeiten 120/150/105/140 s, kleine und große Werft verschieden schnell | 60/75/55/70 s als Grundzeit je Schiff; **die große Werft baut 1,6-mal schneller** | Spiel läuft schneller | Vereinfachung |
+| Schiff beladen langsamer (100/60) | gleiches Tempo leer und beladen; großes Handelsschiff 85 statt 80, Piraten 95 statt 90 | einfacher | Vereinfachung |
+| Ausbessern an der Werft mit Holz und Stoffen | nur mit Holz | einfacher | Vereinfachung |
+| Piraten versenken Handelsschiffe | Piraten rauben Handelsschiffe aus und plündern Kontore, versenken bzw. zerstören sie aber nicht; Kriegsschiffe kämpfen | fairer Einstieg auf dem Handy | Vereinfachung |
+| Kanonengießerei: Quellen widersprüchlich (300 Kaufleute oder 400 Bürger) | 400 Bürger (wie der Kanonier) | Tabelle des Originals | – |
+| Steinbruch ohne Unterhalt, Kapelle Reichweite 8, Jagdhütte 8, Forsthaus/Schaffarm Reichweite 3, Fleischerei mit 10 Ziegeln | Steinbruch mit Unterhalt, Kapelle 9, Jagdhütte 7, Holzfäller und Schaffarm 4, Fleischerei ohne Steine | kleine Abweichungen; später an das Original angleichen oder hier als bewusst bestätigen | Vereinfachung (offen) |
+| Fruchtbarkeit der Insel, Fischgründe, Wild | zusätzlich: Betriebe derselben Art teilen sich den Rohstoff; eine Skala beim Bauen zeigt die Ergiebigkeit; Bestände wachsen sichtbar nach | Regel 10 | Wunsch |
+| Einsicht in eine fremde Insel: Schiff hinfahren, warten, bis der Balken am „Auge“ voll ist | Inselinfo einfach per Antippen | einfacher für den Finger | Vereinfachung |
+| Schüsse laut Tabelle ohne Fehlschüsse (ob das Original danebenschießt, ist nicht belegt) | 15 bis 25 % der Schüsse gehen sichtbar daneben; der Schaden wird im Paket M1 so ausgeglichen, dass die Kampfwerte des Originals gelten | sichtbarer, glaubwürdiger Kampf | Vereinfachung |
+| Mehrspieler | fehlt vorerst, keine Pläne | Handy, Umfang | bewusst nicht |
+| Karteneditor | fehlt vorerst, keine Pläne | Umfang | bewusst nicht |
+| Markennamen, Texte, Grafik | eigene Namen/Texte, realistische 3D-Grafik | rechtlich sauber | Technik |
+
+**Entschieden, aber noch nicht umgesetzt** (Entscheidungen des Nutzers vom 31.10.2026, siehe `docs/ABGLEICH-1602.md`, Abschnitt 6): Steuern wie 1602 mit Regler je Stufe und flacher Kurve (heute fester Satz, steile Kurve); Wirtschaftstempo so, dass ein Betrieb wieder 60 bis 100 % der Bewohner des Originals versorgt (heute bei Luxuswaren ¼ bis ⅓); sichtbare, vom Bau angelegte Felder statt unsichtbarer Felder; wählbare Schwierigkeit (leicht/normal/schwer, Startgeld 20 000/15 000/10 000); fünf Inselgrößen wie 1602 (zuletzt, nach der Leistungsarbeit und einem Test auf dem iPhone). Bis dahin gilt der Stand in der Spalte „Neue Ufer“ oben.
 
 Offene Punkte (noch nicht umgesetzt): siehe `docs/OFFEN.md`.

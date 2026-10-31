@@ -1,6 +1,6 @@
 # Anforderungen – Neue Ufer (Kernspiel)
 
-Quelle: Interview mit dem Nutzer am 30.10.2026.
+Quelle: Interview mit dem Nutzer am 30.10.2026; ergänzt am 31.10.2026 um die Entscheidungen aus dem 1:1-Abgleich (Abschnitte unten).
 
 ## Rahmen
 - A1 Spielbar im Safari-Browser auf dem iPhone, **Querformat**. Bei Hochformat erscheint ein Hinweis „Bitte drehen“.
@@ -13,17 +13,19 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - B1 Ein Finger ziehen = Karte verschieben. Zwei Finger = zoomen (Pinch) und drehen.
 - B2 Tippen auf ein Gebäude zeigt eine Info (Status, Produktion, Probleme).
 - B3 Bauen: Gebäude im Baumenü wählen, auf die Insel tippen (Vorschau grün/rot), erneut tippen oder ✓ zum Bauen.
-- B4 Wege lassen sich durch Ziehen mit dem Finger bauen.
+- B4 Wege und Mauern lassen sich per Tippen bauen (Start, Ziel, ✓; siehe B-Touch). Ein Finger zieht nie einen Weg.
 - B5 Abreißen ist möglich, mit teilweiser Rückerstattung.
-- B6 Bedienelemente groß genug für Finger (mind. ~40 px), Notch/Rundungen werden berücksichtigt.
+- B6 Bedienelemente groß genug für Finger: Tippziele mindestens **44 px** (Apple-Empfehlung), kleinste Schrift mindestens 12 px, Notch/Rundungen werden berücksichtigt. Alle wichtigen Knöpfe (Hauptknopf eines Fensters, Schließen, Abreißen, Militär, „Alles ausladen“) sind ohne Wischen erreichbar.
 
 - B-Touch: Wege und Mauern werden per Tippen gebaut (Start, Ziel, Vorschau mit Kosten, ✓); der Weg führt selbst um Wasser und Gebäude herum. Ein Finger verschiebt immer nur die Karte, zwei Finger zoomen/drehen – dabei wird nie gebaut.
-- B-Flüssig: Schiffe, Soldaten und Karren werden zwischen den Rechenschritten flüssig dargestellt; Tiere laufen, bleiben stehen und grasen; Figuren rutschen nicht.
+- B-Schiff: Tipp auf Meer = Schiff fährt hin. Tipp auf Land = das Schiff fährt in Tipp-Richtung, so weit es kommt, und hält an der zugewandten Küste der angetippten Insel (es umrundet die Insel nicht); geht das nicht, sucht es einen nahen Küstenplatz; „kein Weg“ erscheint nur, wenn es sich gar nicht bewegen kann. Tipp auf ein eigenes Gebäude bei gewähltem Schiff = Schiff segelt hin (am Kontor in Ladereichweite), ein zweiter Tipp zeigt die Info. Im Nebel verrät kein Hinweis, dass dort Land ist; taucht unterwegs Land auf, plant das Schiff neu. Beschädigte Schiffe fahren langsamer.
+- B-Wege: Start und Ziel sind gelb markiert; ist das Ziel nicht erreichbar, endet die Strecke am nächsten erreichbaren Feld; gibt es gar keinen Durchgang, wird nichts gebaut (kein Bau von Bruchstücken). Mauern lassen sich nicht über Wege setzen; ein eigenes Tor darf auf einen eigenen Weg und gehört zum Wegenetz (Karren fahren hindurch, Feinde nicht).
+- B-Flüssig: Schiffe, Soldaten, Karren und Fischerboote werden zwischen den Rechenschritten flüssig dargestellt; Tiere laufen, bleiben stehen und grasen; Figuren rutschen nicht.
 
 ## Zeit & Speichern
 - C1 Echtzeit mit Pause und Tempo 1x / 2x / 4x.
 - C2 Automatisches Speichern (regelmäßig und beim Verlassen). Beim Öffnen geht es exakt dort weiter.
-- C3 „Neues Spiel“ erzeugt eine neue Insel.
+- C3 „Neues Spiel“ erzeugt eine neue Inselwelt und fragt vorher nach. Ein unlesbarer Spielstand wird gesichert statt überschrieben.
 
 ## Wirtschaft (voller Umfang wie 1602, Details: docs/1602-INHALT.md)
 - D1 Jede Insel hat ihr eigenes Lager (Kontor + Marktplätze, Kontor in 4 Stufen ausbaubar: 30/50/75/100 t).
@@ -73,7 +75,40 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - G1 Läuft flüssig auf aktuellen iPhones (Ziel 60 FPS bei normaler Siedlungsgröße).
 - G2 Das Spiel ist eine Webseite plus Modell-Dateien (models/*.glb), leicht zu verteilen und vorzuschauen.
 - G3 Fehler im Speicher (z. B. privater Modus) bringen das Spiel nicht zum Absturz.
+- G4 Wenn der Lager-Platz einer Ware voll ist, geht keine Ware verloren: Karren holen nichts mehr ab, der Betrieb meldet „Lager voll“.
+- G5 Start ohne Internet möglich (Schriften sind im Spiel enthalten).
+
+## Entscheidungen aus dem 1:1-Abgleich (Nutzer, 31.10.2026)
+Quelle: `CLAUDE.md`, Abschnitt „Entscheidungen aus dem 1:1-Abgleich“; Hintergrund und Status je Punkt: `docs/ABGLEICH-1602.md`, Abschnitt 6. **Status „gilt“** = jetzt prüfen; **„geplant (Paket)“** = erst prüfen, wenn das Paket geliefert ist (bis dahin kein Mangel).
+
+- Z1 Steuern wie 1602 *(geplant L2/U2)*: Jede Stufe hat einen eigenen Steuerregler. Höchstsätze, bei denen voll versorgte Bewohner noch bleiben: Pioniere 48 %, Siedler 45 %, Bürger 38 %, Kaufleute 36 %, Aristokraten 35 % (weniger, wenn Waren fehlen). Ein Satz über dem tragbaren macht unzufrieden bis zum Auszug. Die Steuerkurve ist flach: ein Aristokrat zahlt etwa das 1,4-Fache eines Pioniers (heute 6-fach). Die Gesamteinnahmen sind so eingestellt, dass das Spiel nicht schwerer wird (Aristokratenstadt trägt sich, rechnerisch etwa ein Drittel Gewinn). Das Steuerfenster zeigt je Stufe den Satz, die Stimmung (Gesicht) und die Einnahmen.
+- Z2 Bankrott *(geplant L2)*: Längere Zeit tief im Minus (Größenordnung −10 000 Taler) beendet das Spiel (Fenster „Verloren“ mit Grund); vorher Warnungen mit Rat. Computergegner verlieren dadurch nicht.
+- Z3 Wirtschaftstempo wie 1602 *(geplant L2)*: Ein Betrieb versorgt 60 bis 100 % so viele Bewohner wie im Original (Verhältnisse wie 1602, bei Luxuswaren, Stoffen und Kleidung heute nur ¼ bis ⅓). Prüfbar mit einer Simulation (Aristokratenstadt ohne Dauer-Minus).
+- Z4 Felder *(geplant L4/G3b)*: Farm und Plantage legen beim Bau automatisch sichtbare Felder an (5 Taler je Feld). Die Felder reifen erst; ein Feld-Werkzeug dient zum Nachbessern. Es gibt keine unsichtbaren Felder mehr.
+- Z5 Grafik-Reihenfolge *(gilt)*: Sichtbare Fehler zuerst im Code beheben, dann eine Meshy-Probe mit 3 Modellen (Wohnhaus, Kontor, Schaf). Alle weiteren Modelle erst nach Freigabe der Probe durch den Nutzer; im Code wird nur nachgebaut, was Meshy nicht liefert. Der Schlüssel `MESHY_API_KEY` steht nie im Chat, im Code oder im Git.
+- Z6 Schwierigkeit *(geplant P1)*: Beim neuen Spiel wählbar: leicht / normal / schwer mit Startgeld 20 000 / 15 000 / 10 000. Standard „normal“: Gegner wachsen bis Kaufleute, besiedeln 2 bis 3 Inseln und greifen nach Vorwarnung an. Katastrophen standardmäßig „mild“ (abschaltbar).
+- Z7 Inselgrößen wie 1602 *(geplant L5, zuletzt)*: Fünf Größenklassen (etwa 100 × 90 bis 30 × 30 Felder), größere Welt, beim Start wählbar. Erst nach der Grafik-Leistungsarbeit (R1, R2) und einem Test auf dem iPhone des Nutzers. Auch große Inseln sind brauchbar groß; kleine nie unter einer echten Siedlung (Regel 9).
+
+## Neue prüfbare Anforderungen aus dem Abgleich (Etappen 2 bis 4, siehe docs/OFFEN.md)
+Alle *geplant* mit Paketname; ein Prüfer meldet sie erst als Mangel, wenn das Paket geliefert wurde.
+
+- N1 Heimatinsel *(gilt, L1)*: Die erste Insel ist groß oder mittel, hat Berg mit Erz und mindestens eine Pflanze mit 100 % Fruchtbarkeit; irgendwo in der Welt gibt es Gold (Garantie auf einer kleinen Berginsel). Der Spielstart deckt ein Stück Küste der Heimatinsel auf.
+- N2 Händlerschiff mit Aufträgen *(geplant S2/U5)*: Am Kontor stellt man Kauf- und Verkaufsaufträge (Ware, Menge, Preis) ein, die Zahl der Plätze wächst mit der Kontorstufe; ein freies Händlerschiff kommt und handelt danach. Der Händler verkauft nur, was jemand hergestellt hat (Ausnahme Werkzeug, Erz, Holz, Nahrung).
+- N3 Handelsrouten *(geplant S2/U5)*: Schiffe fahren automatisch zwischen Kontoren; je Ware Laden und Ausladen einstellbar. Handel mit Computergegnern per Handelsvertrag *(M2)*.
+- N4 Statistik *(geplant S1/U2)*: Fenster mit Bevölkerung je Stufe (Stimmung, was fehlt), Waren (Erzeugung, Verbrauch, Saldo) und Bilanz (Einnahmen und Ausgaben nach Arten, Heer sichtbar, Verlauf).
+- N5 Warnungen *(geplant S1)*: Meldung bei Warenmangel („Nahrung reicht noch 1 Minute“), Hunger, Auszug, Lager voll und Minus in der Kasse, jeweils mit Ort.
+- N6 Meldungsverlauf *(geplant U3)*: Liste der letzten Meldungen mit Uhrzeit; ein Tipp springt zum Ort des Geschehens; wichtige Meldungen bleiben stehen, bis man sie antippt.
+- N7 Übersichtskarte *(geplant U3)*: dauernd sichtbare Minikarte mit Sichtfeld, Kontoren, Schiffen und Feinden; Tippen setzt die Kamera. Die große Weltkarte zeigt Inselnamen, Erz, Gold und hält das Spiel nicht an. Liste „Meine Schiffe und Inseln“ zum schnellen Wählen und Umbenennen.
+- N8 Ereignisse *(geplant S3)*: Feuer (Feuerwehr), Pest (Arzt), Kriminalität (Galgen), Dürre, Schatzfund; Standard „mild“. Feuerwehr, Arzt und Galgen erscheinen im Baumenü erst, wenn diese Ereignisse im Spiel sind (Regel 8).
+- N9 Ureinwohner *(geplant S4)*: Dörfer auf manchen Inseln, Tauschhandel Ware gegen Ware (etwa 1 : 1,5), bei Angriff endet der Handel für immer und ein Fluch bringt häufiger Feuer, Pest und Dürre; Angriff nur nach deutlicher Rückfrage.
+- N10 Endwertung *(geplant S5)*: Punkte für Einwohner, Kasse und Siege und eine Rangliste am Ende; wann das Spiel endet (heute beendet ein Sieg es nicht), legt Paket S5 fest und wird hier nachgetragen.
+- N11 Mehrere Spielstände *(geplant P1)*: mindestens zwei automatische und drei eigene Plätze mit Datum, Spielzeit, Einwohnern und Geld; Laden, Speichern, Löschen; Fehler beim Speichern werden gemeldet.
+- N12 Rückgängig *(geplant U4)*: Nach jedem Bau und jeder Wegstrecke kurze Zeit „↩ Rückgängig“ mit voller Rückerstattung. Wohnblöcke und Abrissbereiche lassen sich per Rahmen (zwei Ecken) bauen bzw. abreißen, mit gemeinsamer Rückfrage.
+- N13 Unterhalt und Betrieb *(geplant L2)*: Unterhalt im Betrieb und in Ruhe, Betriebe lassen sich ruhen lassen; Baumaterial-Sperre für Bewohner am Kontor; Häuser steigen bei Hunger und Mangel ab.
+- N14 Computergegner *(Wirtschaft gilt seit KI1, Wachstum geplant KI2)*: Alle Betriebe der Gegner hängen am Wegenetz, kein Gegner bleibt dauerhaft im Minus; später wachsen sie bis Kaufleute und besiedeln 2 bis 3 Inseln.
+- N15 Kampf-Ergänzungen *(geplant M1/M2/U4)*: weiße Flagge, Soldaten ausmustern, Bäume fällen, Aufstellung, Arzt heilt, Kanonen setzen Gebäude in Brand, Piratennest zerstörbar, Piraten bestechen.
+- N16 Klänge *(geplant A1)*: passende Klänge für Bedienung, Bauen, Schiffe, Kanonen, Möwen, Meer und Musik; Ton und Musik einzeln abschaltbar (Regel 12).
 
 ## Später (fest eingeplant, siehe docs/OFFEN.md)
-- Händlerschiff, Ureinwohner, Handelsrouten, Steuersatz.
-- Feuer, Pest, Feuerwehr, Arzt, Galgen; Prestigebauten (Palast, Kathedrale, Denkmal).
+- Prestigebauten (Palast, Kathedrale, Denkmal), Plätze, Anlegesteg, Brücken über Flüsse (L3, L5); Szenarien (F2).
+- Mehrspieler und Karteneditor sind bewusst nicht geplant (docs/1602-INHALT.md, Abschnitt 12).
