@@ -142,6 +142,10 @@ export interface Player {
   defendAt?: number;
   /** KI: Kriegserklärung zu diesem Zeitpunkt (vorher gewarnt) */
   warnAt?: number;
+  /** Spieler: Zeit der letzten Kriegserklärung gegen ihn */
+  lastWarAt?: number;
+  /** Ruhe vor Piraten je Insel bis zu dieser Zeit */
+  restAt?: Record<number, number>;
 }
 
 type Goods = Record<GoodId, number>;

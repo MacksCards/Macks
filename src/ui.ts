@@ -2,7 +2,7 @@
 import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, SHIPS, ShipType, TIERS, UNITS, UnitType } from './data';
 import {
   armShip, atWar, buyProtection, canTrain, declareWar, disarmShip, makePeace, orderAttack, orderBoard, orderMove,
-  peacePrice, pirates, protectionPrice, shipAttack, strength, train, unloadTroops,
+  peacePrice, pirates, protectionPrice, restart, shipAttack, strength, train, unloadTroops,
 } from './combat';
 import { Building, Game, HUMAN, QUESTS, Ship, ShotKind, Unit, newSeed } from './game';
 import { PFLANZEN, Pflanze, depositText } from './world';
@@ -49,6 +49,7 @@ export class UI {
   private goodEls = new Map<GoodId, HTMLElement>();
   private questOpen = false;
   selShip: Ship | null = null;
+  private lostShown = false;
   /** ausgewählte eigene Soldaten */
   selUnits: Unit[] = [];
   relevant = new Set<GoodId>();
@@ -925,6 +926,9 @@ export class UI {
       bt.classList.toggle('hidden', !show);
     });
     if (this.selShip || this.selUnits.length) this.renderInfo();
+    // Niederlage: festes Fenster
+    if (g.players[HUMAN].defeated && !this.lostShown) { this.lostShown = true; this.showLost(); }
+    if (!g.players[HUMAN].defeated) this.lostShown = false;
     if (this.openCat) this.refreshCards();
     if (this.mode.kind === 'build') this.updateHint();
     if (this.selected || this.showStorage) this.renderInfo();
@@ -957,7 +961,7 @@ export class UI {
     else if (/eingezogen/.test(text)) sound.play('aufstieg');
     else if (/Aufgabe erledigt|ausgebaut/.test(text)) sound.play('muenzen');
     else if (/Stapel/.test(text)) sound.play('horn');
-    else if (/^⚔️ (Angriff|Dein Schiff|.* erklärt dir)/.test(text) || /Piraten gesichtet/.test(text)) sound.play('alarm');
+    else if (/^⚠️/.test(text) || /^⚔️ (Angriff|Dein Schiff|.* erklärt dir)/.test(text) || /Piraten gesichtet/.test(text)) sound.play('alarm');
     else if (/^(⚔️|💣) /.test(text)) { /* Befehl – eigener Klang */ }
     else if (/ausgebildet/.test(text)) sound.play('marsch');
     else if (/erobert!|besiegt|versenkt!/.test(text) && kind === 'good') sound.play('aufstieg');
@@ -967,8 +971,10 @@ export class UI {
     const t = el('div', `toast ${kind}`, text);
     box.appendChild(t);
     while (box.children.length > 3) box.firstChild!.remove();
-    setTimeout(() => t.classList.add('out'), 2600);
-    setTimeout(() => t.remove(), 3100);
+    // wichtige oder lange Meldungen länger zeigen
+    const ms = /^(⚠️|⚔️ .* erklärt dir|🚩|🏴‍☠️)|verloren/.test(text) ? 7500 : Math.min(6000, 2600 + Math.max(0, text.length - 40) * 45);
+    setTimeout(() => t.classList.add('out'), ms);
+    setTimeout(() => t.remove(), ms + 500);
   }
 
   // ---------- Menü ----------
@@ -1018,6 +1024,16 @@ export class UI {
     return g.buildings.some((b) => b.owner === id && g.seen[g.idx(b.x, b.y)] === 1) || g.ships.some((s) => s.owner === id && this.visible(s.x, s.y));
   }
 
+  private showLost() {
+    const m = $('#modal');
+    m.classList.remove('hidden');
+    m.innerHTML = `<div class="box"><h2>🏳️ Spiel verloren</h2><p class="sub">Du hast keine Gebäude und keine Schiffe mehr.</p>
+      <button class="btn wide ok" id="lostGo">⛵ Mit einem neuen Schiff weiterspielen</button>
+      <button class="btn wide danger" id="lostNew">🏝️ Neues Spiel</button></div>`;
+    $('#lostGo').addEventListener('click', () => { restart(this.g); this.closeModal(); });
+    $('#lostNew').addEventListener('click', () => { Game.clearSave(); this.onNewGame(Game.create(newSeed(), Math.max(0, this.g.players.filter((p) => p.ai).length))); this.closeModal(); });
+  }
+
   /** Krieg und Frieden mit den Konkurrenten, Schutz vor Piraten */
   openDiplomacy() {
     const g = this.g, m = $('#modal');
@@ -1029,6 +1045,7 @@ export class UI {
       const war = atWar(g, HUMAN, p.id);
       const col = '#' + p.color.toString(16).padStart(6, '0');
       h += `<div class="row"><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col}"></i> ${p.name}${p.defeated ? ' – besiegt' : ''}</span><b>${p.defeated ? '🏳️' : war ? '⚔️ Krieg' : '🕊️ Frieden'}</b></div>`;
+      if (!war && !p.defeated && p.warnAt !== undefined) h += `<p class="sub">⚠️ Rüstet zum Krieg – noch ${Math.max(1, Math.ceil((p.warnAt - g.time) / 60))} Min. Burg, Soldaten, Türme und Kriegsschiffe schützen dich.</p>`;
       if (p.defeated) continue;
       h += `<p class="sub">Streitmacht: ${strength(g, p.id)}</p>`;
       if (war) {
