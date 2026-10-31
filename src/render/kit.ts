@@ -55,6 +55,8 @@ export interface ModelDef {
   smoke: [number, number, number][];
   /** Drehende Teile (Mühlenflügel, Wasserrad ...) */
   spinners: { geo: THREE.BufferGeometry; pos: [number, number, number]; axis: 'x' | 'z'; speed: number }[];
+  /** Fahnen in Besitzerfarbe (Spitze des Fahnenmasts, lokale Koordinaten) */
+  flags?: [number, number, number][];
 }
 
 const tmpColor = new THREE.Color();
@@ -99,6 +101,7 @@ export class Builder {
   parts: THREE.BufferGeometry[] = [];
   smoke: [number, number, number][] = [];
   spinners: ModelDef['spinners'] = [];
+  flags: [number, number, number][] = [];
   /** Verschiebung/Drehung für alle folgenden Teile (für Untergruppen, siehe group()) */
   private stack: THREE.Matrix4[] = [];
 
@@ -119,8 +122,12 @@ export class Builder {
   /** Teile in einer verschobenen/gedrehten Untergruppe bauen */
   group(x: number, y: number, z: number, ry: number, fn: (b: this) => void): this {
     this.stack.push(new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), ry), new THREE.Vector3(1, 1, 1)));
-    const before = this.smoke.length;
+    const before = this.smoke.length, beforeF = this.flags.length;
     fn(this);
+    for (let i = beforeF; i < this.flags.length; i++) {
+      const v = new THREE.Vector3(...this.flags[i]).applyMatrix4(this.stack[this.stack.length - 1]);
+      this.flags[i] = [v.x, v.y, v.z];
+    }
     // Rauchpunkte der Untergruppe mittransformieren
     const top = this.stack[this.stack.length - 1];
     for (let i = before; i < this.smoke.length; i++) {
@@ -301,6 +308,26 @@ export class Builder {
     });
   }
 
+  /** Fahnenmast; an der Spitze weht eine Fahne in Besitzerfarbe (vom Renderer ergänzt) */
+  flagPole(x: number, y: number, z: number, h = 0.6): this {
+    this.cyl(0.012, 0.016, h, 6, M.dunkelholz, x, y, z);
+    this.sphere(0.022, M.gold, x, y + h + 0.01, z);
+    this.flags.push([x, y + h - 0.02, z]);
+    return this;
+  }
+
+  /** Zinnen entlang einer Strecke (Mauerkrone) von (x1,z1) nach (x2,z2) auf Höhe y */
+  merlons(x1: number, z1: number, x2: number, z2: number, y: number, paint: Paint = M.mauer, w = 0.1, h = 0.1, t = 0.1, gapF = 1): this {
+    const len = Math.hypot(x2 - x1, z2 - z1);
+    const n = Math.max(1, Math.floor(len / (w * (1 + gapF))));
+    const ang = Math.atan2(-(z2 - z1), x2 - x1);
+    for (let i = 0; i < n; i++) {
+      const f = (i + 0.5) / n;
+      this.add(new THREE.BoxGeometry(w, h, t), paint, x1 + (x2 - x1) * f, y + h / 2, z1 + (z2 - z1) * f, ang);
+    }
+    return this;
+  }
+
   /** Dreh-Teil (z. B. Mühlenflügel) als eigene Geometrie anmelden */
   spinner(geo: THREE.BufferGeometry, pos: [number, number, number], axis: 'x' | 'z' = 'z', speed = 1): this {
     this.spinners.push({ geo, pos, axis, speed });
@@ -311,7 +338,7 @@ export class Builder {
     const geo = mergeGeometries(this.parts, false);
     if (!geo) throw new Error('Leeres Modell');
     geo.computeBoundingSphere();
-    return { geo, smoke: this.smoke, spinners: this.spinners };
+    return { geo, smoke: this.smoke, spinners: this.spinners, flags: this.flags };
   }
 
   /** Nur die Geometrie (für Dreh-Teile) */

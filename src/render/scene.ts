@@ -1,10 +1,12 @@
 // 3D-Darstellung mit three.js: Insel, Wasser, Bäume, Berge, Wege, Gebäude.
 import * as THREE from 'three';
-import { BUILDINGS, BuildingId, GOOD } from '../data';
-import { Building, Game } from '../game';
+import { BUILDINGS, BuildingId, GOOD, UNITS } from '../data';
+import { Building, Game, Unit } from '../game';
 import { T } from '../world';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
-import { buildingModel } from './models';
+import { WALLS, WALL_LINKS, buildingModel } from './models';
+import { UnitLayer } from './units';
+import { Fx } from './fx';
 import { LAND_Y, Terrain } from './terrain';
 import { Vegetation, windTime } from './vegetation';
 import { ModelLibrary } from './glb';
@@ -15,7 +17,13 @@ import { buildingMaterial } from './materials';
 import { ModelDef } from './kit';
 
 
-interface BView { mesh: THREE.Object3D; spin: { m: THREE.Mesh; axis: 'x' | 'z'; speed: number }[]; icon: THREE.Sprite; iconKey: string; tier: number }
+interface BView {
+  mesh: THREE.Object3D; spin: { m: THREE.Mesh; axis: 'x' | 'z'; speed: number }[]; icon: THREE.Sprite; iconKey: string; tier: number;
+  owner: number; mask: number; flags: THREE.Mesh[]; top: number;
+}
+
+/** Fahnentuch: hängt am Mast (Kante bei z = 0) und weht nach +z */
+const FLAG_GEO = new THREE.BoxGeometry(0.008, 0.12, 0.2).translate(0, -0.06, 0.1);
 
 export class View {
   renderer: THREE.WebGLRenderer;
@@ -26,6 +34,11 @@ export class View {
   private g: Game;
   private terrain!: Terrain;
   ships!: ShipLayer;
+  /** Soldaten */
+  units!: UnitLayer;
+  /** Kampf-Effekte und Lebensbalken */
+  fx!: Fx;
+  private flagMats = new Map<number, THREE.Material>();
   private carts!: CartLayer;
   private life!: LifeLayer;
   private seenTex!: THREE.DataTexture;
@@ -149,6 +162,9 @@ export class View {
     const h = (x: number, z: number) => this.terrain.heightAt(x, z);
     if (!this.carts) { this.carts = new CartLayer(g, h); this.scene.add(this.carts.group); } else this.carts.setGame(g, h);
     if (!this.life) { this.life = new LifeLayer(g, h); this.scene.add(this.life.group); } else this.life.setGame(g, h);
+    if (!this.units) { this.units = new UnitLayer(g, h); this.scene.add(this.units.group); } else this.units.setGame(g, h);
+    if (!this.fx) { this.fx = new Fx(g, h); this.scene.add(this.fx.group); } else this.fx.setGame(g, h);
+    this.ships.fx = this.fx;
     this.seenCount = g.islands.map(() => -1);
     this.areaShown = false;
     this.buildWater();
@@ -444,26 +460,72 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     return 0;
   }
 
-  addBuilding(b: Building) {
+  /** Nachbarmaske für Mauern (1 = -z, 2 = +x, 4 = +z, 8 = -x) */
+  private wallMask(b: Building): number {
+    let m = 0;
+    const link = (x: number, y: number) => { const n = this.g.buildingAt(x, y); return !!n && n !== b && WALL_LINKS.has(n.type); };
+    if (link(b.x, b.y - 1)) m |= 1;
+    if (link(b.x + 1, b.y)) m |= 2;
+    if (link(b.x, b.y + 1)) m |= 4;
+    if (link(b.x - 1, b.y)) m |= 8;
+    return m;
+  }
+
+  /** Mauer-Nachbarn neu zeichnen, wenn sich ihre Verbindungen geändert haben */
+  private refreshWallNeighbors(b: Building) {
+    for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
+      const n = this.g.buildingAt(b.x + dx, b.y + dy);
+      if (!n || n === b || !WALL_LINKS.has(n.type)) continue;
+      const v = this.views.get(n.id);
+      if (v && v.mask !== (WALLS.has(n.type) ? this.wallMask(n) : this.gateTurn(n))) { this.removeBuilding(n, false); this.addBuilding(n, false); }
+    }
+  }
+
+  /** Tore quer stellen, wenn die Mauer in Nord-Süd-Richtung verläuft */
+  private gateTurn(b: Building): number {
+    const m = this.wallMask(b);
+    return (m & 5) && !(m & 10) ? 1 : 0;
+  }
+
+  private flagMat(color: number) {
+    let m = this.flagMats.get(color);
+    if (!m) { m = buildingMaterial({ color, side: THREE.DoubleSide }); this.flagMats.set(color, m); }
+    return m;
+  }
+
+  addBuilding(b: Building, neighbors = true) {
     const d = BUILDINGS[b.type];
-    const model = buildingModel(b.type, b.tier);
+    const isWall = WALLS.has(b.type), isGate = !!d.gate;
+    const mask = isWall ? this.wallMask(b) : isGate ? this.gateTurn(b) : 0;
+    const model = buildingModel(b.type, isWall ? mask : b.tier);
     const glb = this.lib.building(b.type, b.tier);
     const mesh: THREE.Object3D = glb ?? new THREE.Mesh(model.geo, this.mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     mesh.position.set(b.x + d.size / 2, this.groundY(b.x, b.y, d.size), b.y + d.size / 2);
-    mesh.rotation.y = this.facing(b);
+    mesh.rotation.y = isGate && mask ? Math.PI / 2 : this.facing(b);
     mesh.userData.id = b.id;
     mesh.visible = this.g.seen[this.g.idx(b.x, b.y)] === 1;
     this.scene.add(mesh);
     const spin = glb ? [] : this.attachSpinners(mesh, model);
+    const flags: THREE.Mesh[] = [];
+    if (!glb) for (const [fx, fy, fz] of model.flags ?? []) {
+      const f = new THREE.Mesh(FLAG_GEO, this.flagMat(this.g.players[b.owner]?.color ?? 0x2f6fd0));
+      f.position.set(fx, fy, fz);
+      f.rotation.y = f.userData.base = -mesh.rotation.y + Math.PI / 2; // weht immer in dieselbe Windrichtung
+      mesh.add(f);
+      flags.push(f);
+    }
+    if (!model.geo.boundingBox) model.geo.computeBoundingBox();
+    const top = glb ? d.size * 0.6 + 0.6 : model.geo.boundingBox!.max.y;
     const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, sizeAttenuation: false }));
     icon.scale.set(0.055, 0.055, 1);
     icon.position.set(mesh.position.x, mesh.position.y + 2.6, mesh.position.z);
     icon.visible = false;
     icon.renderOrder = 10;
     this.scene.add(icon);
-    this.views.set(b.id, { mesh, spin, icon, iconKey: '', tier: b.tier });
+    this.views.set(b.id, { mesh, spin, icon, iconKey: '', tier: b.tier, owner: b.owner, mask, flags, top });
+    if (neighbors && WALL_LINKS.has(b.type)) this.refreshWallNeighbors(b);
   }
 
   private attachSpinners(mesh: THREE.Object3D, model: ModelDef) {
@@ -476,20 +538,26 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     });
   }
 
-  removeBuilding(b: Building) {
+  removeBuilding(b: Building, neighbors = true) {
     const v = this.views.get(b.id);
     if (!v) return;
     this.scene.remove(v.mesh, v.icon);
     this.views.delete(b.id);
+    // zerstört (nicht abgerissen): Staubwolke und Trümmer
+    if (neighbors && b.hp !== undefined && b.hp <= 0 && !this.g.byId.has(b.id) && v.mesh.visible) {
+      const s = BUILDINGS[b.type].size;
+      this.fx.dust(v.mesh.position.x, v.mesh.position.y + 0.1, v.mesh.position.z, 10 + s * 8, 0.6 + s * 0.4);
+    }
+    if (neighbors && WALL_LINKS.has(b.type)) this.refreshWallNeighbors(b);
   }
 
   changedBuilding(b: Building) {
     const v = this.views.get(b.id);
     if (!v) return;
-    if (v.tier !== b.tier) {
+    if (v.tier !== b.tier || v.owner !== b.owner) {
       // neue Ausbaustufe → Modell austauschen
-      this.removeBuilding(b);
-      this.addBuilding(b);
+      this.removeBuilding(b, false);
+      this.addBuilding(b, false);
     }
   }
 
@@ -653,6 +721,40 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     return this.ships.pick(this.raycaster);
   }
 
+  /** Soldat unter dem Finger (großzügig: nächster in ca. 0,9 Feldern) */
+  pickUnit(clientX: number, clientY: number): Unit | undefined {
+    const p = this.groundPoint(clientX, clientY);
+    return p ? this.units.pick(p.x, p.z, 0.9) : undefined;
+  }
+
+  /** Soldat gefallen */
+  onUnitDied(u: Unit) { this.units.die(u); }
+
+  /** Lebensbalken, Feuer und Rauch für Beschädigtes */
+  private damage(dt: number) {
+    const g = this.g, fx = this.fx, bars = fx.bars;
+    bars.begin();
+    for (const s of this.units.shown) {
+      const max = UNITS[s.u.type]?.hp ?? 20;
+      if (s.u.hp < max) bars.bar(s.x, s.top + 0.08, s.z, s.u.hp / max);
+    }
+    for (const s of this.ships.shown) {
+      if (s.frac < 1) bars.bar(s.x, 0.08 + 1.35 * s.scale, s.z, s.frac);
+      if (s.frac < 0.5) fx.burn('s' + s.s.id, s.x, 0.35, s.z, 1 - s.frac * 2, dt, 0.25);
+    }
+    for (const b of g.buildings) {
+      if (b.hp === undefined) continue;
+      const v = this.views.get(b.id);
+      if (!v || !v.mesh.visible) continue;
+      const frac = b.hp / g.maxHp(b);
+      if (frac >= 1) continue;
+      const p = v.mesh.position, s = BUILDINGS[b.type].size;
+      bars.bar(p.x, p.y + v.top + 0.25, p.z, frac);
+      if (frac < 0.75) fx.burn('b' + b.id, p.x, p.y + v.top * 0.75, p.z, frac < 0.5 ? 1 - frac * 2 : 0.1, dt, s * 0.28);
+    }
+    bars.end();
+  }
+
   private growT = 0;
   private lastT = 0;
   frame(t: number, gameDt: number) {
@@ -663,7 +765,12 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     if (this.growT > 1.5) { this.growT = 0; this.veg.updateGrowth(); }
     this.ships.update(t);
     this.carts.update(t);
-    this.life.update(t, { x: this.rig.tx, z: this.rig.tz, dist: this.rig.dist });
+    const cam = { x: this.rig.tx, z: this.rig.tz, dist: this.rig.dist };
+    this.life.update(t, cam);
+    this.units.update(t, cam);
+    this.damage(dt);
+    this.fx.update(dt, this.renderer.domElement.clientHeight || 400);
+    for (const v of this.views.values()) for (let i = 0; i < v.flags.length; i++) v.flags[i].rotation.y = v.flags[i].userData.base + Math.sin(t * 4.3 + i * 1.7 + v.mesh.position.x) * 0.22;
     this.waterUniforms.uTime.value = t;
     windTime.value = t;
     for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;
