@@ -18,12 +18,12 @@ interface State {
   lastHit: Map<number, number>;
   /** Schiffe: Ziel vom Spieler befohlen (verfolgen) + Zeit bis zur nächsten Kursberechnung */
   shipChase: Map<number, { ordered: boolean; repath: number }>;
-  /** Zeitpunkt des letzten Friedensschlusses je Paar */
-  peaceT: Map<number, number>;
   raids: Map<number, { phase: 'sammeln' | 'fahren' | 'land'; ship: number; t: number; dest?: [number, number]; tries?: number }>;
   sepT: number; aiT: number; alarmT: number; pirateThinkT: number;
-  /** Schiffe, die die Piraten gerade ausgeraubt haben (bis Zeitpunkt in Ruhe gelassen) */
-  spared: Map<number, number>;
+  /** KI: Zeitpunkt der Vorwarnung vor der Kriegserklärung */
+  warnT: Map<number, number>;
+  /** nächstes mögliches Ersatzschiff */
+  rescueT: number;
   /** KI: nächster Zeitpunkt zum Anwerben bzw. für ein Kriegsschiff */
   recruitT: Map<number, number>;
   shipT: Map<number, number>;
@@ -33,7 +33,7 @@ interface State {
 const states = new WeakMap<Game, State>();
 function st(g: Game): State {
   let s = states.get(g);
-  if (!s) { s = { lastHit: new Map(), shipChase: new Map(), peaceT: new Map(), raids: new Map(), spared: new Map(), defendT: new Map(), recruitT: new Map(), shipT: new Map(), sepT: 0, aiT: 0, alarmT: -99, pirateThinkT: 0 }; states.set(g, s); }
+  if (!s) { s = { lastHit: new Map(), shipChase: new Map(), raids: new Map(), warnT: new Map(), rescueT: 0, defendT: new Map(), recruitT: new Map(), shipT: new Map(), sepT: 0, aiT: 0, alarmT: -99, pirateThinkT: 0 }; states.set(g, s); }
   return s;
 }
 
@@ -62,7 +62,6 @@ export function declareWar(g: Game, a: number, b: number) {
   if (!pa || !pb || pa.pirate || pb.pirate || atWar(g, a, b)) return;
   pa.war = [...(pa.war ?? []), b];
   pb.war = [...(pb.war ?? []), a];
-  st(g).peaceT.delete(a * 16 + b); st(g).peaceT.delete(b * 16 + a);
   if (a === HUMAN) g.ev.message(`⚔️ Du hast ${pb.name} den Krieg erklärt`, 'bad');
   else if (b === HUMAN) g.ev.message(`⚔️ ${pa.name} erklärt dir den Krieg!`, 'bad');
 }
@@ -73,7 +72,7 @@ export function makePeace(g: Game, a: number, b: number) {
   if (!pa || !pb) return;
   pa.war = (pa.war ?? []).filter((x) => x !== b);
   pb.war = (pb.war ?? []).filter((x) => x !== a);
-  st(g).peaceT.set(a * 16 + b, g.time); st(g).peaceT.set(b * 16 + a, g.time);
+  pa.peaceAt = { ...(pa.peaceAt ?? {}), [b]: g.time }; pb.peaceAt = { ...(pb.peaceAt ?? {}), [a]: g.time };
   for (const u of g.units) if (u.target !== undefined) { const t = resolve(g, u.target); if (t && !atWar(g, u.owner, t.owner)) { u.target = undefined; u.ordered = false; } }
   for (const s of g.ships) if (s.target !== undefined) { const t = resolve(g, s.target); if (t && !atWar(g, s.owner, t.owner)) s.target = undefined; }
 }
@@ -161,14 +160,14 @@ function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: n
     const s = t.s;
     s.hp = (s.hp ?? g.shipMaxHp(s)) - dmg;
     S.lastHit.set(s.id, g.time);
-    // Piraten rauben unbewaffnete Schiffe aus, statt sie zu versenken
-    if (g.players[from]?.pirate && !s.guns && s.hp < g.shipMaxHp(s) * 0.4) {
+    // Piraten rauben Handelsschiffe aus, statt sie zu versenken (Kriegsschiffe kämpfen bis zum Ende)
+    if (g.players[from]?.pirate && !(s.type ?? '').startsWith('krieg') && s.hp < g.shipMaxHp(s) * 0.4) {
       s.hp = Math.max(s.hp, 5);
       const loot = s.slots.reduce((n, sl) => n + sl.n, 0);
       for (const sl of s.slots) { sl.g = null; sl.n = 0; }
-      S.spared.set(s.id, g.time + 400);
-      for (const p of g.ships) if (p.owner === from && p.target === s.id) p.target = undefined;
-      if (s.owner === HUMAN) g.ev.message(`🏴‍☠️ Piraten haben die ${s.name} überfallen${loot ? ` und ${loot} t Ladung geraubt` : ''}! Kanonen an Bord oder Schutz (Menü ☰) helfen.`, 'bad');
+      s.safeUntil = g.time + 600;
+      for (const p of g.ships) if (p.owner === from && p.target === s.id) { p.target = undefined; S.shipChase.delete(p.id); sailAway(g, p); }
+      if (s.owner === HUMAN) g.ev.message(`🏴‍☠️ Piraten haben die ${s.name} überfallen${loot ? ` und ${loot} t Ladung geraubt` : ''}! Kriegsschiffe, Wachtürme oder Schutz (Menü ☰) helfen.`, 'bad');
       return;
     }
     if (s.hp <= 0) sinkShip(g, s, from);
@@ -181,7 +180,8 @@ function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: n
       b.hp = Math.round(g.maxHp(b) * 0.3);
       const l = g.lagerOf(b.owner, b.island);
       if (l) for (const k of Object.keys(l) as (keyof typeof l)[]) l[k] = Math.floor(l[k] / 2);
-      for (const p of g.ships) if (p.owner === from && p.target === b.id) p.target = undefined;
+      b.safeUntil = g.time + 600;
+      for (const p of g.ships) if (p.owner === from && p.target === b.id) { p.target = undefined; S.shipChase.delete(p.id); sailAway(g, p); }
       if (b.owner === HUMAN) g.ev.message(`🏴‍☠️ Piraten haben dein Lager auf ${g.islands[b.island]?.name ?? 'der Insel'} geplündert! Wachtürme schützen die Küste.`, 'bad');
       return;
     }
@@ -206,7 +206,7 @@ function sinkShip(g: Game, s: Ship, by: number) {
   g.ev.sunk(s);
   const lost = (s.troops ?? []).length;
   for (const id of s.troops ?? []) { const u = g.unitById(id); if (u) { g.units = g.units.filter((o) => o !== u); } }
-  if (lost && s.owner === HUMAN) g.ev.message(`🌊 ${lost} Soldaten sind mit der ${s.name} untergegangen`, 'bad');
+  if (lost && s.owner === HUMAN) g.ev.message(lost === 1 ? `🌊 Ein Soldat ist mit der ${s.name} untergegangen` : `🌊 ${lost} Soldaten sind mit der ${s.name} untergegangen`, 'bad');
   g.ships = g.ships.filter((o) => o !== s);
   st(g).shipChase.delete(s.id);
   const pir = pirates(g);
@@ -385,13 +385,15 @@ export function orderMove(g: Game, units: Unit[], x: number, y: number): number 
     if (u.ship !== undefined) continue;
     u.target = undefined; u.ordered = false; u.board = undefined;
     const p = units.length === 1 ? [Math.floor(x), Math.floor(y)] as [number, number] : freeSpot(g, x, y, 0, taken) ?? [Math.floor(x), Math.floor(y)];
-    if (pathTo(g, u, p[0] + 0.5, p[1] + 0.5)) ok++;
+    // der erste sucht sofort (für die Rückmeldung), die anderen nacheinander – kein Stocken bei großen Gruppen
+    if (ok === 0) { if (pathTo(g, u, p[0] + 0.5, p[1] + 0.5)) ok++; }
+    else { u.path = []; u.dest = [p[0] + 0.5, p[1] + 0.5]; u.repath = ok * 0.03; ok++; }
   }
   return ok;
 }
 
 export function orderAttack(g: Game, units: Unit[], targetId: number) {
-  for (const u of units) { if (u.ship !== undefined) continue; u.target = targetId; u.ordered = true; u.board = undefined; u.path = []; u.goal = undefined; u.repath = 0; }
+  for (const u of units) { if (u.ship !== undefined) continue; u.dest = undefined; u.target = targetId; u.ordered = true; u.board = undefined; u.path = []; u.goal = undefined; u.repath = 0; }
 }
 
 export function orderBoard(g: Game, units: Unit[], s: Ship) {
@@ -447,6 +449,8 @@ export function disarmShip(g: Game, s: Ship): number {
 
 function acquire(g: Game, owner: number, x: number, y: number, r: number, opts: { units?: boolean; ships?: boolean; buildings?: boolean; island?: number }): Target | undefined {
   let best: Target | undefined, bd = r;
+  // Piraten lassen gerade Ausgeraubtes eine Weile in Ruhe
+  const safe = (o: { safeUntil?: number }) => g.players[owner]?.pirate && (o.safeUntil ?? 0) > g.time;
   const isl = opts.island;
   const onIsl = (px: number, py: number) => isl === undefined || g.islandOf[g.idx(Math.floor(px), Math.floor(py))] === isl;
   if (opts.units !== false) for (const u of g.units) {
@@ -455,13 +459,13 @@ function acquire(g: Game, owner: number, x: number, y: number, r: number, opts: 
     if (d < bd) { bd = d; best = { kind: 'unit', u, owner: u.owner }; }
   }
   if (opts.ships) for (const s of g.ships) {
-    if (!atWar(g, owner, s.owner)) continue;
+    if (!atWar(g, owner, s.owner) || safe(s)) continue;
     const d = Math.hypot(s.x - x, s.y - y);
     if (d < bd) { bd = d; best = { kind: 'ship', s, owner: s.owner }; }
   }
   if (opts.buildings && !best) {
     for (const b of g.buildings) {
-      if (!atWar(g, owner, b.owner) || (isl !== undefined && b.island !== isl)) continue;
+      if (!atWar(g, owner, b.owner) || (isl !== undefined && b.island !== isl) || safe(b)) continue;
       const t: Target = { kind: 'bau', b, owner: b.owner };
       const d = dist(g, x, y, t) + (BUILDINGS[b.type].tower ? 0 : BUILDINGS[b.type].paint ? 3 : 1.5);
       if (d < bd) { bd = d; best = t; }
@@ -546,6 +550,11 @@ function tickUnit(g: Game, u: Unit, dt: number) {
         }
       }
     }
+  }
+  // gestaffelter Laufbefehl
+  if (u.dest && u.target === undefined && u.board === undefined && !u.path.length) {
+    u.repath = (u.repath ?? 0) - dt;
+    if (u.repath <= 0) { const [dx, dy] = u.dest; u.dest = undefined; pathTo(g, u, dx, dy); }
   }
   // laufen
   let step = d.speed * dt;
@@ -647,6 +656,15 @@ function tickShipCombat(g: Game, s: Ship, dt: number) {
 
 // ---------- Piraten ----------
 
+/** nach einem Überfall davonsegeln */
+function sailAway(g: Game, s: Ship) {
+  for (let i = 0; i < 20; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const x = Math.floor(s.x + Math.cos(a) * 40), y = Math.floor(s.y + Math.sin(a) * 40);
+    if (g.inMap(x, y) && g.isWater(g.idx(x, y)) && g.moveShip(s, x + 0.5, y + 0.5)) return;
+  }
+}
+
 function tickPirates(g: Game, dt: number) {
   const pir = pirates(g);
   if (!pir) return;
@@ -676,7 +694,7 @@ function tickPirates(g: Game, dt: number) {
     if (s.target !== undefined) continue;
     let prey: Ship | undefined, pd = 16;
     for (const o of g.ships) {
-      if (!atWar(g, pir.id, o.owner) || (S.spared.get(o.id) ?? 0) > g.time) continue;
+      if (!atWar(g, pir.id, o.owner) || (o.safeUntil ?? 0) > g.time) continue;
       const d = Math.hypot(o.x - s.x, o.y - s.y);
       if (d < pd) { pd = d; prey = o; }
     }
@@ -735,10 +753,13 @@ function tickAIMilitary(g: Game) {
     // erst, wenn sich der Spieler wehren kann (Burg/Türme ab 200 Siedlern) oder sehr spät
     const canDefend = S.defendT.get(HUMAN);
     if (!war && g.time > 2400 && ((canDefend !== undefined && g.time - canDefend > 900) || g.time > 5400)
-      && g.time - (S.peaceT.get(p.id * 16 + HUMAN) ?? -9999) > 900 && strength(g, p.id) > strength(g, HUMAN) * 1.2 + 3
+      && g.time - (p.peaceAt?.[HUMAN] ?? -9999) > 900 && strength(g, p.id) > strength(g, HUMAN) * 1.2 + 3
       // nicht alle gleichzeitig: läuft schon ein Krieg, ist ein weiterer viel seltener
-      && Math.random() < (g.players.some((o) => o.ai && o !== p && atWar(g, o.id, HUMAN)) ? 0.004 : 0.04)) {
-      declareWar(g, p.id, HUMAN);
+      && (S.warnT.has(p.id) || Math.random() < (g.players.some((o) => o.ai && o !== p && atWar(g, o.id, HUMAN)) ? 0.004 : 0.04))) {
+      // erst eine Vorwarnung, drei Minuten später der Krieg
+      const w = S.warnT.get(p.id);
+      if (w === undefined) { S.warnT.set(p.id, g.time + 180); g.ev.message(`⚠️ ${p.name} rüstet zum Krieg gegen dich! Burg, Soldaten und Wachtürme schützen dich.`, 'bad'); }
+      else if (g.time >= w) { S.warnT.delete(p.id); declareWar(g, p.id, HUMAN); }
     }
     // Soldaten, die noch an Bord sitzen (z. B. nach dem Laden eines Spielstands): heimfahren und absetzen
     if (!S.raids.has(p.id)) for (const s of g.ships) {
@@ -840,7 +861,12 @@ export function tickCombat(g: Game, dt: number) {
 /** Ohne Kontor und ohne Schiff ginge es nicht weiter: ein neues Schiff mit Startladung schicken */
 function rescue(g: Game) {
   const me = g.players[HUMAN];
-  if (me.defeated || g.kontor(HUMAN) || g.ships.some((s) => s.owner === HUMAN)) return;
+  const S = st(g);
+  if (me.defeated || g.kontor(HUMAN) || g.time < S.rescueT) return;
+  // reicht die Ladung eines eigenen Schiffs noch für ein Kontor?
+  const kc = BUILDINGS.kontor.cost;
+  if (g.ships.some((s) => s.owner === HUMAN && g.shipCargo(s, 'holz') >= (kc.holz ?? 0) && g.shipCargo(s, 'werkzeug') >= (kc.werkzeug ?? 0))) return;
+  S.rescueT = g.time + 600;
   const [sx, sy] = g.starts[HUMAN] ?? [10, 10];
   const ship: Ship = { id: g.nextId++, type: 'handel_klein', owner: HUMAN, name: 'Hoffnung', x: sx + 0.5, y: sy + 0.5, dir: 0, path: [], slots: [] };
   for (let i = 0; i < 4; i++) ship.slots.push(START_CARGO[i] ? { g: START_CARGO[i][0], n: START_CARGO[i][1] } : { g: null, n: 0 });

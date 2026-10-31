@@ -48,6 +48,8 @@ export interface Building {
   train?: { type: UnitType; t: number }[];
   /** Turm: Zeit bis zum nächsten Schuss */
   cd?: number;
+  /** von Piraten gerade geplündert: bis dahin in Ruhe gelassen */
+  safeUntil?: number;
 }
 
 /** Soldat auf dem Land (oder an Bord eines Schiffs) */
@@ -77,6 +79,8 @@ export interface Unit {
   /** Ziel des laufenden Wegs (zum Neuberechnen) */
   goal?: [number, number];
   repath?: number;
+  /** Laufziel, dessen Weg noch gesucht wird (gestaffelt) */
+  dest?: [number, number];
 }
 
 /** Marktkarren: holt Waren von Betrieben ab und bringt sie ins Inselllager */
@@ -115,6 +119,8 @@ export interface Ship {
   troops?: number[];
   /** Spielzeit der letzten Salve (für Mündungsfeuer) */
   shotT?: number;
+  /** von Piraten gerade ausgeraubt: bis dahin in Ruhe gelassen */
+  safeUntil?: number;
 }
 
 /** Gedächtnis eines Computergegners */
@@ -130,6 +136,8 @@ export interface Player {
   defeated?: boolean;
   /** Schutz vor Piraten bis zu dieser Spielzeit */
   protectedUntil?: number;
+  /** Zeitpunkt des letzten Friedensschlusses je Gegner */
+  peaceAt?: Record<number, number>;
 }
 
 type Goods = Record<GoodId, number>;
@@ -1404,10 +1412,10 @@ export const QUESTS: Quest[] = [
   step('Tabak oder Gewürze', 'Für Bürger: Tabakplantage + Tabakwarenmanufaktur oder eine Gewürzplantage. Schau mit dem Schiff, welche Insel dafür fruchtbar ist.',
     (g) => any(g, ['tabakwaren', 'gewuerzplantage']), (g) => (any(g, ['tabakwaren', 'gewuerzplantage']) ? '1/1' : '0/1'), 700),
   step('Wirtshaus und Schule', 'Siedler brauchen Wirtshaus (ab 50 Siedlern) und Schule (ab 100 Siedlern), um Bürger zu werden.', ...Object.values(all(['wirtshaus', 'schule'], false)) as [Quest['done'], Quest['progress']], 800),
+  step('Wehrhaft', 'Ab 200 Siedlern bauen deine Rivalen Truppen auf: Baue eine Burg und bilde 3 Soldaten aus (Schwerter beim Händler am Kontor kaufen oder selbst schmieden). Wachtürme schützen die Küste.',
+    (g) => g.units.filter((u) => u.owner === HUMAN).length >= 3, (g) => `${Math.min(3, g.units.filter((u) => u.owner === HUMAN).length)}/3`, 1200),
   step('Bürger', 'Siedlerhäuser mit Alkohol, Tabakwaren oder Gewürzen, Wirtshaus und Schule werden zu Bürgern. Ziel: 6 Bürgerhäuser.', ...Object.values(tierGoal(2, 6)) as [Quest['done'], Quest['progress']], 1000),
   step('Eisen und Werkzeug', 'Erzmine am Berg einer Erz-Insel, Erzschmelze und Werkzeugschmiede: nie wieder Werkzeug kaufen!', ...Object.values(all(['erzmine', 'erzschmelze', 'schmiede'])) as [Quest['done'], Quest['progress']], 1200),
-  step('Wehrhaft', 'Ab 200 Siedlern: Schwertschmiede (Eisen → Schwerter) und eine Burg. Bilde 3 Soldaten aus. Wachtürme an der Küste schützen vor Piraten.',
-    (g) => g.units.filter((u) => u.owner === HUMAN).length >= 3, (g) => `${Math.min(3, g.units.filter((u) => u.owner === HUMAN).length)}/3`, 1200),
   step('Kakao', 'Bürger werden zu Kaufleuten, wenn es Kakao gibt. Kakao wächst auf südlichen Inseln.', ...Object.values(all(['kakaoplantage'])) as [Quest['done'], Quest['progress']], 1000),
   step('Kirche und Badehaus', 'Kaufleute wollen Kirche (ab 150 Bürgern) und Badehaus (ab 210 Bürgern).', ...Object.values(all(['kirche', 'badehaus'], false)) as [Quest['done'], Quest['progress']], 1500),
   step('Kaufleute', 'Ziel: 6 Häuser der Kaufleute.', ...Object.values(tierGoal(3, 6)) as [Quest['done'], Quest['progress']], 2000),

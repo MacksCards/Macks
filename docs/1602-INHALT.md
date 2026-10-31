@@ -297,7 +297,7 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 | Schiffsbauzeiten 120/150/105/140 s, kleine und große Werft verschieden schnell | 60/75/55/70 s, eine Zeit je Schiff | Spiel läuft schneller, einfacher |
 | Schiff beladen langsamer (100/60) | gleiches Tempo leer und beladen; großes Handelsschiff 85 statt 80, Piraten 95 statt 90 | einfacher |
 | Ausbessern an der Werft mit Holz und Stoffen | nur mit Holz | einfacher |
-| Piraten versenken Handelsschiffe | Piraten rauben unbewaffnete Schiffe aus und plündern Kontore, versenken sie aber nicht | fairer Einstieg auf dem Handy |
+| Piraten versenken Handelsschiffe | Piraten rauben Handelsschiffe aus und plündern Kontore, versenken bzw. zerstören sie aber nicht; Kriegsschiffe kämpfen | fairer Einstieg auf dem Handy |
 | Markennamen, Texte, Grafik | eigene Namen/Texte, realistische 3D-Grafik | rechtlich sauber |
 
 Offene Punkte (noch nicht umgesetzt): siehe `docs/OFFEN.md`.

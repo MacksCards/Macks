@@ -4,7 +4,8 @@ Was noch fehlt, damit „Neue Ufer“ den ganzen Umfang von 1602 hat (Regel 4/11
 
 ## Kampf (Regel 1 – Kernbestandteil)
 - Umgesetzt: siehe ANFORDERUNGEN K1–K8.
-- Noch offen: Piratennest (Insel der Piraten zerstören), Piraten gegen andere bestechen, Handels- und Bündnisvertrag, Kanonen setzen Gebäude in Brand (Feuer gibt es noch nicht), Arzt heilt Soldaten, KI baut eigene Burgen/Türme (sie wirbt Soldaten derzeit mit Geld an), jeder Triumphbogen erlaubt ein Schiff mehr.
+- Noch offen: Piratennest (Insel der Piraten zerstören), Piraten gegen andere bestechen, Handels- und Bündnisvertrag, Kanonen setzen Gebäude in Brand (Feuer gibt es noch nicht), Arzt heilt Soldaten, KI baut eigene Burgen/Türme (sie wirbt Soldaten derzeit mit Geld an).
+- KI-Wirtschaft: Computergegner geraten ins Minus und schrumpfen nach einiger Zeit (ai.ts) – dadurch rüsten sie im Krieg weniger auf als möglich.
 
 ## Handel & Welt
 - Freies Händlerschiff, das Kontore anläuft (statt Sofort-Handel am Kontor)
