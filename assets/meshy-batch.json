@@ -1,0 +1,334 @@
+[
+ {
+  "id": "haus-0",
+  "building": "haus",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Small humble pioneer cottage made of rough logs and wattle, steep thatched straw roof, small wooden door, tiny window, firewood stack against the wall. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "haus-2",
+  "building": "haus",
+  "tier": 2,
+  "size": 2,
+  "prompt": "Prosperous three-storey stone and half-timber town house of a citizen, slate roof with dormers, tall chimney, ornate wooden door, leaded glass windows. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "haus-3",
+  "building": "haus",
+  "tier": 3,
+  "size": 2,
+  "prompt": "Wealthy merchant town house in Dutch Golden Age style, red brick facade with stepped gable, white window frames, sandstone details, hoisting beam under the gable. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "haus-4",
+  "building": "haus",
+  "tier": 4,
+  "size": 2,
+  "prompt": "Elegant aristocrat mansion in early baroque style, pale sandstone facade, mansard roof with dark slate, ornate cornices, grand entrance with steps. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "markt",
+  "building": "markt",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Town market square with wooden market stalls under striped canvas awnings, crates of vegetables, barrels, a stone well in the middle, cobblestone pavement. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "kapelle",
+  "building": "kapelle",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Small timber chapel with a little wooden bell turret, shingle roof, simple cross, arched door. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "wirtshaus",
+  "building": "wirtshaus",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Half-timbered village tavern with hanging wooden sign, benches and barrels outside, red tile roof, chimney. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "schule",
+  "building": "schule",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Small village schoolhouse, plastered walls with timber framing, little bell turret on the roof, slate blackboard by the door. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "kirche",
+  "building": "kirche",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Stone parish church with tall pointed bell tower and spire, gothic arched windows, slate roof, buttresses. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "badehaus",
+  "building": "badehaus",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Public bathhouse of stone with a steaming chimney, arched windows, wooden bathtubs and water barrels outside. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "hochschule",
+  "building": "hochschule",
+  "tier": 0,
+  "size": 3,
+  "prompt": "University college building of sandstone with a clock tower, tall arched windows, slate roof, stone steps. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "theater",
+  "building": "theater",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Renaissance theater building with columned portico, triangular pediment, flags on the roof, ornate sandstone facade. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "holzfaeller",
+  "building": "holzfaeller",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Woodcutter's hut of logs with shingle roof, stacked logs, chopping block with an axe, saw horse. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "fischer",
+  "building": "fischer",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Fisherman's hut on the shore with a small wooden jetty, fishing nets hanging to dry, baskets of fish, rowing boat. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "jagdhuette",
+  "building": "jagdhuette",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Hunter's lodge of logs with antlers above the door, animal hides stretched on frames, bow and quiver. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "schweinezucht",
+  "building": "schweinezucht",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Pig farm with a wooden barn and a low fenced pigsty with mud and a feeding trough (no animals). Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "fleischerei",
+  "building": "fleischerei",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Butcher's shop, half-timbered building with hanging hams and sausages under the eaves, chopping table, smoking chimney. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "getreidefarm",
+  "building": "getreidefarm",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Grain farmhouse with a large thatched barn, hay stacks, wooden cart with sacks of grain. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "muehle",
+  "building": "muehle",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Classic wooden post windmill with four large sails, stone base, sacks of flour at the door. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "baeckerei",
+  "building": "baeckerei",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Bakery, half-timbered house with a brick bread oven and smoking chimney, bread baskets, flour sacks. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "schaffarm",
+  "building": "schaffarm",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Sheep farm with a small shepherd's barn with thatched roof, low stone-walled pen, wool bales (no animals). Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "steinbruch",
+  "building": "steinbruch",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Stone quarry workshop with cut stone blocks, wooden crane, workbench with chisels, small tool shed. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "erzmine",
+  "building": "erzmine",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Ore mine entrance in a rock face with timber supports, mine cart on rails, piles of ore, small wooden shed. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "weingut",
+  "building": "weingut",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Winery with a stone wine press house, large wooden barrels, a small vineyard row with grapevines on stakes. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "tabakplantage",
+  "building": "tabakplantage",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Tobacco plantation drying barn of wood with tobacco leaves hanging to dry, small farmhouse. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "zuckerrohrplantage",
+  "building": "zuckerrohrplantage",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Sugar cane plantation farmhouse with bundles of harvested sugar cane, a cane press. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "gewuerzplantage",
+  "building": "gewuerzplantage",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Spice plantation house with palm-thatched roof, drying racks with red chili peppers and pepper corns, woven baskets. Realistic early 17th century tropical colonial plantation, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, palm thatch, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "kakaoplantage",
+  "building": "kakaoplantage",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Cocoa plantation house with palm-thatched roof, cocoa pods drying on wooden racks, sacks of cocoa beans. Realistic early 17th century tropical colonial plantation, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, palm thatch, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "baumwollplantage",
+  "building": "baumwollplantage",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Cotton plantation storehouse with palm-thatched roof, bales and baskets of white cotton. Realistic early 17th century tropical colonial plantation, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, palm thatch, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "weberei",
+  "building": "weberei",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Weaving workshop, half-timbered house with a large wooden loom visible through an open gable, bolts of cloth. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "schneiderei",
+  "building": "schneiderei",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Tailor's shop, half-timbered town house with fabric bolts and a dress on a mannequin by the window, shop sign with scissors. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "rumbrennerei",
+  "building": "rumbrennerei",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Rum distillery with copper still, stone building with smoking chimney, stacked rum barrels. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "brauerei",
+  "building": "brauerei",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Brewery, stone and timber building with copper brewing kettle, beer barrels, malt sacks, chimney. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "tabakwaren",
+  "building": "tabakwaren",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Tobacco manufactory, half-timbered workshop with crates of cigars and tobacco bundles, shop sign with a pipe. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "erzschmelze",
+  "building": "erzschmelze",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Ore smelter with a tall stone blast furnace, glowing opening, bellows, iron bars stacked, charcoal pile. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "schmiede",
+  "building": "schmiede",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Toolmaker's smithy with forge and anvil under an open roof, hanging tools, chimney. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "schwertschmiede",
+  "building": "schwertschmiede",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Sword smithy with forge, anvil, grinding wheel and a rack of swords, stone chimney. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "buechsenmacher",
+  "building": "buechsenmacher",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Gunsmith workshop, half-timbered building with racks of muskets, workbench, small chimney. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "kanonengiesserei",
+  "building": "kanonengiesserei",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Cannon foundry, large stone building with furnace and tall chimney, bronze cannon barrels lying outside. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "goldschmied",
+  "building": "goldschmied",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Goldsmith's shop, elegant stone town house with a display window of jewelry, ornate sign. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "werft",
+  "building": "werft",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Shipyard with a wooden slipway and a half-built ship hull in timber ribs, timber stacks, a crane, workshop shed. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "holzturm",
+  "building": "holzturm",
+  "tier": 0,
+  "size": 1,
+  "prompt": "Tall wooden watchtower with a roofed platform, two small cannons, ladder, palisade base. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "wachturm",
+  "building": "wachturm",
+  "tier": 0,
+  "size": 1,
+  "prompt": "Round stone defensive tower with battlements, two cannons on top, arrow slits. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "burg",
+  "building": "burg",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Small stone castle keep with corner towers, battlements, wooden gate, banners. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "festung",
+  "building": "festung",
+  "tier": 0,
+  "size": 3,
+  "prompt": "Large star-shaped stone fortress with bastions, cannons on the walls, central keep, flags. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "triumphbogen",
+  "building": "triumphbogen",
+  "tier": 0,
+  "size": 2,
+  "prompt": "Triumphal arch of white marble with reliefs and columns, bronze statue on top. Realistic early 17th century northern European colonial settlement, detailed game asset for a top-down city-building strategy game, physically based realistic materials, weathered wood, lime plaster, natural stone, clay roof tiles, fine details, standing on its own flat bottom, no ground plate, no terrain, no background, no text"
+ },
+ {
+  "id": "schiff-handel",
+  "art": "schiff",
+  "prompt": "Early 17th century merchant sailing ship, fluyt with three masts, full white canvas sails, wooden hull with cargo hatches and barrels on deck, realistic game asset, physically based materials, no water, no background, no text"
+ },
+ {
+  "id": "schiff-krieg",
+  "art": "schiff",
+  "prompt": "Early 17th century war galleon with three masts, full white sails, two rows of gun ports with cannons, ornate stern castle, realistic game asset, physically based materials, no water, no background, no text"
+ }
+]

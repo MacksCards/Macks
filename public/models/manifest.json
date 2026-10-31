@@ -1,5 +1,378 @@
 {
- "haus-1": { "file": "haus-1.glb", "art": "gebaeude", "building": "haus", "tier": 1, "size": 2 },
- "kontor": { "file": "kontor.glb", "art": "gebaeude", "building": "kontor", "tier": 0, "size": 3 },
- "schaf": { "file": "schaf.glb", "art": "tier" }
+ "haus-1": {
+  "file": "haus-1.glb",
+  "art": "gebaeude",
+  "building": "haus",
+  "tier": 1,
+  "size": 2
+ },
+ "kontor": {
+  "file": "kontor.glb",
+  "art": "gebaeude",
+  "building": "kontor",
+  "tier": 0,
+  "size": 3
+ },
+ "schaf": {
+  "file": "schaf.glb",
+  "art": "tier"
+ },
+ "haus-0": {
+  "file": "haus-0.glb",
+  "art": "gebaeude",
+  "building": "haus",
+  "tier": 0,
+  "size": 2
+ },
+ "haus-2": {
+  "file": "haus-2.glb",
+  "art": "gebaeude",
+  "building": "haus",
+  "tier": 2,
+  "size": 2
+ },
+ "haus-3": {
+  "file": "haus-3.glb",
+  "art": "gebaeude",
+  "building": "haus",
+  "tier": 3,
+  "size": 2
+ },
+ "haus-4": {
+  "file": "haus-4.glb",
+  "art": "gebaeude",
+  "building": "haus",
+  "tier": 4,
+  "size": 2
+ },
+ "markt": {
+  "file": "markt.glb",
+  "art": "gebaeude",
+  "building": "markt",
+  "tier": 0,
+  "size": 3
+ },
+ "kapelle": {
+  "file": "kapelle.glb",
+  "art": "gebaeude",
+  "building": "kapelle",
+  "tier": 0,
+  "size": 2
+ },
+ "wirtshaus": {
+  "file": "wirtshaus.glb",
+  "art": "gebaeude",
+  "building": "wirtshaus",
+  "tier": 0,
+  "size": 2
+ },
+ "schule": {
+  "file": "schule.glb",
+  "art": "gebaeude",
+  "building": "schule",
+  "tier": 0,
+  "size": 2
+ },
+ "kirche": {
+  "file": "kirche.glb",
+  "art": "gebaeude",
+  "building": "kirche",
+  "tier": 0,
+  "size": 3
+ },
+ "badehaus": {
+  "file": "badehaus.glb",
+  "art": "gebaeude",
+  "building": "badehaus",
+  "tier": 0,
+  "size": 3
+ },
+ "hochschule": {
+  "file": "hochschule.glb",
+  "art": "gebaeude",
+  "building": "hochschule",
+  "tier": 0,
+  "size": 3
+ },
+ "theater": {
+  "file": "theater.glb",
+  "art": "gebaeude",
+  "building": "theater",
+  "tier": 0,
+  "size": 3
+ },
+ "holzfaeller": {
+  "file": "holzfaeller.glb",
+  "art": "gebaeude",
+  "building": "holzfaeller",
+  "tier": 0,
+  "size": 2
+ },
+ "fischer": {
+  "file": "fischer.glb",
+  "art": "gebaeude",
+  "building": "fischer",
+  "tier": 0,
+  "size": 2
+ },
+ "jagdhuette": {
+  "file": "jagdhuette.glb",
+  "art": "gebaeude",
+  "building": "jagdhuette",
+  "tier": 0,
+  "size": 2
+ },
+ "schweinezucht": {
+  "file": "schweinezucht.glb",
+  "art": "gebaeude",
+  "building": "schweinezucht",
+  "tier": 0,
+  "size": 3
+ },
+ "fleischerei": {
+  "file": "fleischerei.glb",
+  "art": "gebaeude",
+  "building": "fleischerei",
+  "tier": 0,
+  "size": 2
+ },
+ "getreidefarm": {
+  "file": "getreidefarm.glb",
+  "art": "gebaeude",
+  "building": "getreidefarm",
+  "tier": 0,
+  "size": 3
+ },
+ "muehle": {
+  "file": "muehle.glb",
+  "art": "gebaeude",
+  "building": "muehle",
+  "tier": 0,
+  "size": 2
+ },
+ "baeckerei": {
+  "file": "baeckerei.glb",
+  "art": "gebaeude",
+  "building": "baeckerei",
+  "tier": 0,
+  "size": 2
+ },
+ "schaffarm": {
+  "file": "schaffarm.glb",
+  "art": "gebaeude",
+  "building": "schaffarm",
+  "tier": 0,
+  "size": 3
+ },
+ "steinbruch": {
+  "file": "steinbruch.glb",
+  "art": "gebaeude",
+  "building": "steinbruch",
+  "tier": 0,
+  "size": 2
+ },
+ "erzmine": {
+  "file": "erzmine.glb",
+  "art": "gebaeude",
+  "building": "erzmine",
+  "tier": 0,
+  "size": 2
+ },
+ "weingut": {
+  "file": "weingut.glb",
+  "art": "gebaeude",
+  "building": "weingut",
+  "tier": 0,
+  "size": 3
+ },
+ "tabakplantage": {
+  "file": "tabakplantage.glb",
+  "art": "gebaeude",
+  "building": "tabakplantage",
+  "tier": 0,
+  "size": 3
+ },
+ "zuckerrohrplantage": {
+  "file": "zuckerrohrplantage.glb",
+  "art": "gebaeude",
+  "building": "zuckerrohrplantage",
+  "tier": 0,
+  "size": 3
+ },
+ "gewuerzplantage": {
+  "file": "gewuerzplantage.glb",
+  "art": "gebaeude",
+  "building": "gewuerzplantage",
+  "tier": 0,
+  "size": 3
+ },
+ "kakaoplantage": {
+  "file": "kakaoplantage.glb",
+  "art": "gebaeude",
+  "building": "kakaoplantage",
+  "tier": 0,
+  "size": 3
+ },
+ "baumwollplantage": {
+  "file": "baumwollplantage.glb",
+  "art": "gebaeude",
+  "building": "baumwollplantage",
+  "tier": 0,
+  "size": 3
+ },
+ "weberei": {
+  "file": "weberei.glb",
+  "art": "gebaeude",
+  "building": "weberei",
+  "tier": 0,
+  "size": 2
+ },
+ "schneiderei": {
+  "file": "schneiderei.glb",
+  "art": "gebaeude",
+  "building": "schneiderei",
+  "tier": 0,
+  "size": 2
+ },
+ "rumbrennerei": {
+  "file": "rumbrennerei.glb",
+  "art": "gebaeude",
+  "building": "rumbrennerei",
+  "tier": 0,
+  "size": 2
+ },
+ "brauerei": {
+  "file": "brauerei.glb",
+  "art": "gebaeude",
+  "building": "brauerei",
+  "tier": 0,
+  "size": 2
+ },
+ "tabakwaren": {
+  "file": "tabakwaren.glb",
+  "art": "gebaeude",
+  "building": "tabakwaren",
+  "tier": 0,
+  "size": 2
+ },
+ "erzschmelze": {
+  "file": "erzschmelze.glb",
+  "art": "gebaeude",
+  "building": "erzschmelze",
+  "tier": 0,
+  "size": 2
+ },
+ "schmiede": {
+  "file": "schmiede.glb",
+  "art": "gebaeude",
+  "building": "schmiede",
+  "tier": 0,
+  "size": 2
+ },
+ "schwertschmiede": {
+  "file": "schwertschmiede.glb",
+  "art": "gebaeude",
+  "building": "schwertschmiede",
+  "tier": 0,
+  "size": 2
+ },
+ "buechsenmacher": {
+  "file": "buechsenmacher.glb",
+  "art": "gebaeude",
+  "building": "buechsenmacher",
+  "tier": 0,
+  "size": 2
+ },
+ "kanonengiesserei": {
+  "file": "kanonengiesserei.glb",
+  "art": "gebaeude",
+  "building": "kanonengiesserei",
+  "tier": 0,
+  "size": 3
+ },
+ "goldschmied": {
+  "file": "goldschmied.glb",
+  "art": "gebaeude",
+  "building": "goldschmied",
+  "tier": 0,
+  "size": 2
+ },
+ "werft": {
+  "file": "werft.glb",
+  "art": "gebaeude",
+  "building": "werft",
+  "tier": 0,
+  "size": 3
+ },
+ "holzturm": {
+  "file": "holzturm.glb",
+  "art": "gebaeude",
+  "building": "holzturm",
+  "tier": 0,
+  "size": 1
+ },
+ "wachturm": {
+  "file": "wachturm.glb",
+  "art": "gebaeude",
+  "building": "wachturm",
+  "tier": 0,
+  "size": 1
+ },
+ "burg": {
+  "file": "burg.glb",
+  "art": "gebaeude",
+  "building": "burg",
+  "tier": 0,
+  "size": 2
+ },
+ "festung": {
+  "file": "festung.glb",
+  "art": "gebaeude",
+  "building": "festung",
+  "tier": 0,
+  "size": 3
+ },
+ "triumphbogen": {
+  "file": "triumphbogen.glb",
+  "art": "gebaeude",
+  "building": "triumphbogen",
+  "tier": 0,
+  "size": 2
+ },
+ "schiff-handel": {
+  "file": "schiff-handel.glb",
+  "art": "schiff"
+ },
+ "schiff-krieg": {
+  "file": "schiff-krieg.glb",
+  "art": "schiff"
+ },
+ "grosswerft": {
+  "file": "werft.glb",
+  "art": "gebaeude",
+  "building": "grosswerft",
+  "tier": 0,
+  "size": 3
+ },
+ "tiefeErzmine": {
+  "file": "erzmine.glb",
+  "art": "gebaeude",
+  "building": "tiefeErzmine",
+  "tier": 0,
+  "size": 2
+ },
+ "goldmine": {
+  "file": "erzmine.glb",
+  "art": "gebaeude",
+  "building": "goldmine",
+  "tier": 0,
+  "size": 2
+ },
+ "grosseburg": {
+  "file": "burg.glb",
+  "art": "gebaeude",
+  "building": "grosseburg",
+  "tier": 0,
+  "size": 3
+ }
 }
