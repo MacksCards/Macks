@@ -1,6 +1,10 @@
 // Bedienoberfläche (HTML über dem 3D-Bild) und Steuerlogik.
-import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, SHIPS, ShipType, TIERS } from './data';
-import { Building, Game, HUMAN, QUESTS, Ship, newSeed } from './game';
+import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, SHIPS, ShipType, TIERS, UNITS, UnitType } from './data';
+import {
+  armShip, atWar, buyProtection, canTrain, declareWar, disarmShip, makePeace, orderAttack, orderBoard, orderMove,
+  peacePrice, pirates, protectionPrice, shipAttack, strength, train, unloadTroops,
+} from './combat';
+import { Building, Game, HUMAN, QUESTS, Ship, ShotKind, Unit, newSeed } from './game';
 import { PFLANZEN, Pflanze, depositText } from './world';
 import { Input } from './input';
 import { View } from './render/scene';
@@ -45,6 +49,8 @@ export class UI {
   private goodEls = new Map<GoodId, HTMLElement>();
   private questOpen = false;
   selShip: Ship | null = null;
+  /** ausgewählte eigene Soldaten */
+  selUnits: Unit[] = [];
   relevant = new Set<GoodId>();
   islandInfo: number | null = null;
 
@@ -71,14 +77,30 @@ export class UI {
       felled: (k) => { v.onFelled(k); if (this.g.seen[k]) sound.play('baum', { x: k % this.g.size, z: Math.floor(k / this.g.size) }); },
       seen: () => v.onSeen(),
       message: (t, k) => this.toast(t, k),
-      shot: () => {},
-      sunk: () => {},
-      died: () => {},
+      shot: (kind, fx, fy, tx, ty, hit) => this.onShot(kind, fx, fy, tx, ty, hit),
+      sunk: (s) => { v.ships.sink(s.id); if (this.visible(s.x, s.y)) sound.play('versenkt', { x: s.x, z: s.y }); if (this.selShip === s) this.selectShip(null); },
+      died: (u) => { v.onUnitDied(u); if (this.visible(u.x, u.y)) sound.play('fall', { x: u.x, z: u.y }); },
     };
+  }
+
+  /** liegt ein Ort im entdeckten Gebiet? */
+  private visible(x: number, y: number) {
+    const k = this.g.idx(Math.floor(x), Math.floor(y));
+    return k >= 0 && k < this.g.seen.length && this.g.seen[k] === 1;
+  }
+
+  private onShot(kind: ShotKind, fx: number, fy: number, tx: number, ty: number, hit: boolean) {
+    if (!this.visible(fx, fy) && !this.visible(tx, ty)) return;
+    this.view.fx.shot(kind, fx, fy, tx, ty, hit);
+    const at = { x: fx, z: fy };
+    if (kind === 'schwert') sound.play('schwert', at);
+    else if (kind === 'muskete') sound.play('muskete', at);
+    else sound.play('kanone', at);
   }
 
   setGame(g: Game) {
     this.g = g;
+    this.selUnits = [];
     this.bindGame();
     this.setMode({ kind: 'none' });
     this.select(null);
@@ -286,11 +308,59 @@ export class UI {
       if (this.g.demolish(t[0], t[1])) this.toast('Abgerissen', 'info');
       return;
     }
-    // Schiff antippen → auswählen
-    const ship = this.view.pickShip(x, y);
-    if (ship && ship.owner === HUMAN) { sound.play('klick'); this.selectShip(ship); return; }
+    const g = this.g;
+    this.selUnits = this.selUnits.filter((u) => g.units.includes(u) && u.ship === undefined);
+    const sel = this.selUnits;
+    // Soldat antippen
+    const unit = this.view.pickUnit(x, y);
+    if (unit) {
+      if (unit.owner === HUMAN) { sound.play('klick'); if (!sel.includes(unit)) this.selectUnits([unit]); return; }
+      if (sel.length) { this.attack(unit.owner, () => { orderAttack(g, sel, unit.id); sound.play('marsch'); this.toast(`⚔️ Angriff auf ${UNITS[unit.type].name}`, 'info'); }); return; }
+      this.toast(`${UNITS[unit.type].icon} ${UNITS[unit.type].name} von ${g.players[unit.owner]?.name}`, 'info');
+      return;
+    }
+    // Schiff antippen → auswählen / einsteigen / angreifen
+    const ship = this.view.pickShip(x, y) ?? this.shipNear(x, y);
+    if (ship && ship.owner === HUMAN) {
+      sound.play('klick');
+      if (sel.length) {
+        orderBoard(g, sel, ship);
+        this.toast(`🪖 Soldaten gehen an Bord der ${ship.name}`, 'info');
+        this.select(null);
+        return;
+      }
+      this.selectShip(ship); return;
+    }
+    if (ship) {
+      const name = ship.type === 'pirat' ? 'Piratenschiff' : `Schiff von ${g.players[ship.owner]?.name}`;
+      if (this.selShip && (this.selShip.guns ?? 0) > 0) { const me = this.selShip; this.attack(ship.owner, () => { shipAttack(g, me, ship.id); sound.play('glocke'); this.toast(`💣 Angriff auf ${name}`, 'info'); }); return; }
+      if (this.selShip) { this.toast('Dein Schiff hat keine Kanonen – lade sie am Kontor', 'bad'); return; }
+      const kan = sel.filter((u) => u.type === 'kanonier');
+      if (kan.length) { this.attack(ship.owner, () => orderAttack(g, kan, ship.id)); return; }
+      this.toast(`⛵ ${name}`, 'info');
+      return;
+    }
     const t = this.view.pick(x, y, true);
     const b = t ? this.g.buildingAt(t[0], t[1]) : undefined;
+    // Soldaten ausgewählt: angreifen oder hinlaufen
+    if (sel.length && t) {
+      if (b && b.owner !== HUMAN) {
+        this.attack(b.owner, () => { orderAttack(g, sel, b.id); sound.play('marsch'); this.toast(`⚔️ Angriff auf ${BUILDINGS[b.type].name}`, 'info'); });
+        return;
+      }
+      const gt = this.view.pick(x, y, false) ?? t;
+      if (g.tiles[g.idx(gt[0], gt[1])] !== 0) {
+        const n = orderMove(g, sel, gt[0] + 0.5, gt[1] + 0.5);
+        if (n) sound.play('marsch'); else this.toast('Dorthin kommen die Soldaten nicht', 'bad');
+        return;
+      }
+    }
+    // bewaffnetes Schiff ausgewählt + fremdes Gebäude → beschießen
+    if (this.selShip && b && b.owner !== HUMAN && (this.selShip.guns ?? 0) > 0) {
+      const me = this.selShip;
+      this.attack(b.owner, () => { shipAttack(g, me, b.id); sound.play('glocke'); this.toast(`💣 ${me.name} greift ${BUILDINGS[b.type].name} an`, 'info'); });
+      return;
+    }
     // Schiff ausgewählt + aufs Meer getippt → hinsegeln
     if (this.selShip && !b) {
       const gt = this.view.pick(x, y, false);
@@ -308,6 +378,38 @@ export class UI {
       if (isl >= 0 && this.g.seen[k] && !this.g.area[k]) { this.select(null); this.islandInfo = isl; this.renderInfo(); return; }
     }
     this.select(null);
+  }
+
+  /** Schiff in Fingernähe (auch fremde) */
+  private shipNear(x: number, y: number): Ship | undefined {
+    const t = this.view.pick(x, y, false);
+    if (!t) return undefined;
+    let best: Ship | undefined, bd = 1.8;
+    for (const s of this.g.ships) {
+      if (s.owner !== HUMAN && !this.visible(s.x, s.y)) continue;
+      const d = Math.hypot(s.x - t[0] - 0.5, s.y - t[1] - 0.5);
+      if (d < bd) { bd = d; best = s; }
+    }
+    return best;
+  }
+
+  /** Angriff – herrscht noch Frieden, vorher fragen */
+  private attack(owner: number, go: () => void) {
+    const g = this.g, p = g.players[owner];
+    if (!p || owner === HUMAN) return;
+    if (atWar(g, HUMAN, owner)) { go(); return; }
+    if (p.pirate) {
+      this.ask('🏴‍☠️ Die Piraten angreifen?', 'Dein gekaufter Schutz endet damit sofort.', '⚔️ Angreifen', () => { g.players[HUMAN].protectedUntil = 0; go(); });
+      return;
+    }
+    this.ask(`⚔️ Krieg gegen ${p.name}?`, 'Mit ihm herrscht Frieden. Ein Angriff bedeutet Krieg – seine Soldaten, Türme und Schiffe greifen dich dann auch an.', '⚔️ Krieg erklären', () => { declareWar(g, HUMAN, owner); go(); });
+  }
+
+  selectUnits(list: Unit[]) {
+    this.select(null);
+    this.selUnits = list;
+    this.view.units.selected = new Set(list.map((u) => u.id));
+    this.renderInfo();
   }
 
   selectShip(s: Ship | null) {
@@ -394,6 +496,7 @@ export class UI {
     this.showStorage = false;
     this.islandInfo = null;
     if (this.selShip) { this.selShip = null; this.view.ships.selected = null; }
+    if (this.selUnits.length) { this.selUnits = []; this.view.units.selected = new Set(); }
     this.view.setSelected(b);
     if (b) this.closeCat();
     this.renderInfo();
@@ -409,16 +512,20 @@ export class UI {
   renderInfo() {
     const box = $('#info');
     const b = this.selected;
-    if (!b && !this.showStorage && !this.selShip && this.islandInfo === null) { box.classList.add('hidden'); return; }
+    if (this.selUnits.length) { this.selUnits = this.selUnits.filter((u) => this.g.units.includes(u) && u.ship === undefined); if (!this.selUnits.length) this.view.units.selected = new Set(); }
+    if (!b && !this.showStorage && !this.selShip && this.islandInfo === null && !this.selUnits.length) { box.classList.add('hidden'); return; }
     box.classList.remove('hidden');
     const g = this.g;
     let h = `<button class="close btn sq" id="infoX">✕</button>`;
     if (this.selShip) { this.renderShip(box, h); return; }
+    if (this.selUnits.length) { this.renderUnits(box, h); return; }
     if (this.islandInfo !== null) { if (!this.setHtml(box, h + this.islandHtml(this.islandInfo))) return; $('#infoX').addEventListener('click', () => this.select(null)); return; }
     if (b && b.owner !== HUMAN) {
       const pl = g.players[b.owner];
       h += `<h3>${BUILDINGS[b.type].icon} ${BUILDINGS[b.type].name}</h3><p class="sub">Gehört ${pl?.name ?? 'jemand anderem'}.</p>`;
       if (b.type === 'haus') h += `<div class="row"><span>Bewohner</span><b>${b.residents}</b></div>`;
+      h += this.hpHtml(b.hp ?? g.maxHp(b), g.maxHp(b));
+      h += `<p class="sub">${atWar(g, HUMAN, b.owner) ? '⚔️ Ihr seid im Krieg.' : '🕊️ Ihr habt Frieden.'} Wähle Soldaten oder ein Schiff mit Kanonen und tippe hierher, um anzugreifen.${b.type === 'kontor' || b.type === 'markt' ? ' Fällt es, während deine Soldaten daneben stehen, gehört es dir – mit dem Land ringsum.' : ''}</p>`;
       if (this.setHtml(box, h)) $('#infoX').addEventListener('click', () => this.select(null));
       return;
     }
@@ -523,6 +630,8 @@ export class UI {
       if (d.work && d.prod) h += `<div class="row"><span>Arbeitsradius</span><b>${d.work} Felder</b></div>`;
       else if (d.radius) h += `<div class="row"><span>Reichweite</span><b>${d.radius} Felder</b></div>`;
       if (d.storage) h += `<div class="row"><span>Lager</span><b>+${d.storage} je Ware</b></div>`;
+      if (d.tower) h += `<div class="row"><span>🎯 Schießt auf Feinde</span><b>${d.tower.range} Felder</b></div>`;
+      if (d.trains) h += this.trainHtml(b);
       if (b.type === 'werft' || b.type === 'grosswerft') {
         if (b.job) {
           const sd = SHIPS[b.job.ship];
@@ -538,10 +647,16 @@ export class UI {
         }
       }
     }
+    if (b.hp !== undefined) h += this.hpHtml(b.hp, g.maxHp(b));
     h += `<div class="row"><span>Unterhalt</span><b>${d.upkeep} Taler/Min</b></div>`;
     if (b.type !== 'kontor') h += `<button class="btn danger" id="infoDel">💥 Abreißen</button>`;
     if (!this.setHtml(box, h)) return;
     $('#infoX').addEventListener('click', () => this.select(null));
+    box.querySelectorAll<HTMLElement>('[data-train]').forEach((bt) => bt.addEventListener('click', () => {
+      const res = train(g, b, bt.dataset.train as UnitType);
+      if (res.ok) sound.play('marsch'); else this.toast(res.reason ?? '', 'bad');
+      this.renderInfo();
+    }));
     box.querySelectorAll<HTMLElement>('[data-ship]').forEach((bt) => bt.addEventListener('click', () => {
       const res = g.orderShip(b, bt.dataset.ship as ShipType);
       this.toast(res.ok ? 'Die Werft beginnt mit dem Bau.' : res.reason ?? '', res.ok ? 'good' : 'bad');
@@ -553,6 +668,60 @@ export class UI {
         this.select(null);
       });
     });
+  }
+
+  private hpHtml(hp: number, max: number): string {
+    const f = Math.max(0, Math.min(1, hp / max));
+    const pc = Math.round(f * 10) * 10;
+    return `<div class="row"><span>❤️ Zustand</span><b>${pc} %</b></div><div class="bar"><i style="width:${pc}%;background:${f > 0.6 ? '#7cc95a' : f > 0.3 ? '#e8b93a' : '#e2553f'}"></i></div>`;
+  }
+
+  /** Burg: Ausbildung (nur freigeschaltete Soldaten, dazu ein Hinweis auf den nächsten) */
+  private trainHtml(b: Building): string {
+    const g = this.g, d = BUILDINGS[b.type].trains!;
+    const l = g.lagerOf(HUMAN, b.island);
+    let h = `<h4>Ausbildung (${b.train?.length ?? 0} von ${d.slots})</h4>`;
+    for (const j of b.train ?? []) h += `<div class="row"><span>${UNITS[j.type].icon} ${UNITS[j.type].name}</span><b>${Math.ceil(j.t)} s</b></div><div class="bar"><i style="width:${Math.round((1 - j.t / d.time) * 10) * 10}%"></i></div>`;
+    let lockShown = false;
+    for (const [id, ud] of Object.entries(UNITS) as [UnitType, typeof UNITS[UnitType]][]) {
+      if (!g.reached(ud.unlock)) {
+        if (!lockShown) { lockShown = true; h += `<p class="sub">🔒 ${ud.icon} ${ud.plural} ab ${ud.unlock.n} ${TIERS[ud.unlock.tier].dat}</p>`; }
+        continue;
+      }
+      const chk = canTrain(g, b, id);
+      const cost = Object.entries(ud.cost).map(([k, n]) => `${GOOD[k as GoodId].icon}${n} (da: ${Math.floor(l?.[k as GoodId] ?? 0)})`).join(' ');
+      h += `<button class="btn wide ${chk.ok ? 'ok' : ''}" data-train="${id}">${ud.icon} ${ud.name} ausbilden<br><small>${cost} · ❤️${ud.hp} · ${ud.range > 2 ? `Reichweite ${ud.range}` : 'Nahkampf'} · ${ud.upkeep} Taler/Min${chk.ok ? '' : ` – ${chk.reason}`}</small></button>`;
+    }
+    const mine = g.units.filter((u) => u.owner === HUMAN).length;
+    if (mine) h += `<p class="sub">Du hast ${mine} Soldaten. Tippe einen an, um ihn zu führen.</p>`;
+    return h;
+  }
+
+  private renderUnits(box: HTMLElement, head: string) {
+    const g = this.g, list = this.selUnits;
+    const by = new Map<UnitType, number>();
+    let hp = 0, max = 0, fighting = 0, walking = 0;
+    for (const u of list) {
+      by.set(u.type, (by.get(u.type) ?? 0) + 1);
+      hp += u.hp; max += UNITS[u.type].hp;
+      if (u.target !== undefined) fighting++; else if (u.path.length || u.board !== undefined) walking++;
+    }
+    const one = list.length === 1 ? UNITS[list[0].type] : null;
+    let h = head + `<h3>${one ? `${one.icon} ${one.name}` : `⚔️ ${list.length} Soldaten`}</h3>`;
+    if (one) h += `<p class="sub">${one.desc}</p>`;
+    else for (const [t, n] of by) h += `<div class="row"><span>${UNITS[t].icon} ${UNITS[t].plural}</span><b>${n}</b></div>`;
+    h += this.hpHtml(hp, max);
+    h += `<div class="row"><span>Lage</span><b>${fighting ? '⚔️ kämpft' : walking ? '🚶 unterwegs' : '🛡️ wartet'}</b></div>`;
+    h += `<p class="sub">Tippe aufs Land, um hinzulaufen · auf Feinde, um anzugreifen · auf dein Schiff, um einzusteigen.</p>`;
+    const near = g.units.filter((u) => u.owner === HUMAN && u.ship === undefined && !list.includes(u) && Math.hypot(u.x - list[0].x, u.y - list[0].y) < 10).length;
+    h += `<div class="row2">${near ? `<button class="btn ok" id="uAll">👥 +${near} in der Nähe</button>` : ''}<button class="btn" id="uStop">✋ Halt</button></div>`;
+    if (!this.setHtml(box, h)) return;
+    $('#infoX').addEventListener('click', () => this.select(null));
+    document.getElementById('uAll')?.addEventListener('click', () => {
+      const add = g.units.filter((u) => u.owner === HUMAN && u.ship === undefined && Math.hypot(u.x - list[0].x, u.y - list[0].y) < 10);
+      this.selectUnits([...new Set([...list, ...add])]);
+    });
+    $('#uStop').addEventListener('click', () => { for (const u of list) { u.path = []; u.target = undefined; u.ordered = false; u.board = undefined; } this.renderInfo(); });
   }
 
   /** HTML nur setzen, wenn es sich geändert hat (sonst gehen Tipps auf Knöpfe verloren) */
@@ -582,6 +751,20 @@ export class UI {
     const canFound = near >= 0 && !g.kontor(HUMAN, near) && !s.path.length;
     let h = head + `<h3>⛵ ${s.name}</h3><p class="sub">${SHIPS[s.type ?? 'handel_klein'].name}</p><p class="sub">${s.path.length ? 'Unterwegs …' : 'Liegt vor Anker'} – tippe aufs Meer, um hinzusegeln.</p>`;
     if (canFound) h += `<button class="btn wide ok" id="shipKontor">⚓ Kontor auf ${g.islands[near].name} bauen (💰100 🪵6 🔧3)</button>`;
+    const sd = SHIPS[s.type ?? 'handel_klein'];
+    h += this.hpHtml(s.hp ?? sd.hp, sd.hp);
+    if ((s.hp ?? sd.hp) < sd.hp) h += `<p class="sub">🔧 Wird an deiner Werft ausgebessert (braucht Holz).</p>`;
+    h += `<div class="row"><span>💣 Kanonen</span><b>${s.guns ?? 0} / ${sd.kanonen}</b></div>`;
+    if (s.guns) h += `<p class="sub">Tippe auf ein feindliches Schiff oder Gebäude, um es zu beschießen.</p>`;
+    const tr = s.troops?.length ?? 0;
+    if (tr || g.reached(UNITS.infanterie.unlock)) h += `<div class="row"><span>🪖 Soldaten an Bord</span><b>${tr} / ${sd.troops}</b></div>`;
+    if (tr && near >= 0 && !s.path.length) h += `<button class="btn wide ok" id="shipLand">🪖 Soldaten an Land setzen</button>`;
+    if (dock) {
+      const kl = g.lagerOf(HUMAN, dock.island)!;
+      if ((s.guns ?? 0) < sd.kanonen && kl.kanonen >= 1) h += `<button class="btn wide ok" id="shipArm">💣 Bewaffnen (${Math.min(sd.kanonen - (s.guns ?? 0), Math.floor(kl.kanonen))} Kanonen aus dem Lager)</button>`;
+      else if ((s.guns ?? 0) < sd.kanonen && g.isUnlocked('kanonengiesserei')) h += `<p class="sub">Kanonen kommen aus der Kanonengießerei ins Lager.</p>`;
+      if (s.guns) h += `<button class="btn wide" id="shipDisarm">Kanonen ins Lager zurück</button>`;
+    }
     h += `<h4>Laderaum</h4><div class="slots">`;
     for (const sl of s.slots) h += `<div class="slot">${sl.g ? `<span>${GOOD[sl.g].icon}</span><b>${sl.n}</b>` : '<small>leer</small>'}</div>`;
     h += '</div>';
@@ -611,6 +794,14 @@ export class UI {
       if (!n) this.toast('Kein Platz mehr im Laderaum', 'bad');
       this.renderInfo();
     }));
+    document.getElementById('shipArm')?.addEventListener('click', () => { const n = armShip(g, s); if (n) { sound.play('kisten'); this.toast(`💣 ${n} Kanonen geladen`, 'good'); } this.renderInfo(); });
+    document.getElementById('shipDisarm')?.addEventListener('click', () => { disarmShip(g, s); sound.play('kisten'); this.renderInfo(); });
+    document.getElementById('shipLand')?.addEventListener('click', () => {
+      const n = unloadTroops(g, s);
+      this.toast(n ? `🪖 ${n} Soldaten an Land` : 'Hier ist kein Platz an der Küste', n ? 'good' : 'bad');
+      if (n) sound.play('marsch');
+      this.renderInfo();
+    });
     document.getElementById('shipKontor')?.addEventListener('click', () => {
       this.selectShip(null);
       this.setMode({ kind: 'build', type: 'kontor', gx: 0, gy: 0, has: false });
@@ -744,6 +935,10 @@ export class UI {
     else if (/eingezogen/.test(text)) sound.play('aufstieg');
     else if (/Aufgabe erledigt|ausgebaut/.test(text)) sound.play('muenzen');
     else if (/Stapel/.test(text)) sound.play('horn');
+    else if (/^⚔️ (Angriff|Dein Schiff|.* erklärt dir)/.test(text) || /Piraten gesichtet/.test(text)) sound.play('alarm');
+    else if (/^(⚔️|💣) /.test(text)) { /* Befehl – eigener Klang */ }
+    else if (/ausgebildet/.test(text)) sound.play('marsch');
+    else if (/erobert!|besiegt|versenkt!/.test(text) && kind === 'good') sound.play('aufstieg');
     else if (kind === 'bad') sound.play('fehler');
     else if (kind === 'good' || /Kontor auf/.test(text)) sound.play('nachricht');
     const box = $('#toasts');
@@ -763,6 +958,7 @@ export class UI {
       <h2>⚓ Neue Ufer</h2>
       <button class="btn wide" id="mResume">▶️ Weiterspielen</button>
       <button class="btn wide" id="mSave">💾 Speichern</button>
+      ${this.g.players.length > 1 ? '<button class="btn wide" id="mDipl">🤝 Krieg &amp; Frieden</button>' : ''}
       <div class="row2"><button class="btn" id="mTon">${sound.soundOn ? '🔊 Ton an' : '🔇 Ton aus'}</button><button class="btn" id="mMusik">${sound.musicOn ? '🎵 Musik an' : '🔕 Musik aus'}</button></div>
       <button class="btn wide" id="mHelp">❓ Anleitung</button>
       <button class="btn wide danger" id="mNew">🏝️ Neues Spiel (neue Inselwelt)</button>
@@ -774,6 +970,7 @@ export class UI {
       this.closeModal();
     });
     $('#mHelp').addEventListener('click', () => this.openHelp());
+    document.getElementById('mDipl')?.addEventListener('click', () => this.openDiplomacy());
     $('#mTon').addEventListener('click', () => { sound.setSound(!sound.soundOn); this.openMenu(); });
     $('#mMusik').addEventListener('click', () => { sound.setMusic(!sound.musicOn); this.openMenu(); });
     $('#mNew').addEventListener('click', () => {
@@ -792,6 +989,54 @@ export class UI {
     });
   }
 
+  /** Krieg und Frieden mit den Konkurrenten, Schutz vor Piraten */
+  openDiplomacy() {
+    const g = this.g, m = $('#modal');
+    m.classList.remove('hidden');
+    const me = strength(g, HUMAN);
+    let h = `<div class="box"><h2>🤝 Krieg &amp; Frieden</h2><p class="sub">Deine Streitmacht: ${me} (Soldaten, Kanonen auf Schiffen, Türme)</p>`;
+    for (const p of g.players) {
+      if (p.id === HUMAN || p.pirate) continue;
+      const war = atWar(g, HUMAN, p.id);
+      const col = '#' + p.color.toString(16).padStart(6, '0');
+      h += `<div class="row"><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col}"></i> ${p.name}${p.defeated ? ' – besiegt' : ''}</span><b>${p.defeated ? '🏳️' : war ? '⚔️ Krieg' : '🕊️ Frieden'}</b></div>`;
+      if (p.defeated) continue;
+      h += `<p class="sub">Streitmacht: ${strength(g, p.id)}</p>`;
+      if (war) {
+        const price = peacePrice(g, p.id);
+        h += `<button class="btn wide ok" data-peace="${p.id}">🕊️ Frieden anbieten${price ? ` (💰${price} Entschädigung)` : ' – er nimmt an'}</button>`;
+      } else h += `<button class="btn wide danger" data-war="${p.id}">⚔️ Krieg erklären</button>`;
+    }
+    const pir = pirates(g);
+    if (pir && (g.time > 600 || g.ships.some((s) => s.owner === pir.id))) {
+      const prot = (g.players[HUMAN].protectedUntil ?? 0) - g.time;
+      h += `<h4>🏴‍☠️ Piraten</h4><p class="sub">${prot > 0 ? `Du hast Schutz gekauft – noch ${Math.ceil(prot / 60)} Minuten.` : 'Sie überfallen Schiffe und beschießen schlecht bewachte Küsten. Wachtürme und Kriegsschiffe helfen.'}</p>`;
+      if (prot <= 0) h += `<button class="btn wide" id="dProt">💰 Schutz kaufen (${protectionPrice(g)} Taler, 20 Minuten)</button>`;
+    }
+    h += `<button class="btn wide" id="dX">Schließen</button></div>`;
+    m.innerHTML = h;
+    $('#dX').addEventListener('click', () => this.closeModal());
+    m.querySelectorAll<HTMLElement>('[data-war]').forEach((bt) => bt.addEventListener('click', () => {
+      const id = Number(bt.dataset.war);
+      this.ask(`⚔️ Krieg gegen ${g.players[id].name}?`, 'Seine Soldaten, Türme und Schiffe greifen dich dann an.', '⚔️ Krieg erklären', () => { declareWar(g, HUMAN, id); sound.play('alarm'); this.openDiplomacy(); });
+    }));
+    m.querySelectorAll<HTMLElement>('[data-peace]').forEach((bt) => bt.addEventListener('click', () => {
+      const id = Number(bt.dataset.peace), price = peacePrice(g, id);
+      if (g.players[HUMAN].money < price) { this.toast('Zu wenig Taler für die Entschädigung', 'bad'); return; }
+      g.players[HUMAN].money -= price;
+      g.players[id].money += price;
+      makePeace(g, HUMAN, id);
+      this.toast(`🕊️ Frieden mit ${g.players[id].name}`, 'good');
+      this.openDiplomacy();
+    }));
+    document.getElementById('dProt')?.addEventListener('click', () => {
+      const r = buyProtection(g);
+      this.toast(r.ok ? '🏴‍☠️ Die Piraten lassen dich 20 Minuten in Ruhe' : r.reason ?? '', r.ok ? 'good' : 'bad');
+      if (r.ok) sound.play('muenzen');
+      this.openDiplomacy();
+    });
+  }
+
   openHelp() {
     const m = $('#modal');
     m.classList.remove('hidden');
@@ -805,7 +1050,12 @@ export class UI {
         <li><b>Karte:</b> ein Finger verschiebt, zwei Finger zoomen und drehen. 🗺️ oben zeigt die Weltkarte.</li>
         <li><b>Bauen:</b> Links erscheinen die Gebäude, sobald du sie nutzen kannst. Neue kommen mit mehr Einwohnern dazu.</li>
         <li><b>Wege 🛤️:</b> Betriebe brauchen einen Feldweg zum Kontor oder Marktplatz. Marktplätze vergrößern dein Gebiet.</li>
-        <li>Tippe auf ein Gebäude, um zu sehen, was ihm fehlt. Das 📜 unten führt dich Schritt für Schritt.</ul>
+        <li>Tippe auf ein Gebäude, um zu sehen, was ihm fehlt. Das 📜 unten führt dich Schritt für Schritt.</li>
+        <li><b>Kampf ⚔️:</b> In der Burg bildest du Soldaten aus (Waffen aus dem Lager). Soldat antippen → aufs Land tippen = hinlaufen, auf Feinde tippen = angreifen, auf dein Schiff tippen = einsteigen. „+ in der Nähe“ wählt mehrere aus.</li>
+        <li><b>Eroberung:</b> Fällt das Kontor oder ein Marktplatz des Gegners, während deine Soldaten daneben stehen, gehört es dir – samt Land und Häusern ringsum.</li>
+        <li><b>Seeschlacht:</b> Kanonen am Kontor aufs Schiff laden („Bewaffnen“), dann ein feindliches Schiff antippen. Beschädigte Schiffe werden an deiner Werft ausgebessert.</li>
+        <li><b>Krieg &amp; Frieden:</b> im Menü ☰. Piraten 🏴‍☠️ überfallen Schiffe – Wachtürme, Kriegsschiffe oder gekaufter Schutz helfen.</li>
+        <li>🔇 Kein Ton? Den Stummschalter am iPhone prüfen.</li></ul>
       <button class="btn wide ok" id="hClose">Los geht's!</button></div>`;
     $('#hClose').addEventListener('click', () => this.closeModal());
   }

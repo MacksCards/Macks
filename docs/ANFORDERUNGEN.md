@@ -37,8 +37,18 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - D5 Gebäude kosten Taler und Baumaterial (Holz, Werkzeug, Steine, beim Wachturm Kanonen) und haben Unterhalt.
 - D6 Bewohner zahlen Steuern, abhängig von Zufriedenheit.
 - D7 Werften bauen kleine/große Handels- und Kriegsschiffe (Laderaum, Tempo, Kanonen).
-- D8 Militärbauten: Palisade, Steinmauer, Wachturm (mit Kanonen), Burg (Soldaten folgen mit dem Kampf-Update).
+- D8 Militärbauten: Palisade, Holztor, Steinmauer, Stadttor, Holz- und Steinturm (schießen, je 2 Kanonen), Burg, Große Burg, Festung (bilden Soldaten aus), Triumphbogen nach einem Sieg.
 - D9 Freier Händler am Kontor (Kaufen/Verkaufen).
+
+## Kampf (Regel 1, Kernbestandteil)
+- K1 Soldaten wie im Vorbild: Schwertkämpfer, Reiter (je 3 Schwerter), Musketier (4 Musketen), Kanonier (2 Kanonen) mit den Originalwerten (Treffer, Stärke, Tempo der Schläge, Reichweite) und Unterhalt; Ausbildung in Burg/Großer Burg/Festung (3/5/8 gleichzeitig); höchstens 99.
+- K2 Führen per Tippen: Soldat antippen, mehrere in der Nähe dazunehmen, hinlaufen, angreifen, aufs Schiff steigen; Soldaten wehren sich selbst und greifen Feinde in der Nähe an; Musketiere und Kanoniere schießen nicht durch Wald.
+- K3 Mauern und Tore halten Feinde auf (eigene Leute gehen durch Tore); Wachtürme schießen auf Soldaten und Schiffe (Reichweite 8).
+- K4 Schiffe: Kanonen am Kontor laden (bis 6/8/10/14 je Schiffstyp), Seeschlachten, Versenken, Ausbessern an der Werft, Soldaten übersetzen und an Land setzen.
+- K5 Eroberung: Fällt Kontor oder Marktplatz, während eigene Soldaten danebenstehen, wechseln es und alle Gebäude im Gebiet den Besitzer; sonst wird es zerstört. Gegner ohne Gebäude und Schiffe ist besiegt → Triumphbogen.
+- K6 Krieg & Frieden mit jedem Konkurrenten (Krieg erklären, Frieden gegen Entschädigung); Angriff im Frieden nur nach Rückfrage. Die KI wirbt Soldaten an, erklärt Krieg, wenn sie deutlich stärker ist, schickt Kriegsschiffe und landet Truppen.
+- K7 Piraten: tauchen nach ca. 15 Minuten auf, jagen Schiffe, beschießen ungeschützte Küsten; Schutz kaufen möglich; drei versenkte Piratenschiffe → Triumphbogen.
+- K8 Sichtbar und hörbar: Lebensbalken, Mündungsfeuer, Kanonenkugeln, Rauch, brennende Gebäude, sinkende Schiffe; Klänge für Schwerter, Musketen, Kanonen, Sturmglocke.
 
 ## Bevölkerung
 - E1 Fünf Stufen: **Pioniere → Siedler → Bürger → Kaufleute → Aristokraten** (Bewohner je Haus 3/7/15/25/40).
@@ -61,6 +71,5 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - G3 Fehler im Speicher (z. B. privater Modus) bringen das Spiel nicht zum Absturz.
 
 ## Später (fest eingeplant, siehe docs/OFFEN.md)
-- Kampf (Regel 1): Soldaten aus der Burg (Infanterie, Reiter, Musketiere, Kanoniere), Seeschlachten, Eroberung, Piraten, Krieg mit Konkurrenten.
 - Händlerschiff, Ureinwohner, Handelsrouten, Steuersatz.
 - Feuer, Pest, Feuerwehr, Arzt, Galgen; Prestigebauten (Palast, Kathedrale, Denkmal, Triumphbogen).

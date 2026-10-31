@@ -89,3 +89,82 @@ function lineFree(size: number, isWater: (k: number) => boolean, x0: number, y0:
   }
   return true;
 }
+
+/** Wegsuche für Soldaten an Land. cost(k) = Aufwand je Feld (Infinity = unpassierbar).
+ *  Gibt Feldmitten zurück; das Ziel selbst darf ein „teures“ Feld sein (z. B. ein feindliches Gebäude). */
+export function findLandPath(
+  size: number, cost: (k: number) => number,
+  sx: number, sy: number, tx: number, ty: number, maxNodes = 8000,
+): [number, number][] | null {
+  const start = sy * size + sx, goal = ty * size + tx;
+  if (start === goal) return [];
+  const N = size * size;
+  const gs = new Map<number, number>();
+  const from = new Map<number, number>();
+  const closed = new Set<number>();
+  const heap: number[] = [], prio: number[] = [];
+  const push = (k: number, p: number) => {
+    heap.push(k); prio.push(p);
+    let i = heap.length - 1;
+    while (i > 0) {
+      const pa = (i - 1) >> 1;
+      if (prio[pa] <= prio[i]) break;
+      [heap[pa], heap[i]] = [heap[i], heap[pa]]; [prio[pa], prio[i]] = [prio[i], prio[pa]]; i = pa;
+    }
+  };
+  const pop = () => {
+    const top = heap[0];
+    const lk = heap.pop()!, lp = prio.pop()!;
+    if (heap.length) {
+      heap[0] = lk; prio[0] = lp;
+      let i = 0;
+      for (;;) {
+        const l = i * 2 + 1, r = l + 1;
+        let m = i;
+        if (l < heap.length && prio[l] < prio[m]) m = l;
+        if (r < heap.length && prio[r] < prio[m]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]]; [prio[m], prio[i]] = [prio[i], prio[m]]; i = m;
+      }
+    }
+    return top;
+  };
+  const h = (k: number) => { const x = k % size, y = (k / size) | 0; const dx = Math.abs(x - tx), dy = Math.abs(y - ty); return Math.max(dx, dy) + 0.41 * Math.min(dx, dy); };
+  gs.set(start, 0);
+  push(start, h(start));
+  let n = 0, found = false;
+  // bester erreichter Punkt (falls das Ziel nicht erreichbar ist: so nah wie möglich)
+  let bestK = start, bestH = h(start);
+  while (heap.length && n++ < maxNodes) {
+    const k = pop();
+    if (k === goal) { found = true; break; }
+    if (closed.has(k)) continue;
+    closed.add(k);
+    const hk = h(k);
+    if (hk < bestH) { bestH = hk; bestK = k; }
+    const x = k % size, y = (k / size) | 0;
+    const gk = gs.get(k)!;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue;
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
+      const nk = ny * size + nx;
+      if (nk < 0 || nk >= N) continue;
+      let c = nk === goal ? Math.min(cost(nk), 50) : cost(nk);
+      if (!isFinite(c)) continue;
+      if (dx && dy) {
+        // nicht diagonal an Hindernissen vorbei quetschen
+        if (!isFinite(cost(y * size + nx)) || !isFinite(cost(ny * size + x))) continue;
+        c *= 1.414;
+      }
+      const ng = gk + c;
+      if (ng < (gs.get(nk) ?? Infinity)) { gs.set(nk, ng); from.set(nk, k); push(nk, ng + h(nk)); }
+    }
+  }
+  const end = found ? goal : bestK;
+  if (end === start) return found ? [] : null;
+  const path: [number, number][] = [];
+  for (let k = end; k !== start && k !== undefined; k = from.get(k)!) path.push([k % size + 0.5, ((k / size) | 0) + 0.5]);
+  path.reverse();
+  return path;
+}

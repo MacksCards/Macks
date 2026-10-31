@@ -291,6 +291,9 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 | Webstube + Weberei (zwei Gebäude) | eine Weberei für Schafwolle und Baumwolle | vereinfacht |
 | – | **Brauerei**: Getreide → Alkohol | zusätzliche Alkohol-Quelle für Inseln ohne Wein/Zuckerrohr |
 | Bäckerei 2 Mehl → 1 Nahrung, Fleischerei 2 Rinder → 1 Nahrung | 1 → 2 (Spiel läuft schneller, kleinere Mengen) | Balancing für Handy-Spielzeit |
+| Ausbildung 200/140/100 s | 100/70/50 s | Spiel läuft schneller |
+| Soldaten belegen Laderaum | eigene Truppenplätze je Schiff (8/6/12/16) | übersichtlicher |
+| KI baut Burgen und Waffenketten | KI wirbt Soldaten mit Geld an | KI siedelt langsamer als der Spieler |
 | Markennamen, Texte, Grafik | eigene Namen/Texte, realistische 3D-Grafik | rechtlich sauber |
 
 Offene Punkte (noch nicht umgesetzt): siehe `docs/OFFEN.md`.

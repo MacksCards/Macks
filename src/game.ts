@@ -6,6 +6,7 @@ import {
 } from './data';
 import { findSeaPath } from './path';
 import { thinkAI } from './ai';
+import { tickCombat, unitUpkeep } from './combat';
 import { Island, PFLANZEN, T, WORLD_SIZE, generateWorld, rng } from './world';
 
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft';
@@ -63,6 +64,8 @@ export interface Unit {
   target?: number;
   /** true = Ziel wurde befohlen (nicht selbst gesucht) */
   ordered?: boolean;
+  /** befohlenes Ziel, zu dem nach einem Abwehrkampf zurückgekehrt wird */
+  then?: number;
   /** Schiff, an dem eingestiegen werden soll */
   board?: number;
   /** an Bord dieses Schiffs (unsichtbar) */
@@ -149,6 +152,8 @@ export interface SaveData {
   res?: { trees: string; fish: string; wild: string; weide: string; feld?: string };
   /** verbleibendes Erz je Insel */
   ore?: number[];
+  units?: Unit[];
+  pirate?: { t: number; sunk: number; seen: boolean };
 }
 
 export interface GameEvents {
@@ -221,6 +226,10 @@ export class Game {
   byId = new Map<number, Building>();
   ships: Ship[] = [];
   units: Unit[] = [];
+  /** Piraten: Zeit bis zum nächsten Auftauchen, versenkte Piratenschiffe, schon gesichtet? */
+  pirateT = 0;
+  pirateSunk = 0;
+  pirateSeen = false;
   carts: Cart[] = [];
   players: Player[] = [];
   lager: Record<string, Goods> = {};
@@ -349,6 +358,8 @@ export class Game {
     for (const t of d.unlocked ?? []) if (BUILDINGS[t]) g.unlocked.add(t);
     (d.ore ?? []).forEach((v, i) => { if (g.islands[i]) g.islands[i].erz = v; });
     if (d.best) g.best = d.best;
+    g.units = d.units ?? [];
+    if (d.pirate) { g.pirateT = d.pirate.t; g.pirateSunk = d.pirate.sunk; g.pirateSeen = d.pirate.seen; }
     if (d.res) {
       const dec = (str: string, arr: Float32Array) => { for (let i = 0; i < arr.length && i < str.length; i++) arr[i] = (str.charCodeAt(i) - 48) / 40; };
       dec(d.res.trees, g.trees); dec(d.res.fish, g.fish); dec(d.res.wild, g.wild); dec(d.res.weide, g.weide);
@@ -365,6 +376,7 @@ export class Game {
       nextId: this.nextId, time: this.time, quest: this.quest, unlocked: [...this.unlocked], best: this.best,
       res: { trees: encR(this.trees), fish: encR(this.fish), wild: encR(this.wild), weide: encR(this.weide), feld: encR(this.feld) },
       ore: this.islands.map((i) => i.erz),
+      units: this.units, pirate: { t: this.pirateT, sunk: this.pirateSunk, seen: this.pirateSeen },
     };
   }
 
@@ -466,6 +478,7 @@ export class Game {
 
   isUnlocked(type: BuildingId): boolean {
     if (this.unlocked.has(type)) return true;
+    if (BUILDINGS[type].victory) return false;
     const u = BUILDINGS[type].unlock;
     return !u || this.maxPop(u.tier) >= u.n;
   }
@@ -479,7 +492,7 @@ export class Game {
     for (let t = 0; t < TIERS.length; t++) this.best[t] = Math.max(this.best[t] ?? 0, this.maxPop(t));
     const fresh: BuildingId[] = [];
     for (const d of Object.values(BUILDINGS)) {
-      if (!d.category || this.unlocked.has(d.id)) continue;
+      if (!d.category || d.victory || this.unlocked.has(d.id)) continue;
       const u = d.unlock;
       if (!u || this.maxPop(u.tier) >= u.n) { this.unlocked.add(d.id); if (u) fresh.push(d.id); }
     }
@@ -920,6 +933,7 @@ export class Game {
         if (this.own[k] >= 0 && this.own[k] !== owner) return { ok: false, reason: 'Das Land gehört schon jemand anderem' };
       } else if (this.own[k] !== owner) return { ok: false, reason: 'Außerhalb deines Gebiets – baue einen Marktplatz' };
     }
+    if (d.victory && !this.unlocked.has(type)) return { ok: false, reason: 'Erst nach einem Sieg' };
     if (d.category && d.unlock && (owner === HUMAN ? !this.isUnlocked(type) : this.maxPop(d.unlock.tier, owner) < d.unlock.n)) {
       const u = d.unlock;
       return { ok: false, reason: `Erst ab ${u.n} ${TIERS[u.tier].dat}` };
@@ -1108,6 +1122,15 @@ export class Game {
     return true;
   }
 
+  /** Gebäude ohne Rückgabe von Baumaterial entfernen (zerstört im Kampf; auch Kontore) */
+  forceRemove(b: Building) {
+    this.stamp(b, 0);
+    this.buildings = this.buildings.filter((o) => o !== b);
+    this.byId.delete(b.id);
+    this.recompute();
+    this.ev.removed(b);
+  }
+
   removeBuilding(b: Building) {
     if (b.type === 'kontor') return;
     const d = this.def(b);
@@ -1130,6 +1153,7 @@ export class Game {
       upkeep += this.def(b).upkeep;
       if (b.type === 'haus') tax += b.residents * TIERS[b.tier].tax * (0.4 + 0.6 * b.happy);
     }
+    upkeep += unitUpkeep(this, owner);
     return { tax, upkeep };
   }
 
@@ -1151,6 +1175,7 @@ export class Game {
     if (this.regenT >= 1) { this.regrow(this.regenT); this.regenT = 0; }
     this.cartT += dt;
     this.tickCarts(dt);
+    tickCombat(this, dt);
     for (const p of this.players) if (p.ai && p.brain) thinkAI(this, p, dt);
     for (const p of this.players) {
       const { tax, upkeep } = this.incomePerMinute(p.id);
@@ -1377,6 +1402,8 @@ export const QUESTS: Quest[] = [
   step('Wirtshaus und Schule', 'Siedler brauchen Wirtshaus (ab 50 Siedlern) und Schule (ab 100 Siedlern), um Bürger zu werden.', ...Object.values(all(['wirtshaus', 'schule'], false)) as [Quest['done'], Quest['progress']], 800),
   step('Bürger', 'Siedlerhäuser mit Alkohol, Tabakwaren oder Gewürzen, Wirtshaus und Schule werden zu Bürgern. Ziel: 6 Bürgerhäuser.', ...Object.values(tierGoal(2, 6)) as [Quest['done'], Quest['progress']], 1000),
   step('Eisen und Werkzeug', 'Erzmine am Berg einer Erz-Insel, Erzschmelze und Werkzeugschmiede: nie wieder Werkzeug kaufen!', ...Object.values(all(['erzmine', 'erzschmelze', 'schmiede'])) as [Quest['done'], Quest['progress']], 1200),
+  step('Wehrhaft', 'Ab 200 Siedlern: Schwertschmiede (Eisen → Schwerter) und eine Burg. Bilde 3 Soldaten aus. Wachtürme an der Küste schützen vor Piraten.',
+    (g) => g.units.filter((u) => u.owner === HUMAN).length >= 3, (g) => `${Math.min(3, g.units.filter((u) => u.owner === HUMAN).length)}/3`, 1200),
   step('Kakao', 'Bürger werden zu Kaufleuten, wenn es Kakao gibt. Kakao wächst auf südlichen Inseln.', ...Object.values(all(['kakaoplantage'])) as [Quest['done'], Quest['progress']], 1000),
   step('Kirche und Badehaus', 'Kaufleute wollen Kirche (ab 150 Bürgern) und Badehaus (ab 210 Bürgern).', ...Object.values(all(['kirche', 'badehaus'], false)) as [Quest['done'], Quest['progress']], 1500),
   step('Kaufleute', 'Ziel: 6 Häuser der Kaufleute.', ...Object.values(tierGoal(3, 6)) as [Quest['done'], Quest['progress']], 2000),
@@ -1384,6 +1411,8 @@ export const QUESTS: Quest[] = [
   step('Hochschule und Theater', 'Kaufleute brauchen Hochschule und Theater, um Aristokraten zu werden.', ...Object.values(all(['hochschule', 'theater'], false)) as [Quest['done'], Quest['progress']], 2500),
   step('Aristokraten', 'Die höchste Stufe: 6 Häuser der Aristokraten.', ...Object.values(tierGoal(4, 6)) as [Quest['done'], Quest['progress']], 5000),
   step('Eigene Flotte', 'Baue eine Werft an der Küste und lass ein zweites Schiff vom Stapel laufen.', (g) => g.myShips().length >= 2, (g) => `${Math.min(2, g.myShips().length)}/2`, 1000),
+  step('Kanonen an Bord', 'Kanonengießerei bauen, Kanonen ins Kontor bringen und ein Schiff am Kontor bewaffnen (Schiff antippen → „Bewaffnen“).',
+    (g) => g.myShips().some((s) => (s.guns ?? 0) >= 6), (g) => (g.myShips().some((s) => (s.guns ?? 0) >= 6) ? '1/1' : '0/1'), 1500),
 ];
 
 export function newSeed(): number {

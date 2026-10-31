@@ -224,9 +224,43 @@ export class Sound {
         this.tone(60, 0.5, { vol: 0.5 * v, slide: 0.6, delay: 1.2 });
         this.burst(0.4, { type: 'lowpass', freq: 600, vol: 0.3 * v, delay: 1.2 });
         break;
-      case 'kanone':
-        this.tone(55, 0.9, { vol: 0.7 * v, slide: 0.4 });
-        this.burst(1.2, { type: 'lowpass', freq: 1800, slideTo: 80, vol: 0.8 * v });
+      case 'kanone': // Donner mit Nachhall
+        if (!this.throttle('kanone', 70)) return;
+        this.tone(55 + Math.random() * 12, 0.9, { vol: 0.6 * v, slide: 0.4 });
+        this.burst(1.2, { type: 'lowpass', freq: 1500 + Math.random() * 600, slideTo: 80, vol: 0.7 * v });
+        this.burst(0.9, { type: 'lowpass', freq: 400, vol: 0.18 * v, delay: 0.25 });
+        break;
+      case 'muskete': // scharfer Knall
+        if (!this.throttle('muskete', 50)) return;
+        this.burst(0.05, { type: 'highpass', freq: 2500, vol: 0.5 * v });
+        this.burst(0.35, { type: 'lowpass', freq: 2200, slideTo: 200, vol: 0.35 * v, delay: 0.01 });
+        this.tone(120, 0.12, { vol: 0.25 * v, slide: 0.5 });
+        break;
+      case 'schwert': // Klingen klirren (metallisch, unharmonische Obertöne)
+        if (!this.throttle('schwert', 90)) return;
+        { const f = 1900 + Math.random() * 700;
+          for (const m of [1, 1.47, 2.09, 2.76]) this.tone(f * m, 0.22 + Math.random() * 0.1, { vol: 0.05 * v / m, verb: 0.2 });
+          this.burst(0.04, { type: 'highpass', freq: 4000, vol: 0.25 * v }); }
+        break;
+      case 'versenkt': // Holz bricht, Wasser gurgelt
+        this.burst(0.5, { type: 'lowpass', freq: 700, slideTo: 150, vol: 0.5 * v });
+        for (let i = 0; i < 4; i++) this.tone(90 - i * 8, 0.4, { type: 'triangle', vol: 0.15 * v, slide: 0.7, delay: 0.1 + i * 0.18 });
+        for (let i = 0; i < 10; i++) this.tone(300 + Math.random() * 500, 0.08, { vol: 0.05 * v, slide: 1.8, delay: 0.5 + i * 0.17 + Math.random() * 0.1 });
+        this.burst(2.5, { type: 'bandpass', freq: 500, q: 0.6, vol: 0.2 * v, delay: 0.4 });
+        break;
+      case 'fall': // Soldat fällt
+        if (!this.throttle('fall', 120)) return;
+        this.tone(110, 0.15, { type: 'triangle', vol: 0.18 * v, slide: 0.6 });
+        this.burst(0.2, { type: 'lowpass', freq: 800, vol: 0.2 * v });
+        break;
+      case 'alarm': // Sturmglocke: schnelle Schläge
+        if (!this.throttle('alarm', 3000)) return;
+        for (let i = 0; i < 5; i++) { this.tone(740, 0.5, { vol: 0.1, delay: i * 0.22, verb: 0.5 }); this.tone(1850, 0.25, { vol: 0.03, delay: i * 0.22 }); }
+        this.tone(110, 1.2, { type: 'sawtooth', vol: 0.04, attack: 0.2, delay: 0.1, verb: 0.4 });
+        break;
+      case 'marsch': // Trommelwirbel + Schritt
+        if (!this.throttle('marsch', 250)) return;
+        for (let i = 0; i < 3; i++) { this.burst(0.07, { type: 'bandpass', freq: 220, q: 1.2, vol: 0.35, delay: i * 0.09 }); this.tone(150, 0.06, { vol: 0.15, delay: i * 0.09, slide: 0.7 }); }
         break;
       case 'kisten': // Ladung poltert
         for (let i = 0; i < 3; i++) { this.tone(140 + Math.random() * 60, 0.09, { type: 'triangle', vol: 0.22, slide: 0.6, delay: i * 0.09 }); this.burst(0.06, { type: 'lowpass', freq: 900, vol: 0.2, delay: i * 0.09 }); }

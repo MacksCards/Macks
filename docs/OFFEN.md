@@ -3,11 +3,8 @@
 Was noch fehlt, damit „Neue Ufer“ den ganzen Umfang von 1602 hat (Regel 4/11). Reihenfolge = geplante Etappen.
 
 ## Kampf (Regel 1 – Kernbestandteil)
-- Soldaten aus der Burg: Infanterie, Reiter (Schwerter), Musketiere (Musketen), Kanoniere (Kanonen); Werte siehe 1602-INHALT.md Abschnitt 9
-- Große Burg, Festung; Holz- und Steintore, Stadttor, hölzerner Wachturm; Wachtürme schießen
-- Seeschlachten: Kanonen auf Schiffe laden (auch Handelsschiffe), Treffer, Versenken, Reparatur an der Werft
-- Eroberung von Inseln (Marktplätze/Kontor einnehmen), Triumphbogen nach Sieg
-- Piraten (Überfälle, Bestechung, Piratennest), Diplomatie mit Konkurrenten (Handelsvertrag, Frieden, Bündnis, Krieg)
+- Umgesetzt: siehe ANFORDERUNGEN K1–K8.
+- Noch offen: Piratennest (Insel der Piraten zerstören), Piraten gegen andere bestechen, Handels- und Bündnisvertrag, Kanonen setzen Gebäude in Brand (Feuer gibt es noch nicht), Arzt heilt Soldaten, KI baut eigene Burgen/Türme (sie wirbt Soldaten derzeit mit Geld an), jeder Triumphbogen erlaubt ein Schiff mehr.
 
 ## Handel & Welt
 - Freies Händlerschiff, das Kontore anläuft (statt Sofort-Handel am Kontor)
