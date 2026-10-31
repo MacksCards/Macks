@@ -24,10 +24,18 @@ export interface Island {
   klima: Klima;
   /** Fruchtbarkeit in Prozent (0/50/100) */
   frucht: Partial<Record<Pflanze, number>>;
-  /** Vorkommen im Berg: Erz (Tonnen) und Gold (1 = vorhanden), 0 = keins */
+  /** Vorkommen im Berg: Erz (Tonnen, was die Erzmine noch fördern kann) und Gold (1 = vorhanden), 0 = keins */
   erz: number;
   gold: number;
   land: number; // Anzahl Landkacheln
+  /** Erz zu Spielbeginn (Tonnen); 0 = die Insel hatte nie Erz */
+  erzStart: number;
+  /** Rest für die tiefe Erzmine (Tonnen): sie baut weiter ab, bis insgesamt 3 × die Startmenge gefördert ist */
+  erzDeep: number;
+  /** unerschöpfliches Erzvorkommen (etwa jedes siebte): Erzmine und tiefe Mine leeren es nie */
+  erzEndlos?: boolean;
+  /** Heimatinsel des Spielers: nahe am Start, groß genug, mit Erz und mindestens einer Pflanze auf 100 % */
+  heimat?: boolean;
 }
 
 export interface World {
@@ -40,6 +48,10 @@ export interface World {
 }
 
 export const WORLD_SIZE = 240;
+/** Wählbare Weltgrößen (Felder je Seite). Vorerst nur eine; mehr kommen nach der Leistungsarbeit. */
+export const WORLD_SIZES: readonly number[] = [WORLD_SIZE];
+/** Anteil der Erzvorkommen, die nie leer werden */
+const ERZ_ENDLOS = 0.15;
 
 export function rng(seed: number): () => number {
   let a = seed >>> 0;
@@ -70,7 +82,11 @@ const NAMEN = ['Möwenfels', 'Grünhaven', 'Sturmeck', 'Bernsteinhuk', 'Lindholm
   'Nebelsund', 'Rabenklippe', 'Sonnenhuk', 'Hirschholm', 'Kupferbucht', 'Tangeland', 'Walfisch-Eiland', 'Muschelriff',
   'Falkenstein', 'Seerosenhof', 'Goldküste', 'Ankergrund', 'Wolfsinsel', 'Heringsbank'];
 
-export function generateWorld(seed: number, size = WORLD_SIZE): World {
+/**
+ * Welt aus der Startzahl erzeugen. legacy = so, wie Spielstände bis Version 3 ihre Inseln bekamen
+ * (dieselbe Landschaft, aber die alte Startinsel-Regel, kein Gold-Ausgleich, keine endlosen Vorkommen).
+ */
+export function generateWorld(seed: number, size = WORLD_SIZE, legacy = false): World {
   const r = rng(seed);
   const tiles = new Uint8Array(size * size);
   const island = new Int16Array(size * size).fill(-1);
@@ -131,7 +147,7 @@ export function generateWorld(seed: number, size = WORLD_SIZE): World {
     }
     const isl: Island = {
       id, name: NAMEN[id % NAMEN.length], x0, y0, x1, y1, cx: c.x, cy: c.y, groesse: c.g,
-      klima: c.y < size / 2 ? 'nord' : 'sued', frucht: {}, erz: 0, gold: 0, land: cells.length,
+      klima: c.y < size / 2 ? 'nord' : 'sued', frucht: {}, erz: 0, gold: 0, land: cells.length, erzStart: 0, erzDeep: 0,
     };
     // Fruchtbarkeit: 2–3 Pflanzen des eigenen Klimas, selten eine fremde mit 50 %
     const own = (Object.keys(PFLANZEN) as Pflanze[]).filter((p) => PFLANZEN[p].klima === isl.klima);
@@ -188,18 +204,66 @@ export function generateWorld(seed: number, size = WORLD_SIZE): World {
   keep.forEach((i, n) => { i.id = n; i.name = NAMEN[n % NAMEN.length]; });
   islands.length = 0;
   islands.push(...keep);
-  // Startinsel-Garantie: nahe am Spielerstart eine große/mittlere Insel mit Erz
-  const [sx, sy] = starts[0];
   const hasBerg = (i: Island) => { for (let y = i.y0; y <= i.y1; y++) for (let x = i.x0; x <= i.x1; x++) if (island[y * size + x] === i.id && tiles[y * size + x] === T.Berg) return true; return false; };
   for (const i of islands) if (!hasBerg(i)) { i.erz = 0; i.gold = 0; }
+  // Ab hier nur noch Eigenschaften der Inseln (keine Kacheln mehr) – mit eigenem Zufall,
+  // damit die Landschaft für dieselbe Startzahl genau gleich bleibt wie früher.
+  if (legacy) legacyIslands(islands, starts[0], hasBerg);
+  else finishIslands(islands, starts[0], hasBerg, rng(seed + 9001));
+  return { size, tiles, island, islands, starts };
+}
+
+/** alte Regel (bis Spielstand-Version 3): die nächste mittlere/große Berginsel bekommt Erz, wenn sie weder Erz noch Gold hat */
+function legacyIslands(islands: Island[], [sx, sy]: [number, number], hasBerg: (i: Island) => boolean) {
   const near = islands.filter((i) => i.groesse !== 'klein' && hasBerg(i)).sort((p, q) => Math.hypot(p.cx - sx, p.cy - sy) - Math.hypot(q.cx - sx, q.cy - sy))[0];
   if (near && !near.erz && !near.gold) near.erz = 240;
-  return { size, tiles, island, islands, starts };
+  if (near) near.heimat = true;
+  for (const i of islands) { i.erzStart = i.erz; i.erzDeep = i.erz * 2; }
+}
+
+/**
+ * Heimatinsel, Gold-Garantie und Erzmengen festlegen.
+ * Heimat = die nächste mittlere oder große Insel mit Berg; sie hat sicher Erz (sonst bekommt sie ein
+ * großes Vorkommen, ein Goldvorkommen dort wandert dann auf eine kleine Insel) und mindestens eine
+ * Pflanze auf 100 %. Gibt es nirgends Gold, bekommt eine kleine Berginsel welches.
+ */
+function finishIslands(islands: Island[], [sx, sy]: [number, number], hasBerg: (i: Island) => boolean, r: () => number) {
+  const far = (i: Island) => Math.hypot(i.cx - sx, i.cy - sy);
+  const cands = islands.filter((i) => i.groesse !== 'klein' && hasBerg(i)).sort((p, q) => far(p) - far(q));
+  let home: Island | undefined = cands[0];
+  if (home && !home.erz) { home.erz = 240; home.gold = 0; }
+  home ??= islands.filter((i) => i.groesse !== 'klein').sort((p, q) => far(p) - far(q))[0] ?? islands.slice().sort((p, q) => far(p) - far(q))[0];
+  if (home) {
+    home.heimat = true;
+    if (!Object.values(home.frucht).some((v) => v === 100)) {
+      // die beste vorhandene Pflanze des eigenen Klimas auf 100 % – sonst eine neue
+      const own = (Object.keys(PFLANZEN) as Pflanze[]).filter((p) => PFLANZEN[p].klima === home!.klima);
+      const have = own.filter((p) => (home!.frucht[p] ?? 0) > 0);
+      const pick = have.length ? have[0] : own[Math.floor(r() * own.length)];
+      home.frucht[pick] = 100;
+    }
+  }
+  // Gold-Garantie: ohne Gold gäbe es keinen Schmuck (nur teuer beim Händler)
+  if (!islands.some((i) => i.gold)) {
+    const small = islands.filter((i) => i !== home && hasBerg(i));
+    const pool = [small.filter((i) => i.groesse === 'klein' && !i.erz), small.filter((i) => i.groesse === 'klein'), small].find((l) => l.length) ?? [];
+    const g = pool[Math.floor(r() * pool.length)];
+    if (g) { g.gold = 1; g.erz = 0; }
+  }
+  // Erzmengen: die tiefe Mine baut danach noch das Doppelte ab; manche Vorkommen werden nie leer
+  for (const i of islands) {
+    i.erzStart = i.erz;
+    i.erzDeep = i.erz * 2;
+    if (i.erz > 0 && r() < ERZ_ENDLOS) i.erzEndlos = true;
+  }
 }
 
 /** Kurzer Text zu den Vorkommen im Berg */
 export function depositText(i: Island): string {
   if (i.gold) return 'Gold ⭐';
-  if (i.erz) return i.erz >= 200 ? 'Erz (groß)' : 'Erz (klein)';
+  const big = (i.erzStart || i.erz) >= 200 ? 'groß' : 'klein';
+  if (i.erzEndlos && (i.erzStart || i.erz)) return 'Erz (unerschöpflich)';
+  if (i.erz > 0) return `Erz (${big}, noch ${Math.floor(i.erz)} t)`;
+  if (i.erzStart > 0) return i.erzDeep > 0 ? 'Erz (oben erschöpft)' : 'Erz (erschöpft)';
   return 'keins';
 }

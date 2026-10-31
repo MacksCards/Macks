@@ -49,7 +49,9 @@ export type BuildingId =
   | 'weberei' | 'schneiderei' | 'rumbrennerei' | 'brauerei' | 'tabakwaren' | 'erzschmelze' | 'schmiede'
   | 'schwertschmiede' | 'buechsenmacher' | 'kanonengiesserei' | 'goldschmied'
   | 'werft' | 'grosswerft'
-  | 'palisade' | 'holztor' | 'steinmauer' | 'steintor' | 'holzturm' | 'wachturm' | 'burg' | 'grosseburg' | 'festung' | 'triumphbogen';
+  | 'palisade' | 'holztor' | 'steinmauer' | 'steintor_klein' | 'steintor' | 'holzturm' | 'wachturm' | 'burg' | 'grosseburg' | 'festung' | 'triumphbogen'
+  // vorbereitet (geplant): erscheinen erst, wenn ihr Spielteil fertig ist
+  | 'feuerwehr' | 'arzt' | 'galgen' | 'denkmal' | 'zierbaum' | 'palast' | 'kathedrale' | 'huette' | 'haeuptling';
 
 export type Category = 'wege' | 'wohnen' | 'nahrung' | 'rohstoffe' | 'plantagen' | 'werkstatt' | 'oeffentlich' | 'hafen' | 'militaer';
 
@@ -87,12 +89,17 @@ export interface BuildingDef {
   stock?: number;
   /** Freischaltung wie im Vorbild: n Einwohner mindestens der Stufe tier auf einer Insel */
   unlock?: { tier: number; n: number };
-  /** Wege/Mauern werden wie Wege mit dem Finger gezogen */
+  /** Wege/Mauern werden als Strecke gebaut: Start und Ziel antippen, dann ✓ */
   paint?: boolean;
   /** Trefferpunkte (Standard: nach Größe) */
   hp?: number;
-  /** Tor: eigene Truppen gehen hindurch, fremde nicht */
+  /** Tor: eigene Truppen und Marktkarren gehen hindurch, fremde nicht; darf auf einem eigenen Weg stehen */
   gate?: boolean;
+  /**
+   * Vorbereitet: Werte stehen schon fest, das Gebäude bleibt aber unsichtbar und unbaubar,
+   * bis sein Spielteil (src/systems.ts) es als „bereit“ meldet.
+   */
+  geplant?: boolean;
   /** schießt selbst auf Feinde in Reichweite */
   tower?: { str: number; interval: number; range: number };
   /** bildet Soldaten aus: gleichzeitig, Sekunden je Soldat */
@@ -110,7 +117,7 @@ const A = (n: number) => ({ tier: 4, n });
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   // ---------- Wege ----------
   weg: { id: 'weg', name: 'Feldweg', icon: '🟫', category: 'wege', size: 1, cost: { taler: 5 }, upkeep: 0, paint: true,
-    desc: 'Verbindet Betriebe mit Kontor oder Marktplatz. Mit dem Finger ziehen, um mehrere Felder zu bauen.' },
+    desc: 'Verbindet Betriebe mit Kontor oder Marktplatz. Tippe Start und Ziel, dann ✓.' },
   steinweg: { id: 'steinweg', name: 'Pflasterweg', icon: '⬜', category: 'wege', size: 1, cost: { taler: 5, stein: 1 }, upkeep: 0, paint: true, unlock: S(15),
     desc: 'Gepflasterter Weg aus Steinen – Marktkarren kommen darauf schneller voran.' },
   // ---------- Lager & Wohnen ----------
@@ -198,7 +205,8 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     stock: 4, prod: { time: 20, input: { eisen: 1 }, output: 'schwerter' }, desc: 'Schmiedet Schwerter für Infanterie und Reiter.' },
   buechsenmacher: { id: 'buechsenmacher', name: 'Büchsenmacher', icon: '🔫', category: 'werkstatt', size: 2, cost: { taler: 600, holz: 4, werkzeug: 9, stein: 10 }, upkeep: 45, unlock: K(400),
     stock: 4, prod: { time: 24, input: { eisen: 2, holz: 1 }, output: 'musketen' }, desc: 'Baut Musketen für Musketiere.' },
-  kanonengiesserei: { id: 'kanonengiesserei', name: 'Kanonengießerei', icon: '💣', category: 'werkstatt', size: 3, cost: { taler: 750, holz: 5, werkzeug: 6, stein: 15 }, upkeep: 60, unlock: K(300),
+  // ab 400 Bürgern – gleichzeitig mit dem Kanonier, damit man Kanonen nicht nur kaufen muss
+  kanonengiesserei: { id: 'kanonengiesserei', name: 'Kanonengießerei', icon: '💣', category: 'werkstatt', size: 3, cost: { taler: 750, holz: 5, werkzeug: 6, stein: 15 }, upkeep: 60, unlock: B(400),
     stock: 4, prod: { time: 28, input: { eisen: 1, holz: 1 }, output: 'kanonen' }, desc: 'Gießt Kanonen für Kriegsschiffe, Wachtürme und Kanoniere.' },
   goldschmied: { id: 'goldschmied', name: 'Goldschmied', icon: '💍', category: 'werkstatt', size: 2, cost: { taler: 1500, holz: 2, werkzeug: 7, stein: 10 }, upkeep: 45, unlock: K(250),
     stock: 4, prod: { time: 20, input: { gold: 2 }, output: 'schmuck', amount: 4 }, desc: 'Fertigt aus Gold Schmuck für Aristokraten (2 Gold → 4 Schmuck).' },
@@ -209,13 +217,15 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     desc: 'Baut auch große Handels- und Kriegsschiffe – schneller als die kleine Werft.' },
   // ---------- Militär ----------
   palisade: { id: 'palisade', name: 'Palisade', icon: '🪵', category: 'militaer', size: 1, cost: { taler: 10, holz: 2 }, upkeep: 0, unlock: S(30), paint: true, hp: 20,
-    desc: 'Holzzaun zur Verteidigung. Mit dem Finger ziehen. Feinde müssen ihn erst zerschlagen.' },
+    desc: 'Holzzaun zur Verteidigung. Tippe Start und Ziel, dann ✓. Feinde müssen ihn erst zerschlagen.' },
   holztor: { id: 'holztor', name: 'Holztor', icon: '🚪', category: 'militaer', size: 1, cost: { taler: 12, holz: 2 }, upkeep: 0, unlock: S(30), hp: 20, gate: true,
-    desc: 'Tor in der Palisade: deine Leute und Karren gehen durch, Feinde nicht.' },
+    desc: 'Tor in der Palisade: deine Leute und Karren gehen durch, Feinde nicht. Kann direkt auf einen Weg gesetzt werden.' },
   steinmauer: { id: 'steinmauer', name: 'Steinmauer', icon: '🧱', category: 'militaer', size: 1, cost: { taler: 18, stein: 2 }, upkeep: 0, unlock: S(200), paint: true, hp: 45,
-    desc: 'Feste Stadtmauer aus Steinen. Mit dem Finger ziehen.' },
-  steintor: { id: 'steintor', name: 'Stadttor', icon: '⛩️', category: 'militaer', size: 1, cost: { taler: 25, stein: 3 }, upkeep: 0, unlock: S(200), hp: 45, gate: true,
-    desc: 'Tor in der Stadtmauer: deine Leute gehen durch, Feinde nicht.' },
+    desc: 'Feste Stadtmauer aus Steinen. Tippe Start und Ziel, dann ✓.' },
+  steintor_klein: { id: 'steintor_klein', name: 'Tor', icon: '🚪', category: 'militaer', size: 1, cost: { taler: 15, stein: 3 }, upkeep: 0, unlock: S(200), hp: 40, gate: true,
+    desc: 'Einfaches Tor in der Steinmauer: deine Leute und Karren gehen durch, Feinde nicht. Kann direkt auf einen Weg gesetzt werden.' },
+  steintor: { id: 'steintor', name: 'Stadttor', icon: '⛩️', category: 'militaer', size: 1, cost: { taler: 25, stein: 4 }, upkeep: 0, unlock: S(200), hp: 45, gate: true,
+    desc: 'Großes Tor in der Stadtmauer: deine Leute und Karren gehen durch, Feinde nicht. Kann direkt auf einen Weg gesetzt werden.' },
   holzturm: { id: 'holzturm', name: 'Holzturm', icon: '🛖', category: 'militaer', size: 1, cost: { taler: 200, holz: 7, werkzeug: 2, kanonen: 2 }, upkeep: 5, unlock: S(200), radius: 8, hp: 37,
     tower: { str: 4, interval: 3, range: 8 }, desc: 'Wachturm aus Holz mit 2 Kanonen. Schießt auf Feinde und Schiffe (Reichweite 8).' },
   wachturm: { id: 'wachturm', name: 'Steinturm', icon: '🗼', category: 'militaer', size: 1, cost: { taler: 300, holz: 1, werkzeug: 2, stein: 6, kanonen: 2 }, upkeep: 5, unlock: S(200), radius: 8, hp: 55,
@@ -228,6 +238,28 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     trains: { slots: 8, time: 50 }, desc: 'Die stärkste Anlage: bis zu 8 Soldaten gleichzeitig, am schnellsten.' },
   triumphbogen: { id: 'triumphbogen', name: 'Triumphbogen', icon: '🏛️', category: 'militaer', size: 2, cost: { taler: 1500, stein: 20, werkzeug: 5 }, upkeep: 0, victory: true, hp: 200,
     desc: 'Denkmal für einen Sieg über einen Gegner oder die Piraten (einer je Sieg). Jeder Triumphbogen erlaubt ein Schiff mehr.' },
+  // ---------- Vorbereitet (geplant): Werte nach docs/1602-INHALT.md §5, sichtbar erst mit ihrem Spielteil ----------
+  // Ereignisse (src/events.ts): Feuer, Pest, Kriminalität
+  feuerwehr: { id: 'feuerwehr', name: 'Feuerwehr', icon: '🚒', category: 'oeffentlich', size: 2, cost: { taler: 150, holz: 5, werkzeug: 3 }, upkeep: 15, radius: 15, unlock: S(15), geplant: true,
+    desc: 'Löscht Brände in der Nähe. Braucht einen Weg, damit der Löschwagen hinkommt.' },
+  arzt: { id: 'arzt', name: 'Arzt', icon: '⚕️', category: 'oeffentlich', size: 2, cost: { taler: 450, holz: 4, werkzeug: 4, stein: 9 }, upkeep: 30, radius: 16, unlock: B(50), geplant: true,
+    desc: 'Heilt Kranke in der Nähe (gegen die Pest) und pflegt verwundete Soldaten.' },
+  galgen: { id: 'galgen', name: 'Galgen', icon: '🪢', category: 'oeffentlich', size: 1, cost: { taler: 100, holz: 2, werkzeug: 1 }, upkeep: 20, radius: 16, unlock: B(100), geplant: true,
+    desc: 'Schreckt Diebe ab, die sonst Geld und Waren stehlen.' },
+  // Prachtbauten (Stadt-Inhalte): Kosten des Denkmals sind im Vorbild nicht belegt
+  denkmal: { id: 'denkmal', name: 'Denkmal', icon: '🗿', category: 'oeffentlich', size: 1, cost: {}, upkeep: 0, unlock: B(200), geplant: true,
+    desc: 'Ehrt deine Bürger – erst baubar, wenn die Stadt lange zufrieden ist.' },
+  zierbaum: { id: 'zierbaum', name: 'Zierbaum', icon: '🌳', category: 'oeffentlich', size: 1, cost: { taler: 5, stein: 1 }, upkeep: 0, unlock: K(250), geplant: true,
+    desc: 'Ein gepflegter Baum im Steinbeet – schmückt Straßen und Plätze.' },
+  palast: { id: 'palast', name: 'Palast', icon: '👑', category: 'oeffentlich', size: 4, cost: { taler: 5000, holz: 20, werkzeug: 15, stein: 50 }, upkeep: 40, unlock: A(1500), geplant: true,
+    desc: 'Prachtvoller Palast für deine Aristokraten. Nur einmal baubar.' },
+  kathedrale: { id: 'kathedrale', name: 'Kathedrale', icon: '⛪', category: 'oeffentlich', size: 4, cost: { taler: 7500, holz: 25, werkzeug: 25, stein: 70 }, upkeep: 90, radius: 22, unlock: A(2500), geplant: true,
+    desc: 'Die größte Kirche des Reiches. Nur einmal baubar.' },
+  // Ureinwohner (src/natives.ts): nie vom Spieler gebaut, sondern vom Spiel gesetzt
+  huette: { id: 'huette', name: 'Hütte der Ureinwohner', icon: '🛖', category: null, size: 1, cost: {}, upkeep: 0, geplant: true,
+    desc: 'Hier leben Ureinwohner.' },
+  haeuptling: { id: 'haeuptling', name: 'Häuptlingshütte', icon: '🪶', category: null, size: 2, cost: {}, upkeep: 0, geplant: true,
+    desc: 'Sitz des Häuptlings. Hier kannst du Waren mit den Ureinwohnern tauschen.' },
 };
 
 export const CATEGORIES: { id: Category; name: string; icon: string }[] = [

@@ -3,16 +3,16 @@
 import { BuildingId, BUILDINGS } from '../../data';
 import { Builder, M, ModelDef } from '../kit';
 import { buildingGeometry, makeMillBlades } from '../models_old';
-import { burg, festung, grosseBurg, holztor, holzturm, palisade, steinmauer, steinturm, steintor, triumphbogen } from './militaer';
+import { burg, festung, grosseBurg, holztor, holzturm, palisade, steinmauer, steinturm, steintor, steintorKlein, triumphbogen } from './militaer';
 
 /** Militärbauten; bei Mauern/Palisaden ist variant die Nachbarmaske */
 const MILITAER: Partial<Record<BuildingId, (variant: number) => ModelDef>> = {
-  palisade, steinmauer, holztor, steintor, holzturm, wachturm: steinturm, burg, grosseburg: grosseBurg, festung, triumphbogen,
+  palisade, steinmauer, holztor, steintor_klein: steintorKlein, steintor, holzturm, wachturm: steinturm, burg, grosseburg: grosseBurg, festung, triumphbogen,
 };
 /** Gebäude, die sich wie Mauern mit Nachbarn verbinden */
 export const WALLS = new Set<BuildingId>(['palisade', 'steinmauer']);
 /** Teile, an die Mauern anschließen */
-export const WALL_LINKS = new Set<BuildingId>(['palisade', 'steinmauer', 'holztor', 'steintor', 'holzturm', 'wachturm']);
+export const WALL_LINKS = new Set<BuildingId>(['palisade', 'steinmauer', 'holztor', 'steintor_klein', 'steintor', 'holzturm', 'wachturm']);
 
 const KNOWN: BuildingId[] = ['haus', 'kontor', 'markt', 'kapelle', 'wirtshaus', 'holzfaeller', 'fischer', 'schaffarm',
   'getreidefarm', 'weberei', 'steinbruch', 'erzmine', 'schmiede', 'muehle', 'baeckerei'];
