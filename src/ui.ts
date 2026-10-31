@@ -71,6 +71,9 @@ export class UI {
       felled: (k) => { v.onFelled(k); if (this.g.seen[k]) sound.play('baum', { x: k % this.g.size, z: Math.floor(k / this.g.size) }); },
       seen: () => v.onSeen(),
       message: (t, k) => this.toast(t, k),
+      shot: () => {},
+      sunk: () => {},
+      died: () => {},
     };
   }
 
@@ -526,9 +529,10 @@ export class UI {
         } else {
           h += `<h4>Schiff bauen</h4>`;
           for (const [id, sd] of Object.entries(SHIPS) as [ShipType, typeof SHIPS[ShipType]][]) {
+            if (sd.build === false) continue;
             if (sd.werft === 'grosswerft' && b.type !== 'grosswerft') continue;
             const chk = g.canOrderShip(b, id);
-            h += `<button class="btn wide ${chk.ok ? 'ok' : ''}" data-ship="${id}">⛵ ${sd.name}<br><small>${sd.slots} Laderäume · Tempo ${Math.round(sd.speed * 100)} %${sd.kanonen ? ` · ${sd.kanonen} Kanonen` : ''} · 💰${sd.cost.taler} 🪵${sd.cost.holz} 🧵${sd.cost.stoff}${sd.cost.kanonen ? ` 💣${sd.cost.kanonen}` : ''}${chk.ok ? '' : ` – ${chk.reason}`}</small></button>`;
+            h += `<button class="btn wide ${chk.ok ? 'ok' : ''}" data-ship="${id}">⛵ ${sd.name}<br><small>${sd.slots} Laderäume · Tempo ${Math.round(sd.speed * 100)} % · bis ${sd.kanonen} Kanonen · 💰${sd.cost.taler} 🪵${sd.cost.holz} 🧵${sd.cost.stoff}${''}${chk.ok ? '' : ` – ${chk.reason}`}</small></button>`;
           }
         }
       }

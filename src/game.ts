@@ -2,7 +2,7 @@
 // Wie im Vorbild hat jede Insel ihr eigenes Lager (je Spieler); Geld ist global.
 import {
   BUILDINGS, BUILD_GOODS, BuildingDef, BuildingId, Cost, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, Res, SHIPS, SLOT_CAP,
-  START_CARGO, START_MONEY, ShipType, TIERS,
+  START_CARGO, START_MONEY, ShipType, TIERS, UnitType,
 } from './data';
 import { findSeaPath } from './path';
 import { thinkAI } from './ai';
@@ -41,6 +41,39 @@ export interface Building {
   level?: number;
   /** Werft: Schiff im Bau */
   job?: { ship: ShipType; t: number };
+  /** Trefferpunkte (fehlt = unbeschädigt) */
+  hp?: number;
+  /** Burg: Soldaten in Ausbildung (Restzeit in Sekunden) */
+  train?: { type: UnitType; t: number }[];
+  /** Turm: Zeit bis zum nächsten Schuss */
+  cd?: number;
+}
+
+/** Soldat auf dem Land (oder an Bord eines Schiffs) */
+export interface Unit {
+  id: number;
+  type: UnitType;
+  owner: number;
+  x: number;
+  y: number;
+  dir: number;
+  hp: number;
+  path: [number, number][];
+  /** Angriffsziel (Soldat, Gebäude oder Schiff, per id) – vom Spieler befohlen oder selbst gewählt */
+  target?: number;
+  /** true = Ziel wurde befohlen (nicht selbst gesucht) */
+  ordered?: boolean;
+  /** Schiff, an dem eingestiegen werden soll */
+  board?: number;
+  /** an Bord dieses Schiffs (unsichtbar) */
+  ship?: number;
+  /** Zeit bis zum nächsten Schlag/Schuss */
+  cd: number;
+  /** Spielzeit des letzten Angriffs (für die Ausholbewegung) */
+  atk?: number;
+  /** Ziel des laufenden Wegs (zum Neuberechnen) */
+  goal?: [number, number];
+  repath?: number;
 }
 
 /** Marktkarren: holt Waren von Betrieben ab und bringt sie ins Inselllager */
@@ -68,12 +101,33 @@ export interface Ship {
   dir: number;
   path: [number, number][];
   slots: Slot[];
+  /** Trefferpunkte (fehlt = voll) */
+  hp?: number;
+  /** geladene Kanonen */
+  guns?: number;
+  /** Angriffsziel (Schiff, Gebäude oder Soldat, per id) */
+  target?: number;
+  cd?: number;
+  /** Soldaten an Bord (ids) */
+  troops?: number[];
+  /** Spielzeit der letzten Salve (für Mündungsfeuer) */
+  shotT?: number;
 }
 
 /** Gedächtnis eines Computergegners */
 export interface AIState { phase: 'suchen' | 'fahren' | 'gruenden' | 'aufbau'; island: number; t: number; tries: number; grid: boolean; site?: [number, number]; bad?: number[] }
 
-export interface Player { id: number; name: string; color: number; ai: boolean; money: number; brain?: AIState }
+export interface Player {
+  id: number; name: string; color: number; ai: boolean; money: number; brain?: AIState;
+  /** mit diesen Spielern herrscht Krieg */
+  war?: number[];
+  /** Piraten (immer feindlich, außer man hat Schutz gekauft) */
+  pirate?: boolean;
+  /** besiegt: hat keine Gebäude und Schiffe mehr */
+  defeated?: boolean;
+  /** Schutz vor Piraten bis zu dieser Spielzeit */
+  protectedUntil?: number;
+}
 
 type Goods = Record<GoodId, number>;
 
@@ -106,10 +160,19 @@ export interface GameEvents {
   /** ein Baum wurde gefällt (Feld-Index) */
   felled(k: number): void;
   seen(): void;
+  /** Schuss oder Schlag: Art, von, nach, getroffen? */
+  shot(kind: ShotKind, fx: number, fy: number, tx: number, ty: number, hit: boolean): void;
+  /** Schiff versenkt (wird danach aus der Liste entfernt) */
+  sunk(s: Ship): void;
+  /** Einheit gefallen */
+  died(u: Unit): void;
   message(text: string, kind?: 'info' | 'good' | 'bad'): void;
 }
 
 export interface Check { ok: boolean; reason?: string }
+
+/** schwert = Nahkampf, muskete, kanone (Kanonier), turm, schiff (Breitseite) */
+export type ShotKind = 'schwert' | 'muskete' | 'kanone' | 'turm' | 'schiff';
 
 const LAGER: BuildingId[] = ['kontor', 'markt'];
 const SAVE_KEY = 'neue-ufer-save-v4';
@@ -157,6 +220,7 @@ export class Game {
   buildings: Building[] = [];
   byId = new Map<number, Building>();
   ships: Ship[] = [];
+  units: Unit[] = [];
   carts: Cart[] = [];
   players: Player[] = [];
   lager: Record<string, Goods> = {};
@@ -182,7 +246,7 @@ export class Game {
   private unlockT = 0;
   private cartT = 0;
 
-  ev: GameEvents = { added() {}, removed() {}, changed() {}, roads() {}, trees() {}, felled() {}, seen() {}, message() {} };
+  ev: GameEvents = { added() {}, removed() {}, changed() {}, roads() {}, trees() {}, felled() {}, seen() {}, message() {}, shot() {}, sunk() {}, died() {} };
 
   // ---------- Erstellen / Laden ----------
 
@@ -342,6 +406,15 @@ export class Game {
   /** Lager der Insel im Fokus (für die Oberfläche) */
   get goods(): Goods { return this.lagerOf(HUMAN, this.focus) ?? EMPTY; }
   get capacity(): number { return this.capOf(HUMAN, this.focus); }
+
+  /** volle Trefferpunkte eines Gebäudes */
+  maxHp(b: { type: BuildingId }): number {
+    const d = BUILDINGS[b.type];
+    return d.hp ?? 30 + d.size * d.size * 12;
+  }
+  /** volle Trefferpunkte eines Schiffs */
+  shipMaxHp(s: Ship): number { return SHIPS[s.type ?? 'handel_klein'].hp; }
+  unitById(id: number): Unit | undefined { return this.units.find((u) => u.id === id); }
 
   count(type: BuildingId, onlyLinked = false) {
     let n = 0;
@@ -993,7 +1066,6 @@ export class Game {
     if (this.players[w.owner].money < sd.cost.taler) return { ok: false, reason: 'Zu wenig Taler' };
     if (!l || l.holz < sd.cost.holz) return { ok: false, reason: 'Zu wenig Holz' };
     if (l.stoff < sd.cost.stoff) return { ok: false, reason: 'Zu wenig Stoffe (für die Segel)' };
-    if ((sd.cost.kanonen ?? 0) > l.kanonen) return { ok: false, reason: 'Zu wenig Kanonen' };
     return { ok: true };
   }
 
@@ -1003,7 +1075,7 @@ export class Game {
     const sd = SHIPS[type];
     const l = this.lagerOf(w.owner, w.island)!;
     this.players[w.owner].money -= sd.cost.taler;
-    l.holz -= sd.cost.holz; l.stoff -= sd.cost.stoff; l.kanonen -= sd.cost.kanonen ?? 0;
+    l.holz -= sd.cost.holz; l.stoff -= sd.cost.stoff;
     w.job = { ship: type, t: 0 };
     return { ok: true };
   }

@@ -49,7 +49,7 @@ export type BuildingId =
   | 'weberei' | 'schneiderei' | 'rumbrennerei' | 'brauerei' | 'tabakwaren' | 'erzschmelze' | 'schmiede'
   | 'schwertschmiede' | 'buechsenmacher' | 'kanonengiesserei' | 'goldschmied'
   | 'werft' | 'grosswerft'
-  | 'palisade' | 'steinmauer' | 'wachturm' | 'burg';
+  | 'palisade' | 'holztor' | 'steinmauer' | 'steintor' | 'holzturm' | 'wachturm' | 'burg' | 'grosseburg' | 'festung' | 'triumphbogen';
 
 export type Category = 'wege' | 'wohnen' | 'nahrung' | 'rohstoffe' | 'plantagen' | 'werkstatt' | 'oeffentlich' | 'hafen' | 'militaer';
 
@@ -89,12 +89,23 @@ export interface BuildingDef {
   unlock?: { tier: number; n: number };
   /** Wege/Mauern werden wie Wege mit dem Finger gezogen */
   paint?: boolean;
+  /** Trefferpunkte (Standard: nach Größe) */
+  hp?: number;
+  /** Tor: eigene Truppen gehen hindurch, fremde nicht */
+  gate?: boolean;
+  /** schießt selbst auf Feinde in Reichweite */
+  tower?: { str: number; interval: number; range: number };
+  /** bildet Soldaten aus: gleichzeitig, Sekunden je Soldat */
+  trains?: { slots: number; time: number };
+  /** nur nach einem Sieg baubar */
+  victory?: boolean;
 }
 
 const S = (n: number) => ({ tier: 1, n });
 const B = (n: number) => ({ tier: 2, n });
 const K = (n: number) => ({ tier: 3, n });
 const P = (n: number) => ({ tier: 0, n });
+const A = (n: number) => ({ tier: 4, n });
 
 export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   // ---------- Wege ----------
@@ -197,14 +208,26 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   grosswerft: { id: 'grosswerft', name: 'Große Werft', icon: '⚓', category: 'hafen', size: 3, cost: { taler: 2800, holz: 25, werkzeug: 10, stein: 63 }, upkeep: 30, unlock: K(500), needs: 'kueste',
     desc: 'Baut auch große Handels- und Kriegsschiffe – schneller als die kleine Werft.' },
   // ---------- Militär ----------
-  palisade: { id: 'palisade', name: 'Palisade', icon: '🪵', category: 'militaer', size: 1, cost: { taler: 10, holz: 2 }, upkeep: 0, unlock: S(30), paint: true,
-    desc: 'Holzzaun zur Verteidigung. Mit dem Finger ziehen.' },
-  steinmauer: { id: 'steinmauer', name: 'Steinmauer', icon: '🧱', category: 'militaer', size: 1, cost: { taler: 18, stein: 2 }, upkeep: 0, unlock: S(200), paint: true,
+  palisade: { id: 'palisade', name: 'Palisade', icon: '🪵', category: 'militaer', size: 1, cost: { taler: 10, holz: 2 }, upkeep: 0, unlock: S(30), paint: true, hp: 20,
+    desc: 'Holzzaun zur Verteidigung. Mit dem Finger ziehen. Feinde müssen ihn erst zerschlagen.' },
+  holztor: { id: 'holztor', name: 'Holztor', icon: '🚪', category: 'militaer', size: 1, cost: { taler: 12, holz: 2 }, upkeep: 0, unlock: S(30), hp: 20, gate: true,
+    desc: 'Tor in der Palisade: deine Leute und Karren gehen durch, Feinde nicht.' },
+  steinmauer: { id: 'steinmauer', name: 'Steinmauer', icon: '🧱', category: 'militaer', size: 1, cost: { taler: 18, stein: 2 }, upkeep: 0, unlock: S(200), paint: true, hp: 45,
     desc: 'Feste Stadtmauer aus Steinen. Mit dem Finger ziehen.' },
-  wachturm: { id: 'wachturm', name: 'Wachturm', icon: '🗼', category: 'militaer', size: 1, cost: { taler: 300, holz: 1, werkzeug: 2, stein: 6, kanonen: 2 }, upkeep: 5, unlock: S(200), radius: 8,
-    desc: 'Steinturm mit 2 Kanonen – verteidigt die Umgebung (Reichweite 8).' },
-  burg: { id: 'burg', name: 'Burg', icon: '🏰', category: 'militaer', size: 2, cost: { taler: 600, holz: 3, werkzeug: 4, stein: 10 }, upkeep: 55, unlock: S(200), radius: 15,
-    desc: 'Bildet Soldaten aus (Infanterie, Reiter, später Musketiere und Kanoniere). Truppen kommen mit dem Kampf-Update.' },
+  steintor: { id: 'steintor', name: 'Stadttor', icon: '⛩️', category: 'militaer', size: 1, cost: { taler: 25, stein: 3 }, upkeep: 0, unlock: S(200), hp: 45, gate: true,
+    desc: 'Tor in der Stadtmauer: deine Leute gehen durch, Feinde nicht.' },
+  holzturm: { id: 'holzturm', name: 'Holzturm', icon: '🛖', category: 'militaer', size: 1, cost: { taler: 200, holz: 7, werkzeug: 2, kanonen: 2 }, upkeep: 5, unlock: S(200), radius: 8, hp: 37,
+    tower: { str: 4, interval: 3, range: 8 }, desc: 'Wachturm aus Holz mit 2 Kanonen. Schießt auf Feinde und Schiffe (Reichweite 8).' },
+  wachturm: { id: 'wachturm', name: 'Steinturm', icon: '🗼', category: 'militaer', size: 1, cost: { taler: 300, holz: 1, werkzeug: 2, stein: 6, kanonen: 2 }, upkeep: 5, unlock: S(200), radius: 8, hp: 55,
+    tower: { str: 4, interval: 3, range: 8 }, desc: 'Wachturm aus Stein mit 2 Kanonen – hält mehr aus als der Holzturm (Reichweite 8).' },
+  burg: { id: 'burg', name: 'Burg', icon: '🏰', category: 'militaer', size: 2, cost: { taler: 600, holz: 3, werkzeug: 4, stein: 10 }, upkeep: 55, unlock: S(200), hp: 160,
+    trains: { slots: 3, time: 100 }, desc: 'Bildet Soldaten aus – bis zu 3 gleichzeitig. Waffen kommen aus dem Lager der Insel.' },
+  grosseburg: { id: 'grosseburg', name: 'Große Burg', icon: '🏯', category: 'militaer', size: 3, cost: { taler: 1300, holz: 5, werkzeug: 8, stein: 18 }, upkeep: 90, unlock: K(400), hp: 260,
+    trains: { slots: 5, time: 70 }, desc: 'Bildet schneller aus – bis zu 5 Soldaten gleichzeitig.' },
+  festung: { id: 'festung', name: 'Festung', icon: '🛡️', category: 'militaer', size: 3, cost: { taler: 2500, holz: 8, werkzeug: 12, stein: 25 }, upkeep: 130, unlock: A(600), hp: 380,
+    trains: { slots: 8, time: 50 }, desc: 'Die stärkste Anlage: bis zu 8 Soldaten gleichzeitig, am schnellsten.' },
+  triumphbogen: { id: 'triumphbogen', name: 'Triumphbogen', icon: '🏛️', category: 'militaer', size: 2, cost: { taler: 1500, stein: 20, werkzeug: 5 }, upkeep: 0, victory: true, hp: 200,
+    desc: 'Denkmal für einen Sieg über einen Gegner oder die Piraten. Erlaubt ein Schiff mehr.' },
 };
 
 export const CATEGORIES: { id: Category; name: string; icon: string }[] = [
@@ -248,14 +271,33 @@ export const TIERS: TierDef[] = [
   { name: 'Aristokraten', dat: 'Aristokraten', maxResidents: 40, tax: 6.0, consumes: { nahrung: 0.1, alkohol: 0.055, gewuerze: 0.045, tabakwaren: 0.045, kakao: 0.045, kleidung: 0.035, schmuck: 0.012 }, services: ['markt', 'kirche', 'wirtshaus', 'badehaus', 'hochschule', 'theater'], upgradeCost: { holz: 3, werkzeug: 3, stein: 12 } },
 ];
 
-/** Schiffstypen (Werte relativ zum Vorbild): Laderäume à 50 t, Tempo, Kanonen */
-export type ShipType = 'handel_klein' | 'handel_gross' | 'krieg_klein' | 'krieg_gross';
-export const SHIPS: Record<ShipType, { name: string; slots: number; speed: number; kanonen: number; cost: { taler: number; holz: number; stoff: number; kanonen?: number }; time: number; werft: 'werft' | 'grosswerft'; unlock: { tier: number; n: number } }> = {
-  handel_klein: { name: 'Kleines Handelsschiff', slots: 4, speed: 1.0, kanonen: 0, cost: { taler: 400, holz: 25, stoff: 3 }, time: 60, werft: 'werft', unlock: S(120) },
-  krieg_klein: { name: 'Kleines Kriegsschiff', slots: 3, speed: 1.1, kanonen: 8, cost: { taler: 600, holz: 32, stoff: 4, kanonen: 8 }, time: 75, werft: 'werft', unlock: S(120) },
-  handel_gross: { name: 'Großes Handelsschiff', slots: 6, speed: 0.85, kanonen: 0, cost: { taler: 520, holz: 45, stoff: 5 }, time: 55, werft: 'grosswerft', unlock: K(500) },
-  krieg_gross: { name: 'Großes Kriegsschiff', slots: 8, speed: 1.2, kanonen: 14, cost: { taler: 900, holz: 60, stoff: 7, kanonen: 14 }, time: 70, werft: 'grosswerft', unlock: K(500) },
+/** Schiffstypen (Werte nach dem Vorbild): Laderäume à 50 t, Tempo, höchstens ladbare Kanonen, Treffer, Truppen an Bord */
+export type ShipType = 'handel_klein' | 'handel_gross' | 'krieg_klein' | 'krieg_gross' | 'pirat';
+export interface ShipDef { name: string; slots: number; speed: number; kanonen: number; hp: number; troops: number; cost: { taler: number; holz: number; stoff: number }; time: number; werft: 'werft' | 'grosswerft'; unlock: { tier: number; n: number }; build?: false }
+export const SHIPS: Record<ShipType, ShipDef> = {
+  handel_klein: { name: 'Kleines Handelsschiff', slots: 4, speed: 1.0, kanonen: 6, hp: 50, troops: 8, cost: { taler: 400, holz: 25, stoff: 3 }, time: 60, werft: 'werft', unlock: S(120) },
+  krieg_klein: { name: 'Kleines Kriegsschiff', slots: 3, speed: 1.1, kanonen: 8, hp: 65, troops: 6, cost: { taler: 600, holz: 32, stoff: 4 }, time: 75, werft: 'werft', unlock: S(120) },
+  handel_gross: { name: 'Großes Handelsschiff', slots: 6, speed: 0.85, kanonen: 10, hp: 80, troops: 12, cost: { taler: 520, holz: 45, stoff: 5 }, time: 55, werft: 'grosswerft', unlock: K(500) },
+  krieg_gross: { name: 'Großes Kriegsschiff', slots: 8, speed: 1.2, kanonen: 14, hp: 120, troops: 16, cost: { taler: 900, holz: 60, stoff: 7 }, time: 70, werft: 'grosswerft', unlock: K(500) },
+  pirat: { name: 'Piratenschiff', slots: 4, speed: 0.95, kanonen: 10, hp: 95, troops: 0, cost: { taler: 0, holz: 0, stoff: 0 }, time: 0, werft: 'grosswerft', unlock: A(99999), build: false },
 };
+/** Kanonen eines Schiffs: Schaden je Kanone und Salve, Sekunden zwischen Salven, Reichweite */
+export const SHIP_GUN = { dmg: 0.5, interval: 2, range: 7 };
+
+/** Soldaten wie im Vorbild (Treffer, Stärke je Schlag/Schuss, Sekunden dazwischen, Reichweite in Feldern) */
+export type UnitType = 'infanterie' | 'reiter' | 'musketier' | 'kanonier';
+export interface UnitDef { name: string; plural: string; icon: string; hp: number; str: number; interval: number; range: number; speed: number; cost: Partial<Record<GoodId, number>>; upkeep: number; unlock: { tier: number; n: number }; desc: string }
+export const UNITS: Record<UnitType, UnitDef> = {
+  infanterie: { name: 'Schwertkämpfer', plural: 'Schwertkämpfer', icon: '⚔️', hp: 20, str: 1.0, interval: 0.8, range: 1.2, speed: 1.3, cost: { schwerter: 3 }, upkeep: 5, unlock: S(200),
+    desc: 'Robuster Nahkämpfer. Schützt deine Kanoniere.' },
+  reiter: { name: 'Reiter', plural: 'Reiter', icon: '🐎', hp: 18, str: 1.6, interval: 1.0, range: 1.3, speed: 2.4, cost: { schwerter: 3 }, upkeep: 8, unlock: S(200),
+    desc: 'Schnell und kräftig im Nahkampf – gut gegen Kanoniere.' },
+  musketier: { name: 'Musketier', plural: 'Musketiere', icon: '🔫', hp: 15, str: 2.4, interval: 2.0, range: 4, speed: 1.2, cost: { musketen: 4 }, upkeep: 10, unlock: K(400),
+    desc: 'Schießt auf 4 Felder Entfernung.' },
+  kanonier: { name: 'Kanonier', plural: 'Kanoniere', icon: '💥', hp: 12, str: 7.0, interval: 4.5, range: 7, speed: 0.8, cost: { kanonen: 2 }, upkeep: 14, unlock: B(400),
+    desc: 'Feldkanone, sehr stark gegen Gebäude und Türme, aber verwundbar. Reichweite 7.' },
+};
+export const MAX_UNITS = 99;
 
 /** Kontor-Ausbaustufen: Lagerplatz je Ware und Kosten des Ausbaus */
 export const KONTOR_LEVELS: { storage: number; cost: Cost; unlock?: { tier: number; n: number } }[] = [
