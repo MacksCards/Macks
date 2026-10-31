@@ -13,10 +13,6 @@
   "tier": 0,
   "size": 3
  },
- "schaf": {
-  "file": "schaf.glb",
-  "art": "tier"
- },
  "haus-0": {
   "file": "haus-0.glb",
   "art": "gebaeude",
@@ -45,13 +41,6 @@
   "tier": 4,
   "size": 2
  },
- "markt": {
-  "file": "markt.glb",
-  "art": "gebaeude",
-  "building": "markt",
-  "tier": 0,
-  "size": 3
- },
  "kapelle": {
   "file": "kapelle.glb",
   "art": "gebaeude",
@@ -77,13 +66,6 @@
   "file": "kirche.glb",
   "art": "gebaeude",
   "building": "kirche",
-  "tier": 0,
-  "size": 3
- },
- "badehaus": {
-  "file": "badehaus.glb",
-  "art": "gebaeude",
-  "building": "badehaus",
   "tier": 0,
   "size": 3
  },
@@ -115,26 +97,12 @@
   "tier": 0,
   "size": 2
  },
- "jagdhuette": {
-  "file": "jagdhuette.glb",
-  "art": "gebaeude",
-  "building": "jagdhuette",
-  "tier": 0,
-  "size": 2
- },
  "schweinezucht": {
   "file": "schweinezucht.glb",
   "art": "gebaeude",
   "building": "schweinezucht",
   "tier": 0,
   "size": 3
- },
- "fleischerei": {
-  "file": "fleischerei.glb",
-  "art": "gebaeude",
-  "building": "fleischerei",
-  "tier": 0,
-  "size": 2
  },
  "getreidefarm": {
   "file": "getreidefarm.glb",
@@ -164,13 +132,6 @@
   "tier": 0,
   "size": 3
  },
- "steinbruch": {
-  "file": "steinbruch.glb",
-  "art": "gebaeude",
-  "building": "steinbruch",
-  "tier": 0,
-  "size": 2
- },
  "erzmine": {
   "file": "erzmine.glb",
   "art": "gebaeude",
@@ -198,41 +159,6 @@
   "building": "zuckerrohrplantage",
   "tier": 0,
   "size": 3
- },
- "gewuerzplantage": {
-  "file": "gewuerzplantage.glb",
-  "art": "gebaeude",
-  "building": "gewuerzplantage",
-  "tier": 0,
-  "size": 3
- },
- "kakaoplantage": {
-  "file": "kakaoplantage.glb",
-  "art": "gebaeude",
-  "building": "kakaoplantage",
-  "tier": 0,
-  "size": 3
- },
- "baumwollplantage": {
-  "file": "baumwollplantage.glb",
-  "art": "gebaeude",
-  "building": "baumwollplantage",
-  "tier": 0,
-  "size": 3
- },
- "weberei": {
-  "file": "weberei.glb",
-  "art": "gebaeude",
-  "building": "weberei",
-  "tier": 0,
-  "size": 2
- },
- "schneiderei": {
-  "file": "schneiderei.glb",
-  "art": "gebaeude",
-  "building": "schneiderei",
-  "tier": 0,
-  "size": 2
  },
  "rumbrennerei": {
   "file": "rumbrennerei.glb",
@@ -262,40 +188,12 @@
   "tier": 0,
   "size": 2
  },
- "schmiede": {
-  "file": "schmiede.glb",
-  "art": "gebaeude",
-  "building": "schmiede",
-  "tier": 0,
-  "size": 2
- },
- "schwertschmiede": {
-  "file": "schwertschmiede.glb",
-  "art": "gebaeude",
-  "building": "schwertschmiede",
-  "tier": 0,
-  "size": 2
- },
- "buechsenmacher": {
-  "file": "buechsenmacher.glb",
-  "art": "gebaeude",
-  "building": "buechsenmacher",
-  "tier": 0,
-  "size": 2
- },
  "kanonengiesserei": {
   "file": "kanonengiesserei.glb",
   "art": "gebaeude",
   "building": "kanonengiesserei",
   "tier": 0,
   "size": 3
- },
- "goldschmied": {
-  "file": "goldschmied.glb",
-  "art": "gebaeude",
-  "building": "goldschmied",
-  "tier": 0,
-  "size": 2
  },
  "werft": {
   "file": "werft.glb",

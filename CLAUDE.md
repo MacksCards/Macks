@@ -37,6 +37,7 @@ Arbeitstitel: **Neue Ufer** – ein Aufbau-Strategiespiel, inhaltlich so nah wie
 ## Arbeitsweise
 - Vor jeder Lieferung prüft ein separater Agent ohne Vorwissen das Ergebnis gegen `docs/ANFORDERUNGEN.md` und diese Regeln.
 - Neue Korrekturen des Nutzers hier als dauerhafte Regel ergänzen.
+- **Meshy-Modelle:** jedes Modell vor dem Einbau als Bild ansehen (nicht nur Stichproben) – Meshy liefert manchmal nur Bruchstücke (Wand, Tisch, Einzelteile). Solche Modelle nicht ins Spiel übernehmen.
 
 ## Technik
 - Vite + TypeScript + three.js. `npm run dev` zum Entwickeln, `npm run build` erzeugt eine einzelne Datei `dist/index.html`.
