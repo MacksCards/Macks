@@ -1,0 +1,43 @@
+/* Infofenster rechts: fester Kopf (▾ einklappen, ✕ schließen), darunter scrollt der Inhalt.
+   Das Fenster selbst über #info – die Klasse „info“ allein ist zu allgemein (früher erbten Meldungen der Art
+   „info“ davon die Lage des Fensters und lagen übereinander) */
+#info {
+  position: absolute; top: calc(var(--top) + 6px); right: calc(6px + var(--in-r)); bottom: calc(6px + var(--in-b));
+  width: var(--info-w); display: flex; flex-direction: column;
+  background: rgba(43, 33, 24, .95); border: 1px solid var(--rand); border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.info .ibar { position: absolute; top: 0; right: 0; display: flex; z-index: 1; background: rgba(43, 33, 24, .97); border-radius: 0 10px 0 10px; }
+/* Platzhalter oben rechts: die Titelzeile läuft um die Kopfknöpfe herum, weitere Zeilen nutzen die ganze Breite */
+.info .ibody::before { content: ''; float: right; width: 80px; height: 30px; }
+/* 44 px Tippfläche, sichtbar etwas kleiner */
+.info .ibar .btn {
+  width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 4px; border: 0; border-radius: 12px;
+  background-clip: content-box; font-size: 17px;
+}
+.info .ibody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; }
+/* eingeklappt: nur noch die Titelzeile */
+#info.folded { bottom: auto; }
+.info.folded .ibody { overflow: hidden; padding-bottom: 4px; }
+.info.folded .ibody > :not(:first-child) { display: none; }
+/* Soldatenfenster: schmaler und nur so hoch wie nötig */
+#info.slim { bottom: auto; max-height: calc(100% - var(--top) - 12px - var(--in-b)); width: 220px; }
+.info h3 { font: 18px/1.2 var(--display); margin: 3px 0 6px; color: var(--gold); }
+.info h3.small { font-size: 17px; }
+.info h4 { font: 15px var(--display); margin: 10px 0 4px; color: var(--gold); letter-spacing: .04em; }
+.info .sub { font-size: 13px; color: var(--pergament-2); margin: 3px 0; }
+.info .row { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; padding: 2px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
+.info .row b { text-align: right; }
+.info .row.warn b { color: var(--warn); }
+.info .danger { margin-top: 10px; width: 100%; }
+.info .ok.wide { margin-top: 8px; }
+.info .grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+.bar { height: 7px; background: rgba(0, 0, 0, .35); border-radius: 4px; overflow: hidden; margin: 4px 0; }
+.bar i { display: block; height: 100%; background: var(--gold); }
+/* Freier Händler am Kontor */
+.info .trade { display: grid; grid-template-columns: 1fr auto auto; gap: 4px; align-items: center; font-size: 13px; padding: 2px 0; }
+.info .trade .btn { min-height: var(--tap); min-width: 58px; padding: 2px 6px; font-size: 13px; font-variant-numeric: tabular-nums; }
+/* Reiter im Kontor (erscheinen erst, wenn es mehr als einen gibt) */
+.info .tabs { display: flex; gap: 4px; margin: 0 0 8px; }
+.info .tab { flex: 1; font-size: 14px; padding: 4px; }
+.info .tab.active { background: var(--holz-3); border-color: var(--gold); }

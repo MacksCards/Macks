@@ -1,0 +1,4 @@
+/* Krieg & Frieden: Zeile je Gegner mit Farbpunkt */
+.box.dipl .row { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; padding: 3px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
+.box.dipl .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+.box.dipl h4 { font: 16px var(--display); color: var(--gold); margin: 6px 0 0; }

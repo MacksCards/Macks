@@ -1,0 +1,64 @@
+/* Fenster in der Bildmitte: Kopf (Titel, ✕ oben rechts), Inhalt scrollt, Fuß mit Hauptknopf bleibt unten */
+.modal {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 20;
+  background: rgba(10, 8, 6, .55);
+  padding: calc(10px + var(--in-t)) calc(10px + var(--in-r)) calc(10px + var(--in-b)) calc(10px + var(--in-l));
+}
+.modal .box {
+  position: relative; width: min(380px, 100%); max-height: 100%; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--holz); border: 2px solid var(--rand); border-radius: 12px;
+}
+.modal .dhead { flex: none; padding: 10px 16px 6px; }
+.modal h2 { font: 26px/1.1 var(--display); color: var(--gold); margin: 0; padding: 0 40px; text-align: center; text-wrap: balance; }
+.modal .dx { position: absolute; top: 4px; right: 4px; background: transparent; border-color: transparent; font-size: 18px; }
+.modal .dbody {
+  flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
+  padding: 2px 16px 10px; display: flex; flex-direction: column; gap: 8px;
+}
+.modal .dfoot { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 16px 12px; border-top: 1px solid rgba(110, 84, 52, .5); }
+.modal p, .modal li { font-size: 15px; margin: 0; }
+.modal ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.modal .sub { color: var(--pergament-2); font-size: 13px; text-align: center; }
+.modal .row2 { display: flex; gap: 8px; }
+.modal .row2 .btn { flex: 1; }
+
+/* ---------- Menü: Knöpfe in zwei Spalten ---------- */
+.modal .box.menu { width: min(420px, 100%); }
+.mgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mgrid .btn { font-size: 15px; padding: 4px 8px; }
+.mgrid .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+/* ---------- Hilfe: drei kurze Karten ---------- */
+.modal .box.help { width: min(640px, 100%); }
+.help .lead { font-size: 13px; color: var(--pergament-2); text-align: center; }
+.hcards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.hcard { background: var(--holz-2); border: 1px solid var(--rand); border-radius: 10px; padding: 7px 10px 8px; }
+.hcard b { display: block; font: 18px/1.2 var(--display); color: var(--gold); margin-bottom: 2px; }
+.hcard .ic { font-size: 17px; margin-right: 6px; }
+.hcard p { font-size: 13px; line-height: 1.3; }
+.help .more ul { padding-top: 2px; }
+.help .more li { font-size: 14px; }
+.help .dfoot #hClose { flex: 2; font-size: 16px; }
+@media (max-width: 520px) { .hcards { grid-template-columns: 1fr; } }
+
+/* ---------- Weltkarte: Karte links so groß wie möglich (100dvh), Text und Knopf rechts ---------- */
+.modal .box.map {
+  width: auto; max-width: 100%; padding: 12px;
+  display: grid; grid-template-columns: auto 170px; grid-template-rows: auto 1fr auto; column-gap: 12px;
+  grid-template-areas: 'cv head' 'cv side' 'cv foot';
+}
+.box.map .dhead { grid-area: head; padding: 0 0 6px; }
+.box.map h2 { font-size: 23px; text-align: left; padding: 0 40px 0 0; }
+.box.map .dbody { display: contents; }
+.box.map canvas {
+  grid-area: cv; display: block; height: auto; aspect-ratio: 1;
+  width: min(calc(100vh - 56px - var(--in-t) - var(--in-b)), calc(100vw - 240px - var(--in-l) - var(--in-r)));
+  width: min(calc(100dvh - 56px - var(--in-t) - var(--in-b)), calc(100vw - 240px - var(--in-l) - var(--in-r)));
+  border-radius: 8px; border: 1px solid var(--rand); image-rendering: pixelated; touch-action: manipulation;
+}
+.box.map .mside { grid-area: side; display: flex; flex-direction: column; gap: 8px; }
+.box.map .sub { text-align: left; }
+.box.map .legend { font-size: 12px; color: var(--pergament-2); line-height: 1.7; }
+.box.map .legend span { display: inline-block; white-space: nowrap; margin-right: 8px; }
+.box.map .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 4px 0 0; vertical-align: -1px; }
+.box.map .dfoot { grid-area: foot; padding: 6px 0 0; border: 0; }

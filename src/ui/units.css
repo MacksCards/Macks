@@ -1,0 +1,3 @@
+/* Soldatenfenster: Knöpfe „+ in der Nähe“ und „Halt“ nebeneinander */
+.info .row2 { display: flex; gap: 8px; margin-top: 8px; }
+.info .row2 .btn { flex: 1; font-size: 14px; }
