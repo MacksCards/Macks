@@ -113,6 +113,16 @@ export function defenseAdvice(g: Game): string {
   return parts.length ? `${parts.join(', ').replace(/, ([^,]*)$/, ' und $1')} schützen dich. ${peace}.` : `${peace}.`;
 }
 
+/** Was gegen Piraten hilft (nur Freigeschaltetes, Schutz geht immer) */
+export function pirateAdvice(g: Game): string {
+  const parts: string[] = [];
+  if (g.isUnlocked('werft')) parts.push('Kriegsschiffe');
+  if (g.isUnlocked('wachturm') || g.isUnlocked('holzturm')) parts.push('Wachtürme an der Küste');
+  parts.push('gekaufter Schutz (Menü ☰)');
+  const t = `${parts.join(', ').replace(/, ([^,]*)$/, ' oder $1')} ${parts.length > 1 ? 'helfen' : 'hilft'}.`;
+  return t[0].toUpperCase() + t.slice(1);
+}
+
 // ---------- Ziele ----------
 
 export function resolve(g: Game, id: number): Target | undefined {
@@ -174,7 +184,7 @@ function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: n
       for (const sl of s.slots) { sl.g = null; sl.n = 0; }
       s.safeUntil = g.time + (loot ? 600 : 1800);
       for (const p of g.ships) if (p.owner === from && p.target === s.id) { p.target = undefined; S.shipChase.delete(p.id); sailAway(g, p); }
-      if (s.owner === HUMAN && loot) g.ev.message(`🏴‍☠️ Piraten haben die ${s.name} überfallen${loot ? ` und ${loot} t Ladung geraubt` : ''}! Kriegsschiffe, Wachtürme oder Schutz (Menü ☰) helfen.`, 'bad');
+      if (s.owner === HUMAN && loot) g.ev.message(`🏴‍☠️ Piraten haben die ${s.name} überfallen und ${loot} t Ladung geraubt! ${pirateAdvice(g)}`, 'bad');
       return;
     }
     if (s.hp <= 0) sinkShip(g, s, from);
@@ -188,7 +198,7 @@ function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: n
       const l = g.lagerOf(b.owner, b.island);
       if (l) for (const k of Object.keys(l) as (keyof typeof l)[]) l[k] = Math.floor(l[k] / 2);
       restIsland(g, b.owner, b.island, from);
-      if (b.owner === HUMAN) g.ev.message(`🏴‍☠️ Piraten haben dein Lager auf ${g.islands[b.island]?.name ?? 'der Insel'} geplündert! Wachtürme, Kriegsschiffe oder Schutz (Menü ☰) helfen.`, 'bad');
+      if (b.owner === HUMAN) g.ev.message(`🏴‍☠️ Piraten haben dein Lager auf ${g.islands[b.island]?.name ?? 'der Insel'} geplündert! ${pirateAdvice(g)}`, 'bad');
       return;
     }
     if (b.hp <= 0) {
@@ -249,7 +259,7 @@ function destroy(g: Game, b: Building, by: number) {
   }
   g.forceRemove(b);
   if (byPirate) restIsland(g, owner, b.island, by);
-  if (owner === HUMAN) g.ev.message(byPirate ? `🏴‍☠️ Piraten haben ein Gebäude zerstört: ${BUILDINGS[b.type].name}! Wachtürme an der Küste, Kriegsschiffe oder Schutz (Menü ☰) helfen.` : `🔥 ${BUILDINGS[b.type].name} zerstört`, 'bad');
+  if (owner === HUMAN) g.ev.message(byPirate ? `🏴‍☠️ Piraten haben ein Gebäude zerstört: ${BUILDINGS[b.type].name}! ${pirateAdvice(g)}` : `🔥 ${BUILDINGS[b.type].name} zerstört`, 'bad');
   checkDefeat(g, owner, by);
 }
 
@@ -724,7 +734,7 @@ function tickPirates(g: Game, dt: number) {
       const b = acquire(g, pir.id, s.x, s.y, 30, { buildings: true, units: false });
       // nur Küsten von Spielern, die schon Wachtürme bauen können (und das seit einer Weile)
       const since = b ? g.players[b.owner]?.defendAt : undefined;
-      if (b && b.kind === 'bau' && since !== undefined && g.time - since > 900 && !g.buildings.some((o) => o.owner === b.owner && BUILDINGS[o.type].tower && Math.hypot(o.x - b.b.x, o.y - b.b.y) < 9)) { shipAttack(g, s, b.b.id); continue; }
+      if (b && b.kind === 'bau' && since !== undefined && g.time - since > 900 && g.time > (g.players[b.owner]?.graceUntil ?? 0) && !g.buildings.some((o) => o.owner === b.owner && BUILDINGS[o.type].tower && Math.hypot(o.x - b.b.x, o.y - b.b.y) < 9)) { shipAttack(g, s, b.b.id); continue; }
     }
     if (!s.path.length && s.target === undefined) {
       for (let i = 0; i < 20; i++) {
@@ -742,7 +752,7 @@ function tickAIMilitary(g: Game) {
   for (const p of g.players) {
     if (!p.ai || p.defeated) continue;
     const k = g.kontor(p.id);
-    if (!k) { p.warnAt = undefined; continue; }
+    if (!k) { if (p.warnAt !== undefined) g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good'); p.warnAt = undefined; continue; }
     const pop = g.buildings.reduce((n, b) => n + (b.owner === p.id && b.type === 'haus' ? b.residents : 0), 0);
     const mine = g.units.filter((u) => u.owner === p.id);
     const war = atWar(g, p.id, HUMAN);
@@ -777,13 +787,13 @@ function tickAIMilitary(g: Game) {
       && g.time - (p.peaceAt?.[HUMAN] ?? -9999) > 900 && strength(g, p.id) > strength(g, HUMAN) * 1.2 + 3;
     if (!ready) {
       // Lage hat sich geändert: Vorwarnung verfällt
-      if (p.warnAt !== undefined && !war) { g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good'); p.calmUntil = g.time + 300; }
+      if (p.warnAt !== undefined && !war) { g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good'); p.calmUntil = g.time + 300; g.players[HUMAN].calmUntil = g.time + 300; }
       p.warnAt = undefined;
     } else if (p.warnAt !== undefined) {
       if (g.time >= p.warnAt) { p.warnAt = undefined; declareWar(g, p.id, HUMAN); }
     } else {
       // nie zwei Vorwarnungen gleichzeitig und frühestens 10 Minuten nach der letzten Kriegserklärung
-      const busy = g.players.some((o) => o.ai && o !== p && o.warnAt !== undefined) || g.time - (g.players[HUMAN].lastWarAt ?? -9999) < 600 || g.time < (p.calmUntil ?? 0);
+      const busy = g.players.some((o) => o.ai && o !== p && o.warnAt !== undefined) || g.time - (g.players[HUMAN].lastWarAt ?? -9999) < 600 || g.time < (p.calmUntil ?? 0) || g.time < (g.players[HUMAN].calmUntil ?? 0);
       if (!busy && Math.random() < 0.04) {
         // erst eine Vorwarnung, drei Minuten später der Krieg
         p.warnAt = g.time + 180;

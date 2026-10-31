@@ -2,7 +2,7 @@
 import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, SHIPS, ShipType, TIERS, UNITS, UnitType } from './data';
 import {
   armShip, atWar, buyProtection, canTrain, declareWar, disarmShip, makePeace, orderAttack, orderBoard, orderMove,
-  defenseAdvice, peacePrice, pirates, protectionPrice, restart, shipAttack, strength, train, unloadTroops,
+  defenseAdvice, peacePrice, pirateAdvice, pirates, protectionPrice, restart, shipAttack, strength, train, unloadTroops,
 } from './combat';
 import { Building, Game, HUMAN, QUESTS, Ship, ShotKind, Unit, newSeed } from './game';
 import { PFLANZEN, Pflanze, depositText } from './world';
@@ -971,7 +971,7 @@ export class UI {
     const t = el('div', `toast ${kind}`, text);
     box.appendChild(t);
     // höchstens 3 Meldungen; wichtige (Warnungen, Krieg) bleiben am längsten stehen
-    t.dataset.important = /^(⚠️|⚔️ .* erklärt dir|🚩|🏴‍☠️)|verloren/.test(text) ? '1' : '';
+    t.dataset.important = kind === 'bad' && /^(⚠️|⚔️ .* erklärt dir|🚩|🏴‍☠️)|verloren/.test(text) ? '1' : '';
     while (box.children.length > 3) {
       const kids = Array.from(box.children) as HTMLElement[];
       (kids.find((c) => !c.dataset.important && c !== t) ?? kids[0]).remove();
@@ -1044,7 +1044,7 @@ export class UI {
     const g = this.g, m = $('#modal');
     m.classList.remove('hidden');
     const me = strength(g, HUMAN);
-    let h = `<div class="box"><h2>🤝 Krieg &amp; Frieden</h2><p class="sub">Deine Streitmacht: ${me} (Soldaten, Kanonen auf Schiffen, Türme)</p>`;
+    let h = `<div class="box"><h2>🤝 Krieg &amp; Frieden</h2><p class="sub">Deine Streitmacht: ${me}</p>`;
     for (const p of g.players) {
       if (p.id === HUMAN || p.pirate || !this.met(p.id)) continue;
       const war = atWar(g, HUMAN, p.id);
@@ -1061,7 +1061,7 @@ export class UI {
     const pir = pirates(g);
     if (pir && g.pirateSeen) {
       const prot = (g.players[HUMAN].protectedUntil ?? 0) - g.time;
-      h += `<h4>🏴‍☠️ Piraten</h4><p class="sub">${prot > 0 ? `Du hast Schutz gekauft – noch ${Math.ceil(prot / 60)} Minuten.` : 'Sie überfallen Schiffe und beschießen schlecht bewachte Küsten. Wachtürme und Kriegsschiffe helfen.'}</p>`;
+      h += `<h4>🏴‍☠️ Piraten</h4><p class="sub">${prot > 0 ? `Du hast Schutz gekauft – noch ${Math.ceil(prot / 60)} Minuten.` : `Sie überfallen Schiffe und beschießen schlecht bewachte Küsten. ${pirateAdvice(g).replace(' (Menü ☰)', '')}`}</p>`;
       if (prot <= 0) h += `<button class="btn wide" id="dProt">💰 Schutz kaufen (${protectionPrice(g)} Taler, 20 Minuten)</button>`;
     }
     h += `<button class="btn wide" id="dX">Schließen</button></div>`;
@@ -1106,7 +1106,7 @@ export class UI {
         <li><b>Eroberung:</b> Fällt das Kontor oder ein Marktplatz des Gegners, während deine Soldaten daneben stehen, gehört es dir – samt Land und Häusern ringsum.</li>
         <li><b>Seeschlacht:</b> Kanonen am Kontor aufs Schiff laden („Bewaffnen“), dann ein feindliches Schiff antippen. Beschädigte Schiffe werden an deiner Werft ausgebessert.</li>
         <li><b>Krieg &amp; Frieden:</b> im Menü ☰.</li>` : ''}
-        ${this.g.pirateSeen ? '<li><b>Piraten 🏴‍☠️</b> überfallen Schiffe – Kriegsschiffe, Wachtürme oder gekaufter Schutz (Menü ☰) helfen.</li>' : ''}
+        ${this.g.pirateSeen ? `<li><b>Piraten 🏴‍☠️</b> überfallen Schiffe – ${pirateAdvice(this.g)}</li>` : ''}
         <li>🔇 Kein Ton? Den Stummschalter am iPhone prüfen.</li></ul>
       <button class="btn wide ok" id="hClose">Los geht's!</button></div>`;
     $('#hClose').addEventListener('click', () => this.closeModal());
