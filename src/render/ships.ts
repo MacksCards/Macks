@@ -96,7 +96,7 @@ function flagGeometry(large: boolean): THREE.BufferGeometry {
   return b.geometry();
 }
 
-interface View { mesh: THREE.Mesh; ring: THREE.Mesh; wake: THREE.Mesh; flag: THREE.Mesh; guns: THREE.Mesh; key: string; sink?: number; hpFrac: number }
+interface View { real?: boolean; mesh: THREE.Mesh; ring: THREE.Mesh; wake: THREE.Mesh; flag: THREE.Mesh; guns: THREE.Mesh; key: string; sink?: number; hpFrac: number }
 
 /** Platz für so viele Routenpunkte wird am Anfang angelegt (wächst nur bei sehr langen Routen) */
 const ROUTE_POINTS = 128;
@@ -194,6 +194,43 @@ export class ShipLayer {
     return m;
   }
 
+  /** Liefert ein geladenes Meshy-Schiffsmodell (Kopie) oder null */
+  models: ((id: string) => THREE.Object3D | null) | null = null;
+  private hidden = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+
+  /** Nach dem Laden der Modelle alle Schiffe neu aufbauen */
+  resetViews() {
+    for (const v of this.views.values()) if (v.sink === undefined) this.group.remove(v.mesh, v.ring, v.wake);
+    for (const [id, v] of this.views) if (v.sink === undefined) this.views.delete(id);
+  }
+
+  /** Meshy-Modell passend zum Code-Schiff ausrichten (Bug nach +z, Länge wie das Code-Modell) */
+  private realModel(war: boolean, pirate: boolean): THREE.Object3D | null {
+    const m = this.models?.(war ? 'schiff-krieg' : 'schiff-handel');
+    if (!m) return null;
+    const box = new THREE.Box3().setFromObject(m);
+    const d = box.getSize(new THREE.Vector3());
+    const wrap = new THREE.Group();
+    if (d.x > d.z) m.rotation.y = Math.PI / 2; // längs auf die z-Achse drehen
+    const len = Math.max(d.x, d.z), s = 1.9 / Math.max(len, 0.001);
+    m.scale.multiplyScalar(s);
+    const c = box.getCenter(new THREE.Vector3());
+    const cx = (d.x > d.z ? -c.z : c.x) * s, cz = (d.x > d.z ? c.x : c.z) * s;
+    m.position.set(-cx, -box.min.y * s - 0.18, -cz);
+    m.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      if (pirate) { // Piraten: dunkle Segel und Rumpf
+        const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
+        mat.color.multiplyScalar(0.3);
+        mesh.material = mat;
+      }
+    });
+    wrap.add(m);
+    return wrap;
+  }
+
   private view(s: Ship): View {
     const large = this.isLarge(s), pirate = this.isPirate(s);
     const key = `${large}${pirate}`;
@@ -211,7 +248,16 @@ export class ShipLayer {
     const ring = new THREE.Mesh(this.ringGeo, this.ringMat);
     ring.visible = false;
     const wake = new THREE.Mesh(this.wakeGeo, this.wakeMat);
-    v = { mesh, ring, wake, flag, guns, key, hpFrac: 1 };
+    // echtes 3D-Modell, wenn vorhanden: das Code-Schiff bleibt unsichtbar (für Antippen und Bewegung)
+    const real = this.realModel(s.type === 'krieg_klein' || s.type === 'krieg_gross' || pirate, pirate);
+    if (real) {
+      (mesh as THREE.Mesh).material = this.hidden as unknown as THREE.MeshStandardMaterial;
+      mesh.castShadow = false; guns.visible = false; mesh.add(real);
+      // Fahne in Besitzerfarbe oben auf den höchsten Mast
+      const top = new THREE.Box3().setFromObject(real);
+      flag.position.set((top.min.x + top.max.x) / 2, top.max.y - 0.02, (top.min.z + top.max.z) / 2);
+    }
+    v = { mesh, ring, wake, flag, guns, key, hpFrac: 1, real: !!real };
     this.group.add(mesh, ring, wake);
     this.views.set(s.id, v);
     return v;
@@ -253,7 +299,7 @@ export class ShipLayer {
       v.mesh.scale.setScalar(scale);
       // beschädigt: Schlagseite
       v.mesh.rotation.set(Math.sin(t * 1.3 + s.id) * 0.04, sdir, Math.cos(t * 1.1 + s.id) * 0.05 + (1 - frac) * 0.12);
-      v.guns.visible = (s.guns ?? 0) > 0;
+      v.guns.visible = !v.real && (s.guns ?? 0) > 0;
       // Fahne flattert
       v.flag.rotation.y = Math.sin(t * 5 + s.id) * 0.12;
       v.ring.visible = this.selected === s.id;

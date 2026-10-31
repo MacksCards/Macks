@@ -119,7 +119,7 @@ export class View {
     if (softwareRenderer(this.renderer)) this.quality.setMode('hoch');
     this.setupSky();
     // Meshy-Modelle laden; sobald da, alle Gebäude neu darstellen
-    this.lib.onLoaded = () => { for (const b of this.g.buildings) { this.removeBuilding(b); this.addBuilding(b); } };
+    this.lib.onLoaded = () => { for (const b of this.g.buildings) { this.removeBuilding(b); this.addBuilding(b); } this.ships?.resetViews(); };
     void this.lib.load();
 
     const fpMat = new THREE.MeshBasicMaterial({ color: 0x55ff55, transparent: true, opacity: 0.35, depthWrite: false });
@@ -220,7 +220,7 @@ export class View {
     else if (ship) { this.rig.tx = ship.x + 4; this.rig.tz = ship.y - 4; this.rig.dist = 34; }
     this.terrain = new Terrain(g);
     this.scene.add(this.terrain.group);
-    if (!this.ships) { this.ships = new ShipLayer(g); this.scene.add(this.ships.group); }
+    if (!this.ships) { this.ships = new ShipLayer(g); this.scene.add(this.ships.group); this.ships.models = (id) => this.lib.other(id); }
     const h = (x: number, z: number) => this.terrain.heightAt(x, z);
     if (!this.carts) { this.carts = new CartLayer(g, h); this.scene.add(this.carts.group); } else this.carts.setGame(g, h);
     if (!this.life) { this.life = new LifeLayer(g, h); this.scene.add(this.life.group); } else this.life.setGame(g, h);
