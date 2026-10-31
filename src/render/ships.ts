@@ -98,6 +98,9 @@ function flagGeometry(large: boolean): THREE.BufferGeometry {
 
 interface View { mesh: THREE.Mesh; ring: THREE.Mesh; wake: THREE.Mesh; flag: THREE.Mesh; guns: THREE.Mesh; key: string; sink?: number; hpFrac: number }
 
+/** Platz für so viele Routenpunkte wird am Anfang angelegt (wächst nur bei sehr langen Routen) */
+const ROUTE_POINTS = 128;
+
 export class ShipLayer {
   group = new THREE.Group();
   private views = new Map<number, View>();
@@ -108,17 +111,65 @@ export class ShipLayer {
   private gunMat = buildingMaterial({ metalness: 0.5, roughness: 0.4 });
   private flagMats = new Map<number, THREE.Material>();
   private sinkMat = buildingMaterial({ transparent: true });
-  private route: THREE.Line;
+  // Auswahlring und Kielwasser: für alle Schiffe dieselbe Form und Farbe (nichts wird je Schiff neu angelegt)
+  private ringGeo = new THREE.RingGeometry(0.95, 1.1, 40).rotateX(-Math.PI / 2);
+  private ringMat = new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.9, depthWrite: false });
+  private wakeGeo = new THREE.PlaneGeometry(0.5, 1.6).rotateX(-Math.PI / 2).translate(0, 0, -1.2);
+  private wakeMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false });
+  /** Fahrtroute: feste Datenfelder, je Bild werden nur Zahlen hineingeschrieben (kein neuer Grafikspeicher) */
+  route: THREE.Line;
+  private routeCap = 0;
+  private alive = new Set<number>();
   private lastT = 0;
   selected: number | null = null;
   /** Effekte (Blasen beim Untergang); setzt die Szene */
   fx?: Fx;
 
   constructor(private g: Game) {
-    this.route = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.5, gapSize: 0.35, transparent: true, opacity: 0.8 }));
+    this.route = new THREE.Line(this.routeGeometry(ROUTE_POINTS), new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.5, gapSize: 0.35, transparent: true, opacity: 0.8 }));
     this.route.frustumCulled = false;
+    this.route.visible = false;
     this.group.add(this.route);
   }
+
+  /** Routen-Geometrie mit Platz für cap Punkte (Lage und Streckenlänge für die Strichelung) */
+  private routeGeometry(cap: number) {
+    this.routeCap = cap;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cap * 3), 3).setUsage(THREE.DynamicDrawUsage));
+    geo.setAttribute('lineDistance', new THREE.BufferAttribute(new Float32Array(cap), 1).setUsage(THREE.DynamicDrawUsage));
+    geo.setDrawRange(0, 0);
+    return geo;
+  }
+
+  /** Route zeichnen: Startpunkt (Schiff) + Wegpunkte; Strecke wird selbst aufsummiert */
+  private drawRoute(x0: number, z0: number, path: [number, number][]) {
+    const n = path.length + 1;
+    if (n > this.routeCap) {
+      // sehr lange Route: einmalig größeren Platz anlegen, alten freigeben
+      let cap = this.routeCap;
+      while (cap < n) cap *= 2;
+      this.route.geometry.dispose();
+      this.route.geometry = this.routeGeometry(cap);
+    }
+    const geo = this.route.geometry;
+    const pos = geo.attributes.position as THREE.BufferAttribute, dist = geo.attributes.lineDistance as THREE.BufferAttribute;
+    const P = pos.array as Float32Array, D = dist.array as Float32Array;
+    let px = x0, pz = z0, sum = 0;
+    P[0] = x0; P[1] = 0.1; P[2] = z0; D[0] = 0;
+    for (let i = 1; i < n; i++) {
+      const x = path[i - 1][0], z = path[i - 1][1];
+      sum += Math.hypot(x - px, z - pz);
+      P[i * 3] = x; P[i * 3 + 1] = 0.1; P[i * 3 + 2] = z; D[i] = sum;
+      px = x; pz = z;
+    }
+    pos.clearUpdateRanges(); pos.addUpdateRange(0, n * 3); pos.needsUpdate = true;
+    dist.clearUpdateRanges(); dist.addUpdateRange(0, n); dist.needsUpdate = true;
+    geo.setDrawRange(0, n);
+  }
+
+  /** Materialien für das Vorwärmen der Grafik-Programme (Untergang, Ring, Kielwasser) */
+  warmMaterials(): THREE.Material[] { return [this.sinkMat, this.ringMat, this.wakeMat, this.mat, this.gunMat, this.flagMat(0xffffff)]; }
 
   setGame(g: Game) {
     this.g = g;
@@ -157,11 +208,9 @@ export class ShipLayer {
     const guns = new THREE.Mesh(this.gunGeos[large ? 1 : 0], this.gunMat);
     guns.castShadow = true;
     mesh.add(guns);
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.95, 1.1, 40).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.9, depthWrite: false }));
+    const ring = new THREE.Mesh(this.ringGeo, this.ringMat);
     ring.visible = false;
-    const wake = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 1.6).rotateX(-Math.PI / 2).translate(0, 0, -1.2),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, depthWrite: false }));
+    const wake = new THREE.Mesh(this.wakeGeo, this.wakeMat);
     v = { mesh, ring, wake, flag, guns, key, hpFrac: 1 };
     this.group.add(mesh, ring, wake);
     this.views.set(s.id, v);
@@ -184,7 +233,8 @@ export class ShipLayer {
   update(t: number) {
     const dt = Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
-    const alive = new Set<number>();
+    const alive = this.alive;
+    alive.clear();
     this.shown.length = 0;
     for (const s of this.g.ships) {
       alive.add(s.id);
@@ -227,12 +277,11 @@ export class ShipLayer {
       if (v.sink > 4.5) { this.group.remove(v.mesh, v.ring, v.wake); this.views.delete(id); }
     }
     // Fahrtroute des ausgewählten Schiffs
-    const sel = this.g.ships.find((s) => s.id === this.selected);
+    let sel: Ship | undefined;
+    if (this.selected !== null) for (const s of this.g.ships) if (s.id === this.selected) { sel = s; break; }
     if (sel && sel.path.length) {
       const [sx0, sy0] = this.g.ip(sel);
-      const pts = [new THREE.Vector3(sx0, 0.1, sy0), ...sel.path.map(([x, y]) => new THREE.Vector3(x, 0.1, y))];
-      this.route.geometry.setFromPoints(pts);
-      this.route.computeLineDistances();
+      this.drawRoute(sx0, sy0, sel.path);
       this.route.visible = true;
     } else this.route.visible = false;
   }

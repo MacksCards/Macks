@@ -7,7 +7,7 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { WALLS, WALL_LINKS, buildingModel } from './models';
 import { UnitLayer } from './units';
 import { Fx } from './fx';
-import { LAND_Y, Terrain } from './terrain';
+import { LAND_Y, Terrain, TileRect } from './terrain';
 import { Vegetation, windTime } from './vegetation';
 import { ModelLibrary } from './glb';
 import { ShipLayer } from './ships';
@@ -15,11 +15,28 @@ import { CartLayer } from './carts';
 import { LifeLayer } from './life';
 import { buildingMaterial } from './materials';
 import { ModelDef } from './kit';
+import { Level, Quality, QualityMode } from './quality';
+import { ensureCapacity } from './instances';
 
 
 interface BView {
   mesh: THREE.Object3D; spin: { m: THREE.Mesh; axis: 'x' | 'z'; speed: number }[]; icon: THREE.Sprite; iconKey: string; tier: number;
   owner: number; mask: number; flags: THREE.Mesh[]; top: number;
+}
+
+/** Größen des Schattenausschnitts (halbe Breite in Feldern); dazwischen wird nicht stufenlos gewechselt */
+const SHADOW_SPANS = [20, 26, 32, 38, 45];
+
+/** läuft die Grafik nur in Software (z. B. automatische Tests)? Dann passt sich die Qualität nicht an. */
+function softwareRenderer(r: THREE.WebGLRenderer): boolean {
+  try {
+    const gl = r.getContext();
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = String(gl.getParameter(ext ? ext.UNMASKED_RENDERER_WEBGL : gl.RENDERER) ?? '');
+    return /swiftshader|llvmpipe|software/i.test(name);
+  } catch {
+    return false;
+  }
 }
 
 /** Fahnentuch: hängt am Mast (Kante bei z = 0) und weht nach +z */
@@ -42,7 +59,8 @@ export class View {
   private carts!: CartLayer;
   private life!: LifeLayer;
   private seenTex!: THREE.DataTexture;
-  private seenCount: number[] = [];
+  /** true, bis das Nebel-Datenbild einmal ganz hochgeladen ist (vorher keine Teil-Uploads) */
+  private seenTexFresh = true;
   private border: THREE.Mesh | null = null;
   private roadCol = new THREE.Color();
   private veg!: Vegetation;
@@ -64,11 +82,25 @@ export class View {
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y);
   private sun: THREE.DirectionalLight;
   areaShown = false;
+  /** Bildqualität (automatisch, hoch, sparsam) */
+  quality: Quality;
+  /** true, solange die Grafik-Programme vorbereitet werden (dann wird nicht gezeichnet) */
+  preparing = false;
+  private prepToken = 0;
+  private prepHint: HTMLDivElement | null = null;
+  /** etwas hat sich geändert, das im Bild sichtbar ist (für das gedrosselte Zeichnen in der Pause) */
+  private dirty = true;
+  private drawn = { tx: NaN, tz: NaN, dist: NaN, yaw: NaN, w: 0, h: 0, ship: null as number | null, units: -1 };
+  private borderMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+  /** bleibt immer bestehen, damit das Programm für Warnsymbole nicht wieder freigegeben wird */
+  private warmSprite = new THREE.SpriteMaterial({ transparent: true, depthTest: false, sizeAttenuation: false });
+  private cam = { x: 0, z: 0, dist: 0 };
 
   constructor(canvas: HTMLCanvasElement, g: Game) {
     this.g = g;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.quality = new Quality((l) => this.applyLevel(l));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -83,6 +115,8 @@ export class View {
     sun.shadow.normalBias = 0.02;
     this.scene.add(sun, sun.target);
     this.sun = sun;
+    // reine Software-Grafik (Testumgebung ohne Grafikchip): Messen sinnlos, immer die schöne Stufe zeigen
+    if (softwareRenderer(this.renderer)) this.quality.setMode('hoch');
     this.setupSky();
     // Meshy-Modelle laden; sobald da, alle Gebäude neu darstellen
     this.lib.onLoaded = () => { for (const b of this.g.buildings) { this.removeBuilding(b); this.addBuilding(b); } };
@@ -115,6 +149,9 @@ export class View {
 
   /** Physikalischer Himmel: färbt Hintergrund und beleuchtet die Szene (Spiegelungen, Umgebungslicht) */
   private sunDir = new THREE.Vector3();
+  /** Achsen der Schattenkarte (quer und hoch zur Lichtrichtung) */
+  private sunRight = new THREE.Vector3();
+  private sunUp = new THREE.Vector3();
   private setupSky() {
     const sky = new Sky();
     sky.scale.setScalar(800);
@@ -125,6 +162,9 @@ export class View {
     u.mieDirectionalG.value = 0.72;
     const elevation = 56, azimuth = 215;
     this.sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elevation), THREE.MathUtils.degToRad(azimuth));
+    // so richtet three.js die Schattenkamera aus (lookAt mit "oben" = y)
+    this.sunRight.crossVectors(new THREE.Vector3(0, 1, 0), this.sunDir).normalize();
+    this.sunUp.crossVectors(this.sunDir, this.sunRight).normalize();
     u.sunPosition.value.copy(this.sunDir);
     const pm = new THREE.PMREMGenerator(this.renderer);
     const envScene = new THREE.Scene();
@@ -132,6 +172,10 @@ export class View {
     this.scene.environment = pm.fromScene(envScene, 0.02).texture;
     this.scene.environmentIntensity = 0.6;
     pm.dispose();
+    // Himmel erst nach dem Wasser zeichnen: dann rechnet er nur dort, wo kein Wasser ist
+    // (er liegt ganz hinten; die Tiefenprüfung verwirft verdeckte Punkte)
+    sky.material.transparent = true;
+    sky.renderOrder = 1.5;
     this.sky = sky;
     this.scene.add(sky);
   }
@@ -141,13 +185,31 @@ export class View {
   /** Alles (neu) aufbauen – z. B. nach "Neues Spiel" */
   setGame(g: Game) {
     this.g = g;
-    for (const v of this.views.values()) { this.scene.remove(v.mesh, v.icon); }
+    for (const v of this.views.values()) { this.scene.remove(v.mesh, v.icon); v.icon.material.dispose(); }
     this.views.clear();
     if (this.terrain) { this.scene.remove(this.terrain.group); this.terrain.dispose(); }
-    if (this.water) { this.scene.remove(this.water); this.water.geometry.dispose(); }
+    if (this.water) this.disposeWater();
+    if (this.border) { this.scene.remove(this.border); this.border.geometry.dispose(); this.border = null; }
+    for (const f of this.falling) this.scene.remove(f.mesh);
+    this.falling = [];
+    this.setGhost(null);
+    this.setSelected(null);
     this.ships?.setGame(g);
     if (this.veg) { this.scene.remove(this.veg.group); this.veg.dispose(); }
+    // Zeichenlisten des alten Spiels loslassen (sonst bleiben alte Objekte im Speicher)
+    this.renderer.renderLists.dispose();
     this.buildWorld();
+  }
+
+  /** Wasser samt Boden, Material und beiden Datenbildern freigeben */
+  private disposeWater() {
+    const w = this.water;
+    this.scene.remove(w);
+    w.geometry.dispose();
+    (w.material as THREE.Material).dispose();
+    for (const c of w.children) { const m = c as THREE.Mesh; m.geometry?.dispose(); (m.material as THREE.Material | undefined)?.dispose(); }
+    (this.waterUniforms.uDepth?.value as THREE.Texture | undefined)?.dispose();
+    this.seenTex?.dispose();
   }
 
   private buildWorld() {
@@ -165,21 +227,136 @@ export class View {
     if (!this.units) { this.units = new UnitLayer(g, h); this.scene.add(this.units.group); } else this.units.setGame(g, h);
     if (!this.fx) { this.fx = new Fx(g, h); this.scene.add(this.fx.group); } else this.fx.setGame(g, h);
     this.ships.fx = this.fx;
-    this.seenCount = g.islands.map(() => -1);
     this.areaShown = false;
     this.buildWater();
     this.veg = new Vegetation(g, this.terrain);
     this.scene.add(this.veg.group);
-    this.onSeen();
+    // Ausgangsstand merken: spätere Änderungen werden damit verglichen (nur Geändertes wird neu gebaut)
+    this.takeSnapshot();
+    this.pend = 0;
+    this.writeSeen(null);
     this.onTerritory();
     this.buildRoads();
     for (const b of g.buildings) this.addBuilding(b);
+    this.dirty = true;
+    void this.prewarm();
   }
+
+  // ---------- Leistung: Vorwärmen, Qualität, gedrosseltes Zeichnen ----------
+
+  /**
+   * Alle Grafik-Programme (Rechenvorschriften der Grafikkarte) vorab übersetzen, auch die erst später
+   * gebrauchten (Bau-Vorschau, Ringe, Wegvorschau, Warnsymbol, fallende Bäume, Untergang, Teilchen).
+   * Sonst ruckelt es beim ersten Gebrauch. Solange wird nicht gezeichnet und ein Hinweis gezeigt.
+   */
+  private async prewarm() {
+    const token = ++this.prepToken;
+    this.preparing = true;
+    this.showPrepHint(true);
+    const grp = new THREE.Group();
+    const geo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+    const mats: THREE.Material[] = [this.ghostMatOk, this.ghostMatBad, this.mat, this.veg.material, this.flagMat(0xffffff), ...this.ships.warmMaterials()];
+    for (const m of mats) { const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; grp.add(mesh); }
+    this.warmSprite.map = this.iconTexture('🚧');
+    const spr = new THREE.Sprite(this.warmSprite);
+    spr.frustumCulled = false;
+    spr.scale.set(1e-4, 1e-4, 1); // Warnsymbole werden über allem gezeichnet: hier winzig klein
+    grp.add(spr);
+    // unter dem Meeresboden: wird gezeichnet (und damit vorbereitet), ist aber nie zu sehen
+    grp.position.set(this.rig.tx, -6, this.rig.tz);
+    this.scene.add(grp);
+    // (unsichtbare Dinge wie Bau-Vorschau, Ringe und Wegvorschau nimmt compileAsync von selbst mit)
+    // Pflanzen: je nach Entfernung ausgeblendet – je eine Baum- und Grasgruppe vorübergehend zeigen
+    this.veg.warm();
+    try {
+      this.updateCamera();
+      await this.compileAll(token);
+      // einmal wirklich zeichnen: bereitet auch die Schatten-Programme vor
+      if (token === this.prepToken) this.renderer.render(this.scene, this.camera);
+    } catch (e) {
+      console.warn('Vorbereiten der Grafik', e);
+    } finally {
+      this.scene.remove(grp);
+      geo.dispose();
+      if (token === this.prepToken) { this.preparing = false; this.showPrepHint(false); this.dirty = true; }
+    }
+  }
+
+  /**
+   * Wie renderer.compileAsync, aber robust: Materialien, die währenddessen freigegeben werden
+   * (z. B. schnell hintereinander „Neues Spiel“), werden übersprungen; spätestens nach 12 s geht es weiter.
+   */
+  private compileAll(token: number): Promise<void> {
+    const r = this.renderer;
+    const mats = [...r.compile(this.scene, this.camera)];
+    const t0 = performance.now();
+    return new Promise((resolve) => {
+      const check = () => {
+        if (token !== this.prepToken || performance.now() - t0 > 12000) { resolve(); return; }
+        let waiting = false;
+        for (const m of mats) {
+          const prog = (r.properties.get(m) as { currentProgram?: { isReady?: () => boolean } }).currentProgram;
+          if (prog?.isReady && !prog.isReady()) { waiting = true; break; }
+        }
+        if (waiting) setTimeout(check, 16); else resolve();
+      };
+      setTimeout(check, 0);
+    });
+  }
+
+  private showPrepHint(on: boolean) {
+    if (typeof document === 'undefined') return;
+    if (on && !this.prepHint) {
+      const el = document.createElement('div');
+      el.textContent = 'Insel wird vorbereitet …';
+      Object.assign(el.style, {
+        position: 'fixed', left: '50%', bottom: 'max(18px, env(safe-area-inset-bottom))', transform: 'translateX(-50%)',
+        zIndex: '60', pointerEvents: 'none', padding: '7px 14px', borderRadius: '16px', color: '#f6ecd6',
+        background: 'rgba(30,24,16,0.78)', font: '15px/1.2 "Alegreya Sans", system-ui, sans-serif', letterSpacing: '0.02em',
+      } as Partial<CSSStyleDeclaration>);
+      document.body.appendChild(el);
+      this.prepHint = el;
+    } else if (!on && this.prepHint) { this.prepHint.remove(); this.prepHint = null; }
+  }
+
+  /** Qualität wählen: 'auto' (passt sich an), 'hoch' (immer schönste Stufe) oder 'sparsam' (30 Bilder/s, schont den Akku) */
+  setQuality(mode: QualityMode) { this.quality.setMode(mode); }
+
+  /** Stufe anwenden: Pixelverhältnis und Schattenkarte */
+  private applyLevel(l: Level) {
+    if (Math.abs(this.renderer.getPixelRatio() - l.pr) > 0.001) this.renderer.setPixelRatio(l.pr);
+    const sun = this.sun;
+    const shadowOn = l.shadow > 0;
+    if (shadowOn && sun.shadow.mapSize.x !== l.shadow) {
+      sun.shadow.mapSize.set(l.shadow, l.shadow);
+      if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+    }
+    if (shadowOn !== this.renderer.shadowMap.enabled) {
+      // Schatten an/aus ändert alle Grafik-Programme: kurz neu vorbereiten statt zu ruckeln
+      this.renderer.shadowMap.enabled = shadowOn;
+      sun.castShadow = shadowOn;
+      if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
+      if (this.terrain) void this.prewarm();
+    }
+    this.dirty = true;
+  }
+
+  /** Bild zeichnen nötig? (Kamera bewegt, Fenstergröße, Auswahl oder sonst etwas Sichtbares geändert) */
+  needsRedraw(): boolean {
+    if (this.dirty) return true;
+    const r = this.rig, d = this.drawn, el = this.renderer.domElement;
+    return r.tx !== d.tx || r.tz !== d.tz || r.dist !== d.dist || r.yaw !== d.yaw || el.width !== d.w || el.height !== d.h
+      || this.ships.selected !== d.ship || this.units.selected.size !== d.units;
+  }
+
+  /** im Bild sichtbare Änderung melden (z. B. nach Bauen in der Pause) */
+  invalidate() { this.dirty = true; }
 
   // ---------- Gelände ----------
 
   /** Bereiche außerhalb des Baugebiets abdunkeln (beim Bauen) */
   showArea(on: boolean) {
+    this.dirty = true;
     this.terrain.showArea(on);
     this.areaShown = on;
   }
@@ -218,6 +395,7 @@ export class View {
     const uni = this.waterUniforms as Record<string, THREE.IUniform>;
     uni.uDepth = { value: depthTex };
     this.seenTex = new THREE.DataTexture(new Uint8Array(N * N * 4), N, N);
+    this.seenTexFresh = true;
     this.seenTex.magFilter = THREE.LinearFilter;
     this.seenTex.minFilter = THREE.LinearFilter;
     uni.uSeen = { value: this.seenTex };
@@ -285,7 +463,8 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.water.add(floor);
     this.water.position.set(N / 2, 0, N / 2);
     this.water.renderOrder = 1;
-    this.water.receiveShadow = true;
+    // Wasser empfängt keine Schatten: spart auf fast jedem Bildpunkt 16 Schatten-Abfragen
+    this.water.receiveShadow = false;
     this.scene.add(this.water);
   }
 
@@ -293,6 +472,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
   onTerritory() {
     const g = this.g, N = g.size;
     if (this.border) { this.scene.remove(this.border); this.border.geometry.dispose(); }
+    this.dirty = true;
     const pts: number[] = [];
     const cols: number[] = [];
     const c = new THREE.Color();
@@ -318,36 +498,119 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
-    this.border = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide }));
+    // ein Material für alle Neuberechnungen (vorher bei jedem Aufruf ein neues, nie freigegeben)
+    this.border = new THREE.Mesh(geo, this.borderMat);
     this.border.renderOrder = 3;
     this.scene.add(this.border);
   }
 
-  /** Neu entdeckte Gebiete: Nebel lichten, Pflanzen zeigen */
+  /** Neu entdeckte Gebiete: Nebel lichten, Pflanzen zeigen (wird beim nächsten Bild gebündelt erledigt) */
   onSeen() {
+    this.pend |= 2;
+    this.dirty = true;
+  }
+
+  // ---------- Änderungen bündeln: nur Geändertes neu bauen ----------
+
+  /** gemerkte Kopien (Geländeart, Wege, entdeckt, belegt) – zum Erkennen geänderter Felder */
+  private snapT = new Uint8Array(0);
+  private snapR = new Uint8Array(0);
+  private snapS = new Uint8Array(0);
+  private snapO = new Int32Array(0);
+  /** Feld steht schon in der Änderungsliste */
+  private marked = new Uint8Array(0);
+  private changed: number[] = [];
+  /** ausstehende Änderungen: 1 = auf dem Land (Bäume, Wege, Gebäude), 2 = Entdecken */
+  private pend = 0;
+  /** Messhilfe: Dauer des letzten Abgleichs in ms */
+  lastFlushMs = 0;
+
+  private takeSnapshot() {
+    const g = this.g;
+    this.snapT = g.tiles.slice(); this.snapR = g.roads.slice(); this.snapS = g.seen.slice(); this.snapO = g.occ.slice();
+    this.marked = new Uint8Array(g.tiles.length);
+  }
+
+  /**
+   * Alle Änderungen seit dem letzten Bild auf einmal übernehmen: geänderte Felder selbst erkennen
+   * (Vergleich mit den gemerkten Kopien, je vier Felder auf einmal) und nur betroffene Pflanzen-Blöcke,
+   * Bodenfarben, Nebel, Wege und Tiere neu aufbauen. Läuft am Anfang jedes Bildes – auch für Bauten der Gegner.
+   */
+  flushChanges() {
+    if (!this.pend) return;
+    const t0 = performance.now();
+    this.pend = 0;
     const g = this.g, N = g.size;
-    const data = this.seenTex.image.data as Uint8Array;
-    for (let i = 0; i < N * N; i++) { const v = g.seen[i] ? 255 : 0; data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; }
-    this.seenTex.needsUpdate = true;
-    this.terrain.updateFog();
-    this.life?.rebuild();
-    const changed: number[] = [];
-    g.islands.forEach((isl, id) => {
-      let n = 0;
-      for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) if (g.seen[y * N + x]) n++;
-      if (n !== this.seenCount[id]) { this.seenCount[id] = n; changed.push(id); }
-    });
-    if (changed.length) { this.veg.refresh(changed); this.onTerritory(); this.onRoadsChanged(); }
-    // fremde Gebäude erst zeigen, wenn ihr Platz entdeckt ist
-    for (const [id, v] of this.views) {
-      const b = g.byId.get(id);
-      if (b) { v.mesh.visible = g.seen[g.idx(b.x, b.y)] === 1; v.icon.visible = v.icon.visible && v.mesh.visible; }
+    if (this.snapT.length !== g.tiles.length) { this.setGame(g); return; } // andere Kartengröße: alles neu
+    const list = this.changed, mark = this.marked;
+    list.length = 0;
+    diffTiles(g.tiles, this.snapT, list, mark);
+    diffTiles(g.roads, this.snapR, list, mark);
+    diffTiles(g.seen, this.snapS, list, mark);
+    diffTiles(g.occ, this.snapO, list, mark);
+    const splat: number[] = [];
+    const roads: number[] = [];
+    const seen: TileRect = { x0: N, y0: N, x1: -1, y1: -1 };
+    const land: TileRect = { x0: N, y0: N, x1: -1, y1: -1 };
+    let nSeen = 0, islandSeen = false, ownedSeen = false;
+    const grow = (r: TileRect, x: number, y: number) => { if (x < r.x0) r.x0 = x; if (x > r.x1) r.x1 = x; if (y < r.y0) r.y0 = y; if (y > r.y1) r.y1 = y; };
+    for (const i of list) {
+      mark[i] = 0;
+      const t = g.tiles[i], r = g.roads[i], sn = g.seen[i], o = g.occ[i];
+      const tOld = this.snapT[i], rOld = this.snapR[i], sOld = this.snapS[i], oOld = this.snapO[i];
+      this.snapT[i] = t; this.snapR[i] = r; this.snapS[i] = sn; this.snapO[i] = o;
+      const x = i % N, y = (i / N) | 0;
+      this.veg.markTile(i);
+      if (t !== tOld) splat.push(i);
+      if (t !== tOld || r !== rOld || (o !== 0) !== (oOld !== 0)) grow(land, x, y);
+      if (sn !== sOld) { nSeen++; grow(seen, x, y); if (g.islandOf[i] >= 0) islandSeen = true; if (g.own[i] >= 0) ownedSeen = true; }
+      if (r !== rOld || sn !== sOld) roads.push(i);
     }
+    // sehr viel auf einmal (z. B. ganze Karte aufgedeckt): einmal alles statt vieler kleiner Stücke
+    const big = nSeen > 3000;
+    if (splat.length) this.terrain.updateSplat(splat);
+    if (nSeen) {
+      this.terrain.updateFog(big ? undefined : seen);
+      this.writeSeen(big ? null : seen);
+      this.life.rebuild(big ? undefined : seen, 3);
+    }
+    if (land.x1 >= 0 && !(nSeen && big)) this.life.rebuild(land, 2);
+    this.veg.flush();
+    if (roads.length) this.updateRoads(roads);
+    // Gebietsgrenze nur neu, wenn ein Feld mit Besitzer neu entdeckt wurde
+    if (ownedSeen) this.onTerritory();
+    if (islandSeen) {
+      // fremde Gebäude erst zeigen, wenn ihr Platz entdeckt ist
+      for (const [id, v] of this.views) {
+        const b = g.byId.get(id);
+        if (b) { v.mesh.visible = g.seen[g.idx(b.x, b.y)] === 1; v.icon.visible = v.icon.visible && v.mesh.visible; }
+      }
+    }
+    this.dirty = true;
+    this.lastFlushMs = performance.now() - t0;
+  }
+
+  /** Nebel-Datenbild fürs Wasser: ganz (r = null) oder nur das Rechteck schreiben und hochladen */
+  private writeSeen(r: TileRect | null) {
+    const g = this.g, N = g.size, tex = this.seenTex;
+    const data = tex.image.data as Uint8Array;
+    const put = (i: number) => { const v = g.seen[i] ? 255 : 0; data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; };
+    if (!r || this.seenTexFresh) {
+      for (let i = 0; i < N * N; i++) put(i);
+      tex.clearUpdateRanges();
+    } else {
+      for (let y = r.y0; y <= r.y1; y++) {
+        for (let x = r.x0; x <= r.x1; x++) put(y * N + x);
+        tex.addUpdateRange((y * N + r.x0) * 4, (r.x1 - r.x0 + 1) * 4);
+      }
+    }
+    tex.needsUpdate = true;
   }
 
   /** Baum gefällt: Bäume des Feldes kippen um, ein Setzling bleibt stehen */
   private falling: { mesh: THREE.Mesh; t: number; axis: THREE.Vector3; base: THREE.Quaternion }[] = [];
   onFelled(k: number) {
+    this.dirty = true;
     const list = this.veg.slots.get(k);
     if (!list || !this.g.seen[k]) return;
     for (const t of list) {
@@ -364,8 +627,10 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.veg.updateGrowth();
   }
 
+  private fq = new THREE.Quaternion();
   private animateFalling(dt: number) {
-    const q = new THREE.Quaternion();
+    if (!this.falling.length) return;
+    const q = this.fq;
     for (const f of this.falling) {
       f.t += dt;
       // erst langsam, dann schneller umkippen; danach liegen lassen und im Boden versinken
@@ -378,45 +643,102 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.falling = this.falling.filter((x) => x.t <= 5);
   }
 
+  /** Wald gerodet oder nachgepflanzt: beim nächsten Bild nur die betroffenen Blöcke neu */
   onTreesChanged() {
-    this.terrain.updateSplat();
-    this.veg.refresh();
+    this.pend |= 1;
+    this.dirty = true;
   }
+
+  /** angezeigter Weg je Feld (0 = keiner), sein Platz in der Weg-Gruppe und das Feld je Platz */
+  private roadShown = new Uint8Array(0);
+  private roadSlot = new Int32Array(0);
+  private roadTile: number[] = [];
 
   private buildRoads() {
     const N = this.g.size;
-    const geo = new THREE.BoxGeometry(1, 0.05, 1);
     if (!this.roadMesh) {
-      this.roadMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), N * N);
+      const geo = new THREE.BoxGeometry(1, 0.05, 1);
+      // klein anfangen (2 048 Felder) und bei Bedarf verdoppeln
+      this.roadMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), 2048);
+      this.roadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       this.roadMesh.receiveShadow = true;
       this.previewRoads = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }), 400);
       this.previewRoads.count = 0;
       this.previewRoads.renderOrder = 2;
+      // Farbfeld gleich anlegen: sonst braucht der erste Weg ein neues Grafik-Programm (Ruckler)
+      this.roadMesh.setColorAt(0, this.roadCol.setHex(0xffffff));
+      this.previewRoads.setColorAt(0, this.roadCol.setHex(0xffffff));
       // Instanzen ändern sich laufend → nicht anhand alter Grenzen ausblenden
       this.roadMesh.frustumCulled = false;
       this.previewRoads.frustumCulled = false;
     }
     this.scene.add(this.roadMesh, this.previewRoads);
-    this.onRoadsChanged();
+    // neues Spiel: alle Wege neu eintragen
+    this.roadShown = new Uint8Array(N * N);
+    this.roadSlot = new Int32Array(N * N).fill(-1);
+    this.roadTile = [];
+    const all: number[] = [];
+    for (let i = 0; i < N * N; i++) if (this.g.roads[i] && this.g.seen[i]) all.push(i);
+    this.roadMesh.count = 0;
+    this.updateRoads(all);
   }
 
+  /** Wege gebaut, abgerissen oder gepflastert: beim nächsten Bild nur die geänderten Felder */
   onRoadsChanged() {
-    if (!this.roadMesh) return; // wird beim Aufbau später gezeichnet
-    const g = this.g;
-    const m = new THREE.Matrix4();
-    let n = 0;
-    for (let i = 0; i < g.roads.length; i++) {
-      if (!g.roads[i] || !g.seen[i]) continue;
-      const x = i % g.size, y = (i / g.size) | 0;
-      m.makeTranslation(x + 0.5, this.groundY(x, y, 1) + 0.005, y + 0.5);
-      this.roadMesh.setColorAt(n, this.roadCol.setHex(g.roads[i] === 2 ? 0xa9a39a : 0x8a7151));
-      this.roadMesh.setMatrixAt(n++, m);
-    }
-    this.roadMesh.count = n;
-    this.roadMesh.instanceMatrix.needsUpdate = true;
-    if (this.roadMesh.instanceColor) this.roadMesh.instanceColor.needsUpdate = true;
-    this.veg?.refresh();
+    this.pend |= 1;
+    this.dirty = true;
   }
+
+  /** Weg-Felder nachtragen, entfernen oder umfärben (nur die geänderten Plätze werden hochgeladen) */
+  private updateRoads(tiles: number[]) {
+    const g = this.g, N = g.size, mesh = this.roadMesh;
+    const m = this.roadM;
+    const touched: number[] = [];
+    for (const i of tiles) {
+      const v = g.seen[i] ? g.roads[i] : 0;
+      if (v === this.roadShown[i]) continue;
+      this.roadShown[i] = v;
+      let s = this.roadSlot[i];
+      if (!v) {
+        if (s < 0) continue;
+        // letzten Platz in die Lücke schieben
+        const last = this.roadTile.length - 1, lt = this.roadTile[last];
+        if (s !== last) {
+          mesh.getMatrixAt(last, m); mesh.setMatrixAt(s, m);
+          mesh.getColorAt(last, this.roadCol); mesh.setColorAt(s, this.roadCol);
+          this.roadTile[s] = lt; this.roadSlot[lt] = s;
+          touched.push(s);
+        }
+        this.roadTile.pop();
+        this.roadSlot[i] = -1;
+        continue;
+      }
+      if (s < 0) {
+        s = this.roadTile.length;
+        if (s >= mesh.instanceMatrix.count) ensureCapacity(mesh, s + 1, N * N);
+        this.roadTile.push(i);
+        this.roadSlot[i] = s;
+        const x = i % N, y = (i / N) | 0;
+        m.makeTranslation(x + 0.5, this.groundY(x, y, 1) + 0.005, y + 0.5);
+        mesh.setMatrixAt(s, m);
+      }
+      mesh.setColorAt(s, this.roadCol.setHex(v === 2 ? 0xa9a39a : 0x8a7151));
+      touched.push(s);
+    }
+    const n = this.roadTile.length;
+    mesh.count = n;
+    if (!touched.length) return;
+    const im = mesh.instanceMatrix, ic = mesh.instanceColor!;
+    if (touched.length > 32) {
+      // viele Änderungen: belegten Teil auf einmal hochladen
+      im.clearUpdateRanges(); im.addUpdateRange(0, Math.max(1, n) * 16);
+      ic.clearUpdateRanges(); ic.addUpdateRange(0, Math.max(1, n) * 3);
+    } else for (const s of touched) if (s < n) { im.addUpdateRange(s * 16, 16); ic.addUpdateRange(s * 3, 3); }
+    im.needsUpdate = true;
+    ic.needsUpdate = true;
+    this.dirty = true;
+  }
+  private roadM = new THREE.Matrix4();
 
   setRoadPreview(cells: [number, number][], ok: boolean[]) {
     const m = new THREE.Matrix4();
@@ -434,6 +756,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.previewRoads.count = n;
     this.previewRoads.instanceMatrix.needsUpdate = true;
     if (this.previewRoads.instanceColor) this.previewRoads.instanceColor.needsUpdate = true;
+    this.dirty = true;
   }
 
   /** Bodenhöhe unter einer Grundfläche */
@@ -527,6 +850,8 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     icon.renderOrder = 10;
     this.scene.add(icon);
     this.views.set(b.id, { mesh, spin, icon, iconKey: '', tier: b.tier, owner: b.owner, mask, flags, top });
+    this.dirty = true;
+    this.pend |= 1; // Gras und Tiere unter dem Gebäude anpassen
     if (neighbors && WALL_LINKS.has(b.type)) this.refreshWallNeighbors(b);
   }
 
@@ -544,7 +869,10 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     const v = this.views.get(b.id);
     if (!v) return;
     this.scene.remove(v.mesh, v.icon);
+    v.icon.material.dispose();
     this.views.delete(b.id);
+    this.dirty = true;
+    this.pend |= 1;
     // zerstört (nicht abgerissen): Staubwolke und Trümmer
     if (neighbors && b.hp !== undefined && b.hp <= 0 && !this.g.byId.has(b.id) && v.mesh.visible) {
       const s = BUILDINGS[b.type].size;
@@ -598,6 +926,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       }
       if (key !== v.iconKey) {
         v.iconKey = key;
+        this.dirty = true;
         v.icon.visible = !!key;
         if (key) { (v.icon.material as THREE.SpriteMaterial).map = this.iconTexture(key); (v.icon.material as THREE.SpriteMaterial).needsUpdate = true; }
       }
@@ -607,6 +936,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
   // ---------- Vorschau / Auswahl ----------
 
   setGhost(type: BuildingId | null, x = 0, y = 0, ok = true) {
+    this.dirty = true;
     if (!type) {
       if (this.ghost) this.scene.remove(this.ghost);
       this.ghost = null;
@@ -634,6 +964,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
   }
 
   showRadius(r: number, x = 0, z = 0, color = 0xffffff) {
+    this.dirty = true;
     if (!r) { this.radiusRing.visible = false; return; }
     this.radiusRing.visible = true;
     (this.radiusRing.material as THREE.MeshBasicMaterial).color.setHex(color);
@@ -654,6 +985,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
   // ---------- Kamera & Picking ----------
 
   resize(w: number, h: number) {
+    this.dirty = true;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -674,16 +1006,26 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       r.tz + Math.cos(r.yaw) * cp * r.dist,
     );
     this.camera.lookAt(r.tx, LAND_Y, r.tz);
-    // Sonne folgt der Kamera, damit Schatten immer scharf sind
-    this.sun.position.set(r.tx + this.sunDir.x * 60, this.sunDir.y * 60, r.tz + this.sunDir.z * 60);
     this.sky.position.set(r.tx, 0, r.tz);
-    this.sun.target.position.set(r.tx, 0, r.tz);
-    const span = Math.min(45, 12 + r.dist * 0.9);
+    // Schattenausschnitt nur in festen Stufen ändern (sonst flimmern die Schatten beim Zoomen)
+    const want = Math.min(45, 12 + r.dist * 0.9);
+    let span = SHADOW_SPANS[SHADOW_SPANS.length - 1];
+    for (const s of SHADOW_SPANS) if (s >= want) { span = s; break; }
     const sc = this.sun.shadow.camera;
-    if (Math.abs(sc.right - span) > 1) {
+    if (sc.right !== span) {
       sc.left = -span; sc.right = span; sc.top = span; sc.bottom = -span;
       sc.updateProjectionMatrix();
     }
+    // Sonne folgt der Kamera, damit Schatten immer scharf sind – auf das Raster der Schattenkarte
+    // gerundet, damit die Schattenkanten beim Verschieben nicht "wandern"
+    const d = this.sunDir, sr = this.sunRight, su = this.sunUp;
+    const texel = (2 * span) / Math.max(1, this.sun.shadow.mapSize.x);
+    const u = Math.round((r.tx * sr.x + r.tz * sr.z) / texel) * texel;
+    const v = Math.round((r.tx * su.x + r.tz * su.z) / texel) * texel;
+    const w = r.tx * d.x + r.tz * d.z; // Lage entlang der Lichtrichtung (beliebig)
+    const px = sr.x * u + su.x * v + d.x * w, py = sr.y * u + su.y * v + d.y * w, pz = sr.z * u + su.z * v + d.z * w;
+    this.sun.target.position.set(px, py, pz);
+    this.sun.position.set(px + d.x * 60, py + d.y * 60, pz + d.z * 60);
   }
 
   /** Bildschirmposition → Kachel */
@@ -764,12 +1106,14 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
   frame(t: number, gameDt: number) {
     const dt = Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
+    this.flushChanges();
     this.animateFalling(dt);
     this.growT += dt;
     if (this.growT > 1.5) { this.growT = 0; this.veg.updateGrowth(); }
     this.ships.update(t);
     this.carts.update(t);
-    const cam = { x: this.rig.tx, z: this.rig.tz, dist: this.rig.dist };
+    const cam = this.cam;
+    cam.x = this.rig.tx; cam.z = this.rig.tz; cam.dist = this.rig.dist;
     // Tiere und Arbeiter laufen nach der Spieluhr (stehen in der Pause still)
     this.lifeT += gameDt;
     this.life.update(this.lifeT, cam);
@@ -781,6 +1125,28 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     windTime.value = t;
     for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;
     this.updateCamera();
+    if (this.preparing) return; // Grafik-Programme werden noch vorbereitet: altes Bild bleibt stehen
+    // Pflanzen: je nach Entfernung volle Dichte, halbe Dichte oder einfache Formen; Schatten nur nah
+    this.veg.update(this.camera.position, this.rig.tx, this.rig.tz, this.rig.dist);
     this.renderer.render(this.scene, this.camera);
+    this.seenTexFresh = false;
+    const r = this.rig, d = this.drawn, el = this.renderer.domElement;
+    d.tx = r.tx; d.tz = r.tz; d.dist = r.dist; d.yaw = r.yaw; d.w = el.width; d.h = el.height;
+    d.ship = this.ships.selected; d.units = this.units.selected.size;
+    this.dirty = false;
   }
+}
+
+/** Felder, in denen sich cur von old unterscheidet, in out sammeln (doppelte über mark vermeiden); vergleicht je vier Felder auf einmal */
+function diffTiles(cur: Uint8Array | Int32Array, old: Uint8Array | Int32Array, out: number[], mark: Uint8Array) {
+  const n = cur.length;
+  if (cur instanceof Uint8Array && old instanceof Uint8Array && n % 4 === 0 && cur.byteOffset % 4 === 0 && old.byteOffset % 4 === 0) {
+    const a = new Uint32Array(cur.buffer, cur.byteOffset, n >> 2), b = new Uint32Array(old.buffer, old.byteOffset, n >> 2);
+    for (let w = 0; w < a.length; w++) {
+      if (a[w] === b[w]) continue;
+      for (let i = w * 4; i < w * 4 + 4; i++) if (cur[i] !== old[i] && !mark[i]) { mark[i] = 1; out.push(i); }
+    }
+    return;
+  }
+  for (let i = 0; i < n; i++) if (cur[i] !== old[i] && !mark[i]) { mark[i] = 1; out.push(i); }
 }

@@ -7,6 +7,7 @@ import { T } from '../world';
 import { Builder, M } from './kit';
 import { buildingMaterial } from './materials';
 import { sound } from '../audio';
+import { ensureCapacity, flushInstances } from './instances';
 
 function fishGeo() {
   const b = new Builder();
@@ -81,27 +82,40 @@ function boatGeo() {
   return b.geometry();
 }
 
-/** Laufen/Stehen im Wechsel: s = zurückgelegter Anteil, moving = läuft gerade, graze = 0..1 Kopf unten */
-function walk(tt: number, period: number, ph: number, mv = 0.35) {
+interface Walk { s: number; moving: boolean; graze: number }
+const WALK: Walk = { s: 0, moving: false, graze: 0 };
+/**
+ * Laufen/Stehen im Wechsel: s = zurückgelegter Anteil, moving = läuft gerade, graze = 0..1 Kopf unten.
+ * Schreibt in ein wiederverwendetes Objekt (kein Speichermüll je Bild) – Ergebnis sofort verwenden.
+ */
+function walk(tt: number, period: number, ph: number, mv = 0.35): Walk {
   const q = tt / period + ph;
   const n = Math.floor(q), f = q - n;
   const e = f < mv ? f / mv : 1;
   // nach dem Anhalten Kopf langsam senken, kurz vor dem Weiterlaufen heben
-  const graze = f < mv ? 0 : Math.min(1, (f - mv) / 0.08, (1 - f) / 0.06);
-  return { s: n + e * e * (3 - 2 * e), moving: f < mv && f > 0.02 && f < mv - 0.02, graze };
+  WALK.graze = f < mv ? 0 : Math.min(1, (f - mv) / 0.08, (1 - f) / 0.06);
+  WALK.s = n + e * e * (3 - 2 * e);
+  WALK.moving = f < mv && f > 0.02 && f < mv - 0.02;
+  return WALK;
 }
 
-interface Shoal { x: number; z: number; k: number; fish: { r: number; w: number; ph: number; d: number }[]; jump: number }
+/** Höchstzahlen je Art (der Platz wächst bei Bedarf bis dahin) */
+const MAXN = { fish: 2000, ripples: 500, animal: 400, deer: 300, worker: 300, workerLegs: 1600, boats: 200 };
+
+interface Animal { def: AnimalDef; body: THREE.InstancedMesh; head: THREE.InstancedMesh; legs: THREE.InstancedMesh; n: number; max: number }
+interface Shoal { x: number; z: number; ox: number; oy: number; k: number; fish: { r: number; w: number; ph: number; d: number }[]; jump: number }
 interface Herd { x: number; z: number; k: number; ph: number; spd: number; tracks: [number, number][][] }
 
 const TMP = { m: new THREE.Matrix4(), q: new THREE.Quaternion(), v: new THREE.Vector3(), s: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0), base: new THREE.Matrix4(), loc: new THREE.Matrix4(), rot: new THREE.Matrix4() };
 /** Teil eines Tieres: Grundlage × (Gelenkpunkt × Drehung um die Querachse) */
 function placePart(mesh: THREE.InstancedMesh, i: number, px: number, py: number, pz: number, rx: number) {
+  if (i >= mesh.instanceMatrix.count) return;
   TMP.loc.makeTranslation(px, py, pz).multiply(TMP.rot.makeRotationX(rx));
   TMP.m.multiplyMatrices(TMP.base, TMP.loc);
   mesh.setMatrixAt(i, TMP.m);
 }
 function place(mesh: THREE.InstancedMesh, i: number, x: number, y: number, z: number, rot: number, s = 1) {
+  if (i >= mesh.instanceMatrix.count) return;
   TMP.m.compose(TMP.v.set(x, y, z), TMP.q.setFromAxisAngle(TMP.up, rot), TMP.s.set(s, s, s));
   mesh.setMatrixAt(i, TMP.m);
 }
@@ -110,7 +124,9 @@ export class LifeLayer {
   group = new THREE.Group();
   private mat = buildingMaterial();
   private fish: THREE.InstancedMesh;
-  private animals: Record<'sheep' | 'pigs' | 'deer', { def: AnimalDef; body: THREE.InstancedMesh; head: THREE.InstancedMesh; legs: THREE.InstancedMesh; n: number }>;
+  private animals: Record<'sheep' | 'pigs' | 'deer', Animal>;
+  private animalList: Animal[];
+  private plain: THREE.InstancedMesh[];
   private workers: Record<'nichts' | 'stamm' | 'wild', THREE.InstancedMesh>;
   private workerLegs: THREE.InstancedMesh;
   private boats: THREE.InstancedMesh;
@@ -120,34 +136,59 @@ export class LifeLayer {
   private herds: Herd[] = [];
 
   constructor(private g: Game, private height: (x: number, z: number) => number) {
+    // klein anfangen: der Platz wächst bei Bedarf (siehe MAXN)
     const mk = (geo: THREE.BufferGeometry, n: number, shadow = true) => {
       const m = new THREE.InstancedMesh(geo, this.mat, n);
-      m.castShadow = shadow; m.frustumCulled = false; m.count = 0;
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      m.castShadow = shadow; m.frustumCulled = false; m.count = 0; m.visible = false;
       this.group.add(m);
       return m;
     };
-    this.fish = mk(fishGeo(), 2000, false);
-    const animal = (def: AnimalDef, n: number) => ({ def, body: mk(def.body, n), head: mk(def.head, n), legs: mk(def.leg, n * 4), n: 0 });
-    this.animals = { sheep: animal(sheepDef(), 400), pigs: animal(pigDef(), 400), deer: animal(deerDef(), 300) };
-    this.workers = { nichts: mk(workerGeo('nichts'), 300), stamm: mk(workerGeo('stamm'), 300), wild: mk(workerGeo('wild'), 200) };
-    this.workerLegs = mk(legGeo(0.035, WORKER_LEG, 0x4a3a2a, 0x2a2018), 1600);
-    this.boats = mk(boatGeo(), 200);
+    this.fish = mk(fishGeo(), 256, false);
+    const animal = (def: AnimalDef, max: number): Animal => ({ def, body: mk(def.body, 32), head: mk(def.head, 32), legs: mk(def.leg, 128), n: 0, max });
+    this.animals = { sheep: animal(sheepDef(), MAXN.animal), pigs: animal(pigDef(), MAXN.animal), deer: animal(deerDef(), MAXN.deer) };
+    this.animalList = [this.animals.sheep, this.animals.pigs, this.animals.deer];
+    this.workers = { nichts: mk(workerGeo('nichts'), 32), stamm: mk(workerGeo('stamm'), 32), wild: mk(workerGeo('wild'), 16) };
+    this.workerLegs = mk(legGeo(0.035, WORKER_LEG, 0x4a3a2a, 0x2a2018), 128);
+    this.boats = mk(boatGeo(), 16);
     // Kräuselringe über Fischschwärmen – zeigen von Weitem gute Fanggründe
     this.ripples = new THREE.InstancedMesh(new THREE.RingGeometry(0.42, 0.5, 28).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xe8f4ff, transparent: true, opacity: 0.45, depthWrite: false }), 500);
-    this.ripples.frustumCulled = false; this.ripples.count = 0; this.ripples.renderOrder = 2;
+      new THREE.MeshBasicMaterial({ color: 0xe8f4ff, transparent: true, opacity: 0.45, depthWrite: false }), 64);
+    this.ripples.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.ripples.frustumCulled = false; this.ripples.count = 0; this.ripples.visible = false; this.ripples.renderOrder = 2;
     this.group.add(this.ripples);
+    this.plain = [this.fish, this.ripples, this.boats, this.workers.nichts, this.workers.stamm, this.workers.wild, this.workerLegs];
     this.rebuild();
   }
 
-  setGame(g: Game, height: (x: number, z: number) => number) { this.g = g; this.height = height; this.rebuild(); }
+  setGame(g: Game, height: (x: number, z: number) => number) { this.g = g; this.height = height; this.waterCache.clear(); this.beats.clear(); this.rebuild(); }
 
-  /** Schwärme und Wildherden neu verteilen (nach Entdeckungen) */
-  rebuild() {
+  /**
+   * Schwärme und Wildherden neu verteilen (nach Entdeckungen oder Bauen). Ohne Rechteck die ganze Welt,
+   * sonst nur um das Rechteck r (Felder) herum; what: 1 = Fischschwärme, 2 = Wild, 3 = beides.
+   */
+  rebuild(r?: { x0: number; y0: number; x1: number; y1: number }, what = 3) {
     const g = this.g, N = g.size;
-    this.shoals = [];
-    this.herds = [];
-    for (let y = 2; y < N - 2; y += 4) for (let x = 2; x < N - 2; x += 4) {
+    // Fanggründe liegen in 4 × 4-Feldern ab (2, 2), Herden auf einem 7er-Raster ab (1, 1) und laufen bis gut 3 Felder weit
+    const R = r ?? { x0: 0, y0: 0, x1: N - 1, y1: N - 1 };
+    if (what & 1) {
+      if (!r) this.shoals = [];
+      else this.shoals = this.shoals.filter((s) => { const ox = s.ox, oy = s.oy; return ox + 3 < R.x0 || ox > R.x1 || oy + 3 < R.y0 || oy > R.y1; });
+      const ya = Math.max(2, 2 + Math.ceil((R.y0 - 3 - 2) / 4) * 4), xa = Math.max(2, 2 + Math.ceil((R.x0 - 3 - 2) / 4) * 4);
+      this.addShoals(xa, ya, Math.min(N - 3, R.x1), Math.min(N - 3, R.y1));
+    }
+    if (what & 2) {
+      const M = 4;
+      if (!r) this.herds = [];
+      else this.herds = this.herds.filter((h) => h.x < R.x0 - M || h.x > R.x1 + M + 1 || h.z < R.y0 - M || h.z > R.y1 + M + 1);
+      const ya = Math.max(1, 1 + Math.ceil((R.y0 - M - 1) / 7) * 7), xa = Math.max(1, 1 + Math.ceil((R.x0 - M - 1) / 7) * 7);
+      this.addHerds(xa, ya, Math.min(N - 2, R.x1 + M), Math.min(N - 2, R.y1 + M));
+    }
+  }
+
+  private addShoals(xa: number, ya: number, xb: number, yb: number) {
+    const g = this.g, N = g.size;
+    for (let y = ya; y < N - 2 && y <= yb; y += 4) for (let x = xa; x < N - 2 && x <= xb; x += 4) {
       // bestes Feld im 4×4-Block
       let best = -1, bv = 0;
       for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) {
@@ -159,10 +200,14 @@ export class LifeLayer {
         let a = best * 9.137;
         const rnd = () => { a = Math.sin(a) * 43758.5453; return a - Math.floor(a); };
         const fish = Array.from({ length: 10 }, () => ({ r: 0.25 + rnd() * 0.8, w: (0.5 + rnd() * 0.7) * (rnd() < 0.5 ? -1 : 1), ph: rnd() * 6.28, d: 0.02 + rnd() * 0.05 }));
-        this.shoals.push({ x: (best % N) + 0.5, z: ((best / N) | 0) + 0.5, k: best, fish, jump: rnd() * 10 });
+        this.shoals.push({ x: (best % N) + 0.5, z: ((best / N) | 0) + 0.5, ox: x, oy: y, k: best, fish, jump: rnd() * 10 });
       }
     }
-    for (let y = 1; y < N - 1; y += 7) for (let x = 1; x < N - 1; x += 7) {
+  }
+
+  private addHerds(xa: number, ya: number, xb: number, yb: number) {
+    const g = this.g, N = g.size;
+    for (let y = ya; y < N - 1 && y <= yb; y += 7) for (let x = xa; x < N - 1 && x <= xb; x += 7) {
       const k = y * N + x;
       if (g.tiles[k] !== T.Wald || !g.seen[k] || this.herds.length >= 280) continue;
       // nur am Waldrand (Lichtung/Wiese daneben), damit man die Tiere sieht
@@ -198,9 +243,12 @@ export class LifeLayer {
   }
 
   /** ein Tier aus Teilen zeichnen */
-  private drawAnimal(kind: 'sheep' | 'pigs' | 'deer', x: number, z: number, head: number, scale: number, t: number, w: { moving: boolean; graze: number }, seed: number) {
+  private drawAnimal(kind: 'sheep' | 'pigs' | 'deer', x: number, z: number, head: number, scale: number, t: number, w: Walk, seed: number) {
     const A = this.animals[kind];
-    if (A.n >= A.body.instanceMatrix.count) return;
+    if (A.n >= A.max) return;
+    if (A.n >= A.body.instanceMatrix.count) {
+      ensureCapacity(A.body, A.n + 1, A.max); ensureCapacity(A.head, A.n + 1, A.max); ensureCapacity(A.legs, (A.n + 1) * 4, A.max * 4);
+    }
     const i = A.n++;
     TMP.base.compose(TMP.v.set(x, Math.max(this.height(x, z), 0.05), z), TMP.q.setFromAxisAngle(TMP.up, head), TMP.s.set(scale, scale, scale));
     A.body.setMatrixAt(i, TMP.base);
@@ -208,27 +256,30 @@ export class LifeLayer {
     placePart(A.head, i, A.def.neck[0], A.def.neck[1], A.def.neck[2], w.graze * A.def.graze + nod);
     // Kreuzgang: diagonale Beinpaare schwingen gemeinsam
     const swing = w.moving ? Math.sin(t * (kind === 'deer' ? 9 : 11) + seed) * 0.55 : 0;
-    A.def.hips.forEach(([hx, hy, hz], li) => placePart(A.legs, i * 4 + li, hx, hy, hz, li < 2 ? swing : -swing));
+    const hips = A.def.hips;
+    for (let li = 0; li < hips.length; li++) placePart(A.legs, i * 4 + li, hips[li][0], hips[li][1], hips[li][2], li < 2 ? swing : -swing);
   }
 
   /** cam = Kameraziel (x, z) und Abstand; weit weg wird nichts gezeichnet (spart Rechenzeit) */
   update(t: number, cam: { x: number; z: number; dist: number }) {
     const g = this.g, N = g.size;
     const R = Math.max(18, cam.dist * 1.4);
-    const near = (x: number, z: number) => Math.abs(x - cam.x) < R && Math.abs(z - cam.z) < R;
+    const cx0 = cam.x, cz0 = cam.z;
     if (cam.dist > 60) {
-      for (const m of [this.fish, this.ripples, this.boats, this.workers.nichts, this.workers.stamm, this.workers.wild, this.workerLegs]) m.count = 0;
-      for (const A of Object.values(this.animals)) { A.body.count = 0; A.head.count = 0; A.legs.count = 0; }
+      // nichts zu zeigen: alle Gruppen aus (kein Hochladen, kein Zeichnen)
+      for (const m of this.plain) if (m.visible) flushInstances(m, 0);
+      for (const A of this.animalList) if (A.body.visible) { flushInstances(A.body, 0); flushInstances(A.head, 0); flushInstances(A.legs, 0); }
       return;
     }
-    for (const A of Object.values(this.animals)) A.n = 0;
+    for (const A of this.animalList) A.n = 0;
     // Fischschwärme: Anzahl sichtbarer Fische = aktueller Bestand des Fanggrunds
     let nf = 0;
-    for (const s of this.shoals) {
-      if (!near(s.x, s.z) || cam.dist > 30) continue;
+    if (cam.dist <= 30) for (const s of this.shoals) {
+      if (Math.abs(s.x - cx0) >= R || Math.abs(s.z - cz0) >= R) continue;
       const fill = g.fishCap[s.k] > 0 ? g.fish[s.k] / g.fishCap[s.k] : 0;
       const show = Math.round(s.fish.length * fill);
-      for (let i = 0; i < show && nf < 2000; i++) {
+      if (nf + show > this.fish.instanceMatrix.count) ensureCapacity(this.fish, nf + show, MAXN.fish);
+      for (let i = 0; i < show && nf < MAXN.fish; i++) {
         const f = s.fish[i];
         const a = f.ph + t * f.w;
         const x = s.x + Math.cos(a) * f.r, z = s.z + Math.sin(a) * f.r * 0.7;
@@ -238,14 +289,14 @@ export class LifeLayer {
         place(this.fish, nf++, x, y, z, a + (f.w > 0 ? Math.PI : 0), 1.8);
       }
     }
-    this.fish.count = nf;
-    this.fish.instanceMatrix.needsUpdate = true;
+    flushInstances(this.fish, Math.min(nf, this.fish.instanceMatrix.count));
     // je Schwarm zwei Kräuselringe, die sich ausbreiten (nur bei gutem Bestand)
     let nr = 0;
     for (const s of this.shoals) {
-      if (!near(s.x, s.z)) continue;
+      if (Math.abs(s.x - cx0) >= R || Math.abs(s.z - cz0) >= R) continue;
       const fill = g.fishCap[s.k] > 0 ? g.fish[s.k] / g.fishCap[s.k] : 0;
-      if (fill < 0.35 || nr > 490) continue;
+      if (fill < 0.35 || nr + 2 > MAXN.ripples) continue;
+      if (nr + 2 > this.ripples.instanceMatrix.count) ensureCapacity(this.ripples, nr + 2, MAXN.ripples);
       for (let j = 0; j < 2; j++) {
         const ph = ((t * 0.35 + s.jump * 0.1 + j * 0.5) % 1);
         const sc = (0.4 + ph * 1.6) * (0.6 + fill * 0.6);
@@ -253,14 +304,14 @@ export class LifeLayer {
         this.ripples.setMatrixAt(nr++, TMP.m);
       }
     }
-    this.ripples.count = nr;
-    this.ripples.instanceMatrix.needsUpdate = true;
+    flushInstances(this.ripples, nr);
 
     // Hirsche am Waldrand, so viele wie Wild da ist: laufen auf freiem Boden hin und her, bleiben stehen und äsen
     for (const h of this.herds) {
-      if (g.wild[h.k] < 0.5 || !near(h.x, h.z)) continue;
-      h.tracks.forEach((tr, i) => {
-        if (tr.length < 4) return;
+      if (g.wild[h.k] < 0.5 || Math.abs(h.x - cx0) >= R || Math.abs(h.z - cz0) >= R) continue;
+      for (let i = 0; i < h.tracks.length; i++) {
+        const tr = h.tracks[i];
+        if (tr.length < 4) continue;
         const w = walk(t, 7 + i, h.ph + i * 0.37);
         // Position auf der Bahn: hin und zurück (Pendel), Schritte je Laufabschnitt
         const L = tr.length - 1;
@@ -268,32 +319,34 @@ export class LifeLayer {
         const dirFwd = u <= L;
         const pos = dirFwd ? u : 2 * L - u;
         const j = Math.min(L - 1, Math.floor(pos)), f = pos - j;
-        const [ax, az] = tr[j], [bx, bz] = tr[j + 1];
+        const ax = tr[j][0], az = tr[j][1], bx = tr[j + 1][0], bz = tr[j + 1][1];
         const x = ax + (bx - ax) * f, z = az + (bz - az) * f;
-        if (!this.free(x, z)) return; // inzwischen bebaut
+        if (!this.free(x, z)) continue; // inzwischen bebaut
         const head = Math.atan2((bx - ax) * (dirFwd ? 1 : -1), (bz - az) * (dirFwd ? 1 : -1));
         this.drawAnimal('deer', x, z, head, 1.7, t, w, h.k + i);
-      });
+      }
     }
 
     // Weidetiere und Arbeiter aus den Betrieben
-    let nb = 0, nl = 0;
-    const nw = { nichts: 0, stamm: 0, wild: 0 };
+    let nb = 0, nl = 0, wN = 0, wS = 0, wW = 0;
+    const W = this.workers;
     for (const b of g.buildings) {
       if (!g.seen[g.idx(b.x, b.y)]) continue;
       const d = BUILDINGS[b.type];
-      const [cx, cz] = g.center(b);
-      if (!near(cx, cz)) continue;
+      // Gebäudemitte direkt ausrechnen (kein neues Feld je Gebäude und Bild)
+      const cx = b.x + d.size / 2, cz = b.y + d.size / 2;
+      if (Math.abs(cx - cx0) >= R || Math.abs(cz - cz0) >= R) continue;
       if (b.type === 'schaffarm' || b.type === 'schweinezucht') {
         const kind = b.type === 'schaffarm' ? 'sheep' : 'pigs';
+        // innerhalb des Zauns (Hof 3×3) umherlaufen
+        const RR = d.size / 2 - 0.35;
         for (let i = 0; i < 5; i++) {
           const ph = b.id * 1.7 + i * 1.3;
           const w = walk(t, 9 + i * 1.3, ph);
-          const a = ph + w.s * 0.6;
-          // innerhalb des Zauns (Hof 3×3) umherlaufen
-          const R = d.size / 2 - 0.35;
-          const pos = (aa: number) => [cx + Math.cos(aa) * R * (0.4 + 0.6 * Math.abs(Math.sin(ph + aa * 0.6))), cz + Math.sin(aa * 1.3) * R * (0.4 + 0.6 * Math.abs(Math.cos(ph)))];
-          const [x, z] = pos(a), [x2, z2] = pos(a + 0.05);
+          const a = ph + w.s * 0.6, a2 = a + 0.05;
+          const kz = 0.4 + 0.6 * Math.abs(Math.cos(ph));
+          const x = cx + Math.cos(a) * RR * (0.4 + 0.6 * Math.abs(Math.sin(ph + a * 0.6))), z = cz + Math.sin(a * 1.3) * RR * kz;
+          const x2 = cx + Math.cos(a2) * RR * (0.4 + 0.6 * Math.abs(Math.sin(ph + a2 * 0.6))), z2 = cz + Math.sin(a2 * 1.3) * RR * kz;
           this.drawAnimal(kind, x, z, Math.atan2(x2 - x, z2 - z), 1.2, t, w, b.id + i * 7);
         }
       }
@@ -304,9 +357,12 @@ export class LifeLayer {
       const out = Math.min(1, p / 0.3), back = Math.max(0, (p - 0.8) / 0.2);
       const f = p < 0.8 ? out : 1 - back;
       if (d.harvest.res === 'fisch') {
-        const start = this.waterNear(b) ?? [cx, cz];
-        const x = start[0] + (tx - start[0]) * f, z = start[1] + (tz - start[1]) * f;
-        const heading = Math.atan2(tx - start[0], tz - start[1]) + (p > 0.8 ? Math.PI : 0);
+        if (nb >= MAXN.boats) continue;
+        const wtr = this.waterNear(b);
+        const sx = wtr ? wtr[0] : cx, sz = wtr ? wtr[1] : cz;
+        const x = sx + (tx - sx) * f, z = sz + (tz - sz) * f;
+        const heading = Math.atan2(tx - sx, tz - sz) + (p > 0.8 ? Math.PI : 0);
+        if (nb >= this.boats.instanceMatrix.count) ensureCapacity(this.boats, nb + 1, MAXN.boats);
         place(this.boats, nb++, x, 0.03 + Math.sin(t * 2 + b.id) * 0.02, z, heading + (p > 0.3 && p < 0.8 ? Math.sin(t) * 0.3 : 0), 1.3);
       } else if (d.harvest.res === 'baum' || d.harvest.res === 'wild') {
         // am Baum auf der Hof-Seite stehen (sonst verdecken die Kronen die Figur)
@@ -321,25 +377,29 @@ export class LifeLayer {
           const beat = Math.floor((t * 7) / Math.PI);
           if (this.beats.get(b.id) !== beat) { this.beats.set(b.id, beat); sound.play('axt', { x, z }); }
         }
-        const mesh = this.workers[kind];
-        if (nw[kind] < 300) {
+        const mesh = W[kind];
+        const wi = kind === 'nichts' ? wN : kind === 'stamm' ? wS : wW;
+        if (wi < MAXN.worker) {
+          if (kind === 'nichts') wN++; else if (kind === 'stamm') wS++; else wW++;
+          if (wi >= mesh.instanceMatrix.count) ensureCapacity(mesh, wi + 1, MAXN.worker);
           const wx = x - Math.sin(heading) * chop, wz = z - Math.cos(heading) * chop;
-          place(mesh, nw[kind]++, wx, Math.max(this.height(wx, wz), 0.05), wz, heading, 1.6);
+          const wy = Math.max(this.height(wx, wz), 0.05);
+          place(mesh, wi, wx, wy, wz, heading, 1.6);
           // Beine: schwingen auf dem Hin- und Rückweg, stehen beim Arbeiten
           const walking = p < 0.3 || p > 0.8;
           const sw = walking ? Math.sin(t * 12 + b.id) * 0.6 : 0;
-          TMP.base.compose(TMP.v.set(wx, Math.max(this.height(wx, wz), 0.05), wz), TMP.q.setFromAxisAngle(TMP.up, heading), TMP.s.set(1.6, 1.6, 1.6));
-          if (nl < 1598) { placePart(this.workerLegs, nl++, -0.025, WORKER_LEG, 0, sw); placePart(this.workerLegs, nl++, 0.025, WORKER_LEG, 0, -sw); }
+          TMP.base.compose(TMP.v.set(wx, wy, wz), TMP.q.setFromAxisAngle(TMP.up, heading), TMP.s.set(1.6, 1.6, 1.6));
+          if (nl + 2 <= MAXN.workerLegs) {
+            if (nl + 2 > this.workerLegs.instanceMatrix.count) ensureCapacity(this.workerLegs, nl + 2, MAXN.workerLegs);
+            placePart(this.workerLegs, nl++, -0.025, WORKER_LEG, 0, sw); placePart(this.workerLegs, nl++, 0.025, WORKER_LEG, 0, -sw);
+          }
         }
       }
     }
-    for (const [m, n] of [[this.boats, nb], [this.workers.nichts, nw.nichts], [this.workers.stamm, nw.stamm], [this.workers.wild, nw.wild], [this.workerLegs, nl]] as const) {
-      m.count = n; m.instanceMatrix.needsUpdate = true;
-    }
-    for (const A of Object.values(this.animals)) {
-      A.body.count = A.n; A.head.count = A.n; A.legs.count = A.n * 4;
-      for (const m of [A.body, A.head, A.legs]) m.instanceMatrix.needsUpdate = true;
-    }
+    flushInstances(this.boats, nb);
+    flushInstances(W.nichts, wN); flushInstances(W.stamm, wS); flushInstances(W.wild, wW);
+    flushInstances(this.workerLegs, nl);
+    for (const A of this.animalList) { flushInstances(A.body, A.n); flushInstances(A.head, A.n); flushInstances(A.legs, A.n * 4); }
   }
 
   private waterCache = new Map<number, [number, number] | null>();
