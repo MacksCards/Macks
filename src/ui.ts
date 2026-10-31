@@ -247,6 +247,7 @@ export class UI {
   }
 
   private closeCat() {
+    if (this.openCat) sound.play('zu');
     this.openCat = null;
     $('#buildPanel').classList.add('hidden');
     $('#quest').classList.toggle('hidden', this.mode.kind !== 'none');
@@ -287,7 +288,7 @@ export class UI {
     }
     // Schiff antippen → auswählen
     const ship = this.view.pickShip(x, y);
-    if (ship && ship.owner === HUMAN) { this.selectShip(ship); return; }
+    if (ship && ship.owner === HUMAN) { sound.play('klick'); this.selectShip(ship); return; }
     const t = this.view.pick(x, y, true);
     const b = t ? this.g.buildingAt(t[0], t[1]) : undefined;
     // Schiff ausgewählt + aufs Meer getippt → hinsegeln
@@ -299,7 +300,7 @@ export class UI {
         return;
       }
     }
-    if (b) { this.select(b); return; }
+    if (b) { sound.play('klick'); this.select(b); return; }
     // Land einer entdeckten Insel → Inselinfo
     if (t) {
       const k = this.g.idx(t[0], t[1]);
@@ -599,12 +600,14 @@ export class UI {
     $('#infoX').addEventListener('click', () => this.selectShip(null));
     document.getElementById('shipUnload')?.addEventListener('click', () => {
       const n = g.unloadAll(s);
+      if (n > 0) sound.play('kisten');
       const left = s.slots.reduce((a, sl) => a + sl.n, 0);
       this.toast(n ? `${n} t ins Kontor geladen${left ? ` – ${left} t bleiben an Bord (Lager voll, 30 t je Ware)` : ''}` : 'Kontor ist voll (30 t je Ware)', n ? 'good' : 'bad');
       this.renderInfo();
     });
     box.querySelectorAll<HTMLElement>('[data-load]').forEach((bt) => bt.addEventListener('click', () => {
       const n = g.loadGood(s, bt.dataset.load as GoodId, 10);
+      if (n > 0) sound.play('kisten');
       if (!n) this.toast('Kein Platz mehr im Laderaum', 'bad');
       this.renderInfo();
     }));
@@ -760,7 +763,7 @@ export class UI {
       <h2>⚓ Neue Ufer</h2>
       <button class="btn wide" id="mResume">▶️ Weiterspielen</button>
       <button class="btn wide" id="mSave">💾 Speichern</button>
-      <div class="row2"><button class="btn" id="mTon">${sound.soundOn ? '🔊 Ton an' : '🔇 Ton aus'}</button><button class="btn" id="mMusik">${sound.musicOn ? '🎵 Musik an' : '🎵 Musik aus'}</button></div>
+      <div class="row2"><button class="btn" id="mTon">${sound.soundOn ? '🔊 Ton an' : '🔇 Ton aus'}</button><button class="btn" id="mMusik">${sound.musicOn ? '🎵 Musik an' : '🔕 Musik aus'}</button></div>
       <button class="btn wide" id="mHelp">❓ Anleitung</button>
       <button class="btn wide danger" id="mNew">🏝️ Neues Spiel (neue Inselwelt)</button>
       <p class="sub">Das Spiel speichert automatisch.</p></div>`;
@@ -818,6 +821,7 @@ export class UI {
   }
 
   closeModal() {
+    if (!$('#modal').classList.contains('hidden')) sound.play('zu');
     $('#modal').classList.add('hidden');
   }
 }

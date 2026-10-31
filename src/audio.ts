@@ -32,14 +32,33 @@ export class Sound {
     const unlock = () => { this.start(); };
     window.addEventListener('pointerdown', unlock, { passive: true });
     window.addEventListener('keydown', unlock);
+    // App verlassen (Sperrbildschirm, App-Wechsel): Ton anhalten, beim Zurückkommen weiter
+    const vis = () => this.wake();
+    document.addEventListener('visibilitychange', vis);
+    window.addEventListener('pagehide', () => { if (this.ctx) void this.ctx.suspend(); });
+    window.addEventListener('pageshow', vis);
+  }
+
+  /** Ton passend zum Zustand an- oder anhalten (versteckt, beides aus → anhalten spart Akku) */
+  private wake() {
+    if (!this.ctx) return;
+    const want = !document.hidden && (this.soundOn || this.musicOn);
+    if (want && this.ctx.state !== 'running') void this.ctx.resume().catch(() => { /* später nochmal */ });
+    if (!want && this.ctx.state === 'running') void this.ctx.suspend();
   }
 
   private start() {
-    if (this.ctx) { if (this.ctx.state === 'suspended') void this.ctx.resume(); return; }
+    // iPhone meldet nach Anruf/Sperre „interrupted“ – bei jedem Tippen wieder anwerfen
+    if (this.ctx) { this.wake(); return; }
     const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AC) return;
     const ctx = (this.ctx = new AC());
-    this.master = ctx.createGain(); this.master.gain.value = 0.9; this.master.connect(ctx.destination);
+    void ctx.resume().catch(() => { /* egal */ });
+    // Lautstärkebremse am Ausgang: auch wenn vieles gleichzeitig klingt, nie übersteuern
+    const limit = ctx.createDynamicsCompressor();
+    limit.threshold.value = -3; limit.knee.value = 0; limit.ratio.value = 20; limit.attack.value = 0.001; limit.release.value = 0.1;
+    limit.connect(ctx.destination);
+    this.master = ctx.createGain(); this.master.gain.value = 0.8; this.master.connect(limit);
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -16; comp.ratio.value = 4;
     comp.connect(this.master);
@@ -73,6 +92,7 @@ export class Sound {
     this.sfx.gain.value = this.soundOn ? 0.8 : 0;
     this.amb.gain.value = this.soundOn ? 0.55 : 0;
     this.mus.gain.value = this.musicOn ? 0.22 : 0;
+    this.wake();
   }
 
   setSound(on: boolean) { this.soundOn = on; this.applyVolumes(); try { localStorage.setItem('nu-ton', on ? '1' : '0'); } catch { /* egal */ } }
@@ -100,7 +120,13 @@ export class Sound {
     g.gain.exponentialRampToValueAtTime(opts.vol ?? 0.3, t + (opts.attack ?? 0.005));
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(opts.out ?? this.sfx);
-    if (opts.verb) { const v = ctx.createGain(); v.gain.value = opts.verb; g.connect(v); v.connect(this.verb); }
+    let v: GainNode | undefined;
+    if (opts.verb) {
+      // Hall-Anteil folgt der Lautstärke der Spur (sonst wäre die Musik im Hall lauter als selbst)
+      const bus = (opts.out ?? this.sfx) as GainNode;
+      v = ctx.createGain(); v.gain.value = opts.verb * bus.gain.value; g.connect(v); v.connect(this.verb);
+    }
+    o.onended = () => { o.disconnect(); g.disconnect(); v?.disconnect(); };
     o.start(t); o.stop(t + dur + 0.05);
   }
 
@@ -114,7 +140,8 @@ export class Sound {
     g.gain.setValueAtTime(opts.vol ?? 0.4, t);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(f); f.connect(g); g.connect(opts.out ?? this.sfx);
-    src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.05);
+    src.onended = () => { src.disconnect(); f.disconnect(); g.disconnect(); };
+    src.start(t, Math.random() * Math.max(0, 1.9 - dur)); src.stop(t + dur + 0.05);
   }
 
   /** Lautstärke nach Entfernung zur Kamera (Spielgeschehen) */
@@ -136,8 +163,12 @@ export class Sound {
 
   // ---------- Geräusche ----------
 
+  /** Spiel pausiert (Geräusche aus dem Spielgeschehen schweigen dann) */
+  gamePaused = false;
+
   play(name: string, at?: Pos) {
-    if (!this.ctx || !this.soundOn) return;
+    if (!this.ctx || !this.soundOn || this.ctx.state !== 'running') return;
+    if (at && this.gamePaused) return;
     const v = this.near(at);
     if (v <= 0.02) return;
     switch (name) {
@@ -197,6 +228,9 @@ export class Sound {
         this.tone(55, 0.9, { vol: 0.7 * v, slide: 0.4 });
         this.burst(1.2, { type: 'lowpass', freq: 1800, slideTo: 80, vol: 0.8 * v });
         break;
+      case 'kisten': // Ladung poltert
+        for (let i = 0; i < 3; i++) { this.tone(140 + Math.random() * 60, 0.09, { type: 'triangle', vol: 0.22, slide: 0.6, delay: i * 0.09 }); this.burst(0.06, { type: 'lowpass', freq: 900, vol: 0.2, delay: i * 0.09 }); }
+        break;
       case 'nachricht': this.tone(660, 0.25, { vol: 0.08, verb: 0.4 }); this.tone(990, 0.35, { vol: 0.06, delay: 0.08, verb: 0.4 }); break;
     }
   }
@@ -215,7 +249,9 @@ export class Sound {
     // Wind: stärker, je weiter herausgezoomt
     this.wind.g.gain.setTargetAtTime(0.04 + zoomOut * 0.16 + 0.05 * Math.sin(t * 0.13), t, 0.8);
     this.wind.f.frequency.setTargetAtTime(600 + 500 * Math.sin(t * 0.09), t, 1);
-    if (paused) return;
+    this.gamePaused = paused;
+    this.music(t);
+    if (paused || !this.soundOn) return;
     // Möwen über dem Wasser
     if (t > this.nextGull) {
       this.nextGull = t + 6 + Math.random() * 12;
@@ -232,7 +268,10 @@ export class Sound {
         for (let i = 0; i < 3 + Math.floor(Math.random() * 4); i++) this.tone(f * (1 + Math.random() * 0.15), 0.07, { vol: 0.02 * forestNear, slide: 1.3, delay: i * 0.11, out: this.amb });
       }
     }
-    // Musik: ruhige, gezupfte Melodie in D-Dorisch, wechselt sanft die Akkorde
+  }
+
+  /** Musik: ruhige, gezupfte Melodie, wechselt sanft die Akkorde (läuft auch in der Pause) */
+  private music(t: number) {
     if (this.musicOn && t > this.nextNote) {
       const chords = [[146.8, 220, 293.7], [130.8, 196, 261.6], [174.6, 220, 349.2], [164.8, 246.9, 329.6]];
       const scale = [293.7, 329.6, 349.2, 392, 440, 493.9, 523.3, 587.3];
