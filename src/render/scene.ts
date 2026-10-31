@@ -7,7 +7,7 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { WALLS, WALL_LINKS, buildingModel } from './models';
 import { UnitLayer } from './units';
 import { Fx } from './fx';
-import { LAND_Y, Terrain } from './terrain';
+import { LAND_Y, Terrain, TileRect } from './terrain';
 import { Vegetation, windTime } from './vegetation';
 import { ModelLibrary } from './glb';
 import { ShipLayer } from './ships';
@@ -16,6 +16,7 @@ import { LifeLayer } from './life';
 import { buildingMaterial } from './materials';
 import { ModelDef } from './kit';
 import { Level, Quality, QualityMode } from './quality';
+import { ensureCapacity } from './instances';
 
 
 interface BView {
@@ -58,7 +59,8 @@ export class View {
   private carts!: CartLayer;
   private life!: LifeLayer;
   private seenTex!: THREE.DataTexture;
-  private seenCount: number[] = [];
+  /** true, bis das Nebel-Datenbild einmal ganz hochgeladen ist (vorher keine Teil-Uploads) */
+  private seenTexFresh = true;
   private border: THREE.Mesh | null = null;
   private roadCol = new THREE.Color();
   private veg!: Vegetation;
@@ -225,12 +227,14 @@ export class View {
     if (!this.units) { this.units = new UnitLayer(g, h); this.scene.add(this.units.group); } else this.units.setGame(g, h);
     if (!this.fx) { this.fx = new Fx(g, h); this.scene.add(this.fx.group); } else this.fx.setGame(g, h);
     this.ships.fx = this.fx;
-    this.seenCount = g.islands.map(() => -1);
     this.areaShown = false;
     this.buildWater();
     this.veg = new Vegetation(g, this.terrain);
     this.scene.add(this.veg.group);
-    this.onSeen();
+    // Ausgangsstand merken: spätere Änderungen werden damit verglichen (nur Geändertes wird neu gebaut)
+    this.takeSnapshot();
+    this.pend = 0;
+    this.writeSeen(null);
     this.onTerritory();
     this.buildRoads();
     for (const b of g.buildings) this.addBuilding(b);
@@ -262,6 +266,8 @@ export class View {
     grp.position.set(this.rig.tx, -6, this.rig.tz);
     this.scene.add(grp);
     // (unsichtbare Dinge wie Bau-Vorschau, Ringe und Wegvorschau nimmt compileAsync von selbst mit)
+    // Pflanzen: je nach Entfernung ausgeblendet – je eine Baum- und Grasgruppe vorübergehend zeigen
+    this.veg.warm();
     try {
       this.updateCamera();
       await this.compileAll(token);
@@ -389,6 +395,7 @@ export class View {
     const uni = this.waterUniforms as Record<string, THREE.IUniform>;
     uni.uDepth = { value: depthTex };
     this.seenTex = new THREE.DataTexture(new Uint8Array(N * N * 4), N, N);
+    this.seenTexFresh = true;
     this.seenTex.magFilter = THREE.LinearFilter;
     this.seenTex.minFilter = THREE.LinearFilter;
     uni.uSeen = { value: this.seenTex };
@@ -497,27 +504,107 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.scene.add(this.border);
   }
 
-  /** Neu entdeckte Gebiete: Nebel lichten, Pflanzen zeigen */
+  /** Neu entdeckte Gebiete: Nebel lichten, Pflanzen zeigen (wird beim nächsten Bild gebündelt erledigt) */
   onSeen() {
-    const g = this.g, N = g.size;
+    this.pend |= 2;
     this.dirty = true;
-    const data = this.seenTex.image.data as Uint8Array;
-    for (let i = 0; i < N * N; i++) { const v = g.seen[i] ? 255 : 0; data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; }
-    this.seenTex.needsUpdate = true;
-    this.terrain.updateFog();
-    this.life?.rebuild();
-    const changed: number[] = [];
-    g.islands.forEach((isl, id) => {
-      let n = 0;
-      for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) if (g.seen[y * N + x]) n++;
-      if (n !== this.seenCount[id]) { this.seenCount[id] = n; changed.push(id); }
-    });
-    if (changed.length) { this.veg.refresh(changed); this.onTerritory(); this.onRoadsChanged(); }
-    // fremde Gebäude erst zeigen, wenn ihr Platz entdeckt ist
-    for (const [id, v] of this.views) {
-      const b = g.byId.get(id);
-      if (b) { v.mesh.visible = g.seen[g.idx(b.x, b.y)] === 1; v.icon.visible = v.icon.visible && v.mesh.visible; }
+  }
+
+  // ---------- Änderungen bündeln: nur Geändertes neu bauen ----------
+
+  /** gemerkte Kopien (Geländeart, Wege, entdeckt, belegt) – zum Erkennen geänderter Felder */
+  private snapT = new Uint8Array(0);
+  private snapR = new Uint8Array(0);
+  private snapS = new Uint8Array(0);
+  private snapO = new Int32Array(0);
+  /** Feld steht schon in der Änderungsliste */
+  private marked = new Uint8Array(0);
+  private changed: number[] = [];
+  /** ausstehende Änderungen: 1 = auf dem Land (Bäume, Wege, Gebäude), 2 = Entdecken */
+  private pend = 0;
+  /** Messhilfe: Dauer des letzten Abgleichs in ms */
+  lastFlushMs = 0;
+
+  private takeSnapshot() {
+    const g = this.g;
+    this.snapT = g.tiles.slice(); this.snapR = g.roads.slice(); this.snapS = g.seen.slice(); this.snapO = g.occ.slice();
+    this.marked = new Uint8Array(g.tiles.length);
+  }
+
+  /**
+   * Alle Änderungen seit dem letzten Bild auf einmal übernehmen: geänderte Felder selbst erkennen
+   * (Vergleich mit den gemerkten Kopien, je vier Felder auf einmal) und nur betroffene Pflanzen-Blöcke,
+   * Bodenfarben, Nebel, Wege und Tiere neu aufbauen. Läuft am Anfang jedes Bildes – auch für Bauten der Gegner.
+   */
+  flushChanges() {
+    if (!this.pend) return;
+    const t0 = performance.now();
+    this.pend = 0;
+    const g = this.g, N = g.size;
+    if (this.snapT.length !== g.tiles.length) { this.setGame(g); return; } // andere Kartengröße: alles neu
+    const list = this.changed, mark = this.marked;
+    list.length = 0;
+    diffTiles(g.tiles, this.snapT, list, mark);
+    diffTiles(g.roads, this.snapR, list, mark);
+    diffTiles(g.seen, this.snapS, list, mark);
+    diffTiles(g.occ, this.snapO, list, mark);
+    const splat: number[] = [];
+    const roads: number[] = [];
+    const seen: TileRect = { x0: N, y0: N, x1: -1, y1: -1 };
+    const land: TileRect = { x0: N, y0: N, x1: -1, y1: -1 };
+    let nSeen = 0, islandSeen = false, ownedSeen = false;
+    const grow = (r: TileRect, x: number, y: number) => { if (x < r.x0) r.x0 = x; if (x > r.x1) r.x1 = x; if (y < r.y0) r.y0 = y; if (y > r.y1) r.y1 = y; };
+    for (const i of list) {
+      mark[i] = 0;
+      const t = g.tiles[i], r = g.roads[i], sn = g.seen[i], o = g.occ[i];
+      const tOld = this.snapT[i], rOld = this.snapR[i], sOld = this.snapS[i], oOld = this.snapO[i];
+      this.snapT[i] = t; this.snapR[i] = r; this.snapS[i] = sn; this.snapO[i] = o;
+      const x = i % N, y = (i / N) | 0;
+      this.veg.markTile(i);
+      if (t !== tOld) splat.push(i);
+      if (t !== tOld || r !== rOld || (o !== 0) !== (oOld !== 0)) grow(land, x, y);
+      if (sn !== sOld) { nSeen++; grow(seen, x, y); if (g.islandOf[i] >= 0) islandSeen = true; if (g.own[i] >= 0) ownedSeen = true; }
+      if (r !== rOld || sn !== sOld) roads.push(i);
     }
+    // sehr viel auf einmal (z. B. ganze Karte aufgedeckt): einmal alles statt vieler kleiner Stücke
+    const big = nSeen > 3000;
+    if (splat.length) this.terrain.updateSplat(splat);
+    if (nSeen) {
+      this.terrain.updateFog(big ? undefined : seen);
+      this.writeSeen(big ? null : seen);
+      this.life.rebuild(big ? undefined : seen, 3);
+    }
+    if (land.x1 >= 0 && !(nSeen && big)) this.life.rebuild(land, 2);
+    this.veg.flush();
+    if (roads.length) this.updateRoads(roads);
+    // Gebietsgrenze nur neu, wenn ein Feld mit Besitzer neu entdeckt wurde
+    if (ownedSeen) this.onTerritory();
+    if (islandSeen) {
+      // fremde Gebäude erst zeigen, wenn ihr Platz entdeckt ist
+      for (const [id, v] of this.views) {
+        const b = g.byId.get(id);
+        if (b) { v.mesh.visible = g.seen[g.idx(b.x, b.y)] === 1; v.icon.visible = v.icon.visible && v.mesh.visible; }
+      }
+    }
+    this.dirty = true;
+    this.lastFlushMs = performance.now() - t0;
+  }
+
+  /** Nebel-Datenbild fürs Wasser: ganz (r = null) oder nur das Rechteck schreiben und hochladen */
+  private writeSeen(r: TileRect | null) {
+    const g = this.g, N = g.size, tex = this.seenTex;
+    const data = tex.image.data as Uint8Array;
+    const put = (i: number) => { const v = g.seen[i] ? 255 : 0; data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; };
+    if (!r || this.seenTexFresh) {
+      for (let i = 0; i < N * N; i++) put(i);
+      tex.clearUpdateRanges();
+    } else {
+      for (let y = r.y0; y <= r.y1; y++) {
+        for (let x = r.x0; x <= r.x1; x++) put(y * N + x);
+        tex.addUpdateRange((y * N + r.x0) * 4, (r.x1 - r.x0 + 1) * 4);
+      }
+    }
+    tex.needsUpdate = true;
   }
 
   /** Baum gefällt: Bäume des Feldes kippen um, ein Setzling bleibt stehen */
@@ -556,17 +643,24 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.falling = this.falling.filter((x) => x.t <= 5);
   }
 
+  /** Wald gerodet oder nachgepflanzt: beim nächsten Bild nur die betroffenen Blöcke neu */
   onTreesChanged() {
+    this.pend |= 1;
     this.dirty = true;
-    this.terrain.updateSplat();
-    this.veg.refresh();
   }
+
+  /** angezeigter Weg je Feld (0 = keiner), sein Platz in der Weg-Gruppe und das Feld je Platz */
+  private roadShown = new Uint8Array(0);
+  private roadSlot = new Int32Array(0);
+  private roadTile: number[] = [];
 
   private buildRoads() {
     const N = this.g.size;
-    const geo = new THREE.BoxGeometry(1, 0.05, 1);
     if (!this.roadMesh) {
-      this.roadMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), N * N);
+      const geo = new THREE.BoxGeometry(1, 0.05, 1);
+      // klein anfangen (2 048 Felder) und bei Bedarf verdoppeln
+      this.roadMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), 2048);
+      this.roadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       this.roadMesh.receiveShadow = true;
       this.previewRoads = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }), 400);
       this.previewRoads.count = 0;
@@ -579,29 +673,72 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       this.previewRoads.frustumCulled = false;
     }
     this.scene.add(this.roadMesh, this.previewRoads);
-    this.onRoadsChanged();
+    // neues Spiel: alle Wege neu eintragen
+    this.roadShown = new Uint8Array(N * N);
+    this.roadSlot = new Int32Array(N * N).fill(-1);
+    this.roadTile = [];
+    const all: number[] = [];
+    for (let i = 0; i < N * N; i++) if (this.g.roads[i] && this.g.seen[i]) all.push(i);
+    this.roadMesh.count = 0;
+    this.updateRoads(all);
   }
 
+  /** Wege gebaut, abgerissen oder gepflastert: beim nächsten Bild nur die geänderten Felder */
   onRoadsChanged() {
-    if (!this.roadMesh) return; // wird beim Aufbau später gezeichnet
-    const g = this.g;
-    const m = new THREE.Matrix4();
-    let n = 0;
-    for (let i = 0; i < g.roads.length; i++) {
-      if (!g.roads[i] || !g.seen[i]) continue;
-      const x = i % g.size, y = (i / g.size) | 0;
-      m.makeTranslation(x + 0.5, this.groundY(x, y, 1) + 0.005, y + 0.5);
-      this.roadMesh.setColorAt(n, this.roadCol.setHex(g.roads[i] === 2 ? 0xa9a39a : 0x8a7151));
-      this.roadMesh.setMatrixAt(n++, m);
-    }
-    this.roadMesh.count = n;
-    // nur die belegten Plätze hochladen (das Feld hat Platz für die ganze Karte)
-    const im = this.roadMesh.instanceMatrix, ic = this.roadMesh.instanceColor;
-    im.clearUpdateRanges(); im.addUpdateRange(0, Math.max(1, n) * 16); im.needsUpdate = true;
-    if (ic) { ic.clearUpdateRanges(); ic.addUpdateRange(0, Math.max(1, n) * 3); ic.needsUpdate = true; }
+    this.pend |= 1;
     this.dirty = true;
-    this.veg?.refresh();
   }
+
+  /** Weg-Felder nachtragen, entfernen oder umfärben (nur die geänderten Plätze werden hochgeladen) */
+  private updateRoads(tiles: number[]) {
+    const g = this.g, N = g.size, mesh = this.roadMesh;
+    const m = this.roadM;
+    const touched: number[] = [];
+    for (const i of tiles) {
+      const v = g.seen[i] ? g.roads[i] : 0;
+      if (v === this.roadShown[i]) continue;
+      this.roadShown[i] = v;
+      let s = this.roadSlot[i];
+      if (!v) {
+        if (s < 0) continue;
+        // letzten Platz in die Lücke schieben
+        const last = this.roadTile.length - 1, lt = this.roadTile[last];
+        if (s !== last) {
+          mesh.getMatrixAt(last, m); mesh.setMatrixAt(s, m);
+          mesh.getColorAt(last, this.roadCol); mesh.setColorAt(s, this.roadCol);
+          this.roadTile[s] = lt; this.roadSlot[lt] = s;
+          touched.push(s);
+        }
+        this.roadTile.pop();
+        this.roadSlot[i] = -1;
+        continue;
+      }
+      if (s < 0) {
+        s = this.roadTile.length;
+        if (s >= mesh.instanceMatrix.count) ensureCapacity(mesh, s + 1, N * N);
+        this.roadTile.push(i);
+        this.roadSlot[i] = s;
+        const x = i % N, y = (i / N) | 0;
+        m.makeTranslation(x + 0.5, this.groundY(x, y, 1) + 0.005, y + 0.5);
+        mesh.setMatrixAt(s, m);
+      }
+      mesh.setColorAt(s, this.roadCol.setHex(v === 2 ? 0xa9a39a : 0x8a7151));
+      touched.push(s);
+    }
+    const n = this.roadTile.length;
+    mesh.count = n;
+    if (!touched.length) return;
+    const im = mesh.instanceMatrix, ic = mesh.instanceColor!;
+    if (touched.length > 32) {
+      // viele Änderungen: belegten Teil auf einmal hochladen
+      im.clearUpdateRanges(); im.addUpdateRange(0, Math.max(1, n) * 16);
+      ic.clearUpdateRanges(); ic.addUpdateRange(0, Math.max(1, n) * 3);
+    } else for (const s of touched) if (s < n) { im.addUpdateRange(s * 16, 16); ic.addUpdateRange(s * 3, 3); }
+    im.needsUpdate = true;
+    ic.needsUpdate = true;
+    this.dirty = true;
+  }
+  private roadM = new THREE.Matrix4();
 
   setRoadPreview(cells: [number, number][], ok: boolean[]) {
     const m = new THREE.Matrix4();
@@ -714,6 +851,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.scene.add(icon);
     this.views.set(b.id, { mesh, spin, icon, iconKey: '', tier: b.tier, owner: b.owner, mask, flags, top });
     this.dirty = true;
+    this.pend |= 1; // Gras und Tiere unter dem Gebäude anpassen
     if (neighbors && WALL_LINKS.has(b.type)) this.refreshWallNeighbors(b);
   }
 
@@ -734,6 +872,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     v.icon.material.dispose();
     this.views.delete(b.id);
     this.dirty = true;
+    this.pend |= 1;
     // zerstört (nicht abgerissen): Staubwolke und Trümmer
     if (neighbors && b.hp !== undefined && b.hp <= 0 && !this.g.byId.has(b.id) && v.mesh.visible) {
       const s = BUILDINGS[b.type].size;
@@ -967,6 +1106,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
   frame(t: number, gameDt: number) {
     const dt = Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
+    this.flushChanges();
     this.animateFalling(dt);
     this.growT += dt;
     if (this.growT > 1.5) { this.growT = 0; this.veg.updateGrowth(); }
@@ -986,10 +1126,27 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;
     this.updateCamera();
     if (this.preparing) return; // Grafik-Programme werden noch vorbereitet: altes Bild bleibt stehen
+    // Pflanzen: je nach Entfernung volle Dichte, halbe Dichte oder einfache Formen; Schatten nur nah
+    this.veg.update(this.camera.position, this.rig.tx, this.rig.tz, this.rig.dist);
     this.renderer.render(this.scene, this.camera);
+    this.seenTexFresh = false;
     const r = this.rig, d = this.drawn, el = this.renderer.domElement;
     d.tx = r.tx; d.tz = r.tz; d.dist = r.dist; d.yaw = r.yaw; d.w = el.width; d.h = el.height;
     d.ship = this.ships.selected; d.units = this.units.selected.size;
     this.dirty = false;
   }
+}
+
+/** Felder, in denen sich cur von old unterscheidet, in out sammeln (doppelte über mark vermeiden); vergleicht je vier Felder auf einmal */
+function diffTiles(cur: Uint8Array | Int32Array, old: Uint8Array | Int32Array, out: number[], mark: Uint8Array) {
+  const n = cur.length;
+  if (cur instanceof Uint8Array && old instanceof Uint8Array && n % 4 === 0 && cur.byteOffset % 4 === 0 && old.byteOffset % 4 === 0) {
+    const a = new Uint32Array(cur.buffer, cur.byteOffset, n >> 2), b = new Uint32Array(old.buffer, old.byteOffset, n >> 2);
+    for (let w = 0; w < a.length; w++) {
+      if (a[w] === b[w]) continue;
+      for (let i = w * 4; i < w * 4 + 4; i++) if (cur[i] !== old[i] && !mark[i]) { mark[i] = 1; out.push(i); }
+    }
+    return;
+  }
+  for (let i = 0; i < n; i++) if (cur[i] !== old[i] && !mark[i]) { mark[i] = 1; out.push(i); }
 }

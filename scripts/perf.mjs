@@ -1,9 +1,10 @@
 // Leistungsmessung im Browser (Playwright, Software-Grafik SwiftShader).
 // Misst, was auch ohne echtes iPhone vergleichbar ist: Zeichenaufrufe, Dreiecke, Grafik-Puffer,
 // Daten zur Grafikkarte je Bild, Grafik-Programme, gezeichnete Bilder je Sekunde (Drosselung),
-// Speichermüll je Bild und Bildzeit (Software-Grafik: nur als Verhältnis aussagekräftig).
+// Speichermüll je Bild und Bildzeit (Software-Grafik: nur als Verhältnis aussagekräftig);
+// Teil 3: Dreiecke von Pflanzen und Gelände je Zoom, Zeit je Bau im Wald.
 //
-// Aufruf:  node scripts/perf.mjs [html=dist/index.html] [port=5410] [--json=datei.json] [--bild=stadt.png] [--schnell]
+// Aufruf:  node scripts/perf.mjs [html=dist/index.html] [port=5410] [--json=datei.json] [--bild=stadt.png] [--schnell] [--pflanzen]
 // Vorher:  npx vite build
 // Auf dem echten iPhone: Spiel mit ?debug in der Adresse öffnen – unten links steht dann die Bildzeit.
 import { createRequire } from 'node:module';
@@ -299,6 +300,83 @@ if (!quick) {
     log('muell_kb_je_aufruf', res);
   }
   await page.screenshot({ path: flags.bild ? String(flags.bild) : '/tmp/perf-stadt.png' }).catch(() => {});
+  await ctx.close();
+}
+
+// ===== Teil 3: Pflanzen und Boden (iPhone-Querformat, ganze Karte entdeckt, Blick auf den Wald der größten Insel) =====
+// Dreiecke im Bild (nur Hauptdurchgang, ohne Schatten) gesamt / Pflanzen / Gelände bei Zoom 8, 30, 70, 110;
+// Zeit je Bau im Wald (Spiel-Aufruf samt Abgleich der Grafik), je Weg, je neu entdecktem Feld; Bildzeit (Verhältnis).
+if (!quick || flags.pflanzen) {
+  const { ctx, page } = await open(852, 393, 1, '?q=hoch');
+  await page.evaluate(() => P.stopLoop());
+  await page.evaluate(async () => {
+    const G = P.g(); const ng = G.constructor.create(20261031, 2); P.ui().onNewGame(ng); await P.waitPrepared();
+    ng.seen.fill(1); P.v().onSeen(); P.v().flushChanges?.(); await P.waitPrepared();
+  });
+  log('pflanzen_dreiecke', await page.evaluate(() => {
+    const G = P.g(), V = P.v();
+    const isl = [...G.islands].sort((a, b) => b.land - a.land)[0];
+    let fx = Math.floor(isl.cx), fz = Math.floor(isl.cy), bd = 1e9;
+    for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) {
+      if (G.tiles[G.idx(x, y)] !== 3) continue;
+      const d = Math.hypot(x - isl.cx, y - isl.cy); if (d < bd) { bd = d; fx = x; fz = y; }
+    }
+    const res = { wald: [fx, fz] };
+    for (const d of [8, 30, 70, 110]) {
+      P.lookAt(fx, fz, d); P.run(3, { sync: false });
+      const tris = () => { P.run(1, { sync: false }); return V.renderer.info.render.triangles; };
+      const all = P.run(1), vg = V.veg.group, tg = V.terrain.group;
+      vg.visible = false; const noVeg = tris(); vg.visible = true;
+      tg.visible = false; const noTer = tris(); tg.visible = true;
+      const t = P.run(6);
+      res['zoom' + d] = { aufrufe: all.calls, dreiecke: all.tris, pflanzen: all.tris - noVeg, gelaende: all.tris - noTer, bildMs: t.frameMs.p50 + t.finishMs.p50 };
+    }
+    return res;
+  }));
+  log('pflanzen_bauen_ms', await page.evaluate(() => {
+    const G = P.g(), V = P.v();
+    const med = (a) => { const s = [...a].sort((x, y) => x - y); return +s[Math.floor(s.length / 2)].toFixed(2); };
+    // Kontor auf der größten Insel, dann im Wald bauen (Haus, Holzfäller) und Wege durch den Wald legen
+    const isl = [...G.islands].sort((a, b) => b.land - a.land)[0];
+    G.players[0].money = 1e7;
+    for (const t of ['haus', 'holzfaeller', 'markt', 'kontor']) G.unlocked.add(t);
+    let k = null;
+    const ship = G.ships.find((s) => s.owner === 0);
+    for (let y = isl.y0; y <= isl.y1 && !k; y++) for (let x = isl.x0; x <= isl.x1 && !k; x++) {
+      if (!G.canPlace('kontor', x, y, 0, true).ok) continue;
+      for (const [rx, ry] of G.ring({ type: 'kontor', x, y })) if (G.inMap(rx, ry) && G.tiles[G.idx(rx, ry)] === 0) { ship.x = rx + 0.5; ship.y = ry + 0.5; break; }
+      if (G.place('kontor', x, y, 0)?.ok) k = G.kontor(0, isl.id);
+    }
+    if (!k) return { fehler: 'kein Kontor' };
+    const l = G.lagerOf(0, isl.id); if (l) for (const g of Object.keys(l)) l[g] = 999;
+    P.run(2, { sync: false });
+    const bau = [], weg = [], seen = [];
+    for (let y = isl.y0; y <= isl.y1 && bau.length < 10; y++) for (let x = isl.x0; x <= isl.x1 && bau.length < 10; x++) {
+      const i = G.idx(x, y);
+      if (G.own[i] !== 0 || G.tiles[i] !== 3) continue;
+      const type = bau.length % 2 ? 'holzfaeller' : 'haus';
+      if (!G.canPlace(type, x, y, 0).ok) continue;
+      const t0 = performance.now();
+      if (!G.place(type, x, y, 0)?.ok) continue;
+      V.flushChanges?.();
+      bau.push(performance.now() - t0);
+    }
+    for (let y = isl.y0; y <= isl.y1 && weg.length < 10; y++) for (let x = isl.x0; x <= isl.x1 && weg.length < 10; x++) {
+      const i = G.idx(x, y);
+      if (G.own[i] !== 0 || G.tiles[i] !== 3 || G.occ[i] || G.roads[i]) continue;
+      const t0 = performance.now();
+      G.placeRoads([[x, y]], 0);
+      V.flushChanges?.();
+      if (G.roads[i]) weg.push(performance.now() - t0);
+    }
+    // entdecken: jeweils ein Feld wieder verdecken und neu aufdecken (wie ein fahrendes Schiff)
+    for (let n = 0; n < 10; n++) {
+      const i = G.idx(Math.floor(isl.cx) + n, isl.y0 - 3);
+      G.seen[i] = 0; V.onSeen(); V.flushChanges?.();
+      const t0 = performance.now(); G.seen[i] = 1; G.ev.seen(); V.flushChanges?.(); seen.push(performance.now() - t0);
+    }
+    return { bauImWald: { n: bau.length, median: med(bau), max: +Math.max(...bau).toFixed(2) }, wegImWald: { n: weg.length, median: med(weg) }, entdecken: { median: med(seen) }, letzterAbgleichMs: +(V.lastFlushMs ?? 0).toFixed(2) };
+  }));
   await ctx.close();
 }
 
