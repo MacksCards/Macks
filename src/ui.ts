@@ -2,7 +2,7 @@
 import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, SHIPS, ShipType, TIERS, UNITS, UnitType } from './data';
 import {
   armShip, atWar, buyProtection, canTrain, declareWar, disarmShip, makePeace, orderAttack, orderBoard, orderMove,
-  peacePrice, pirates, protectionPrice, restart, shipAttack, strength, train, unloadTroops,
+  defenseAdvice, peacePrice, pirates, protectionPrice, restart, shipAttack, strength, train, unloadTroops,
 } from './combat';
 import { Building, Game, HUMAN, QUESTS, Ship, ShotKind, Unit, newSeed } from './game';
 import { PFLANZEN, Pflanze, depositText } from './world';
@@ -970,7 +970,12 @@ export class UI {
     const box = $('#toasts');
     const t = el('div', `toast ${kind}`, text);
     box.appendChild(t);
-    while (box.children.length > 3) box.firstChild!.remove();
+    // höchstens 3 Meldungen; wichtige (Warnungen, Krieg) bleiben am längsten stehen
+    t.dataset.important = /^(⚠️|⚔️ .* erklärt dir|🚩|🏴‍☠️)|verloren/.test(text) ? '1' : '';
+    while (box.children.length > 3) {
+      const kids = Array.from(box.children) as HTMLElement[];
+      (kids.find((c) => !c.dataset.important && c !== t) ?? kids[0]).remove();
+    }
     // wichtige oder lange Meldungen länger zeigen
     const ms = /^(⚠️|⚔️ .* erklärt dir|🚩|🏴‍☠️)|verloren/.test(text) ? 7500 : Math.min(6000, 2600 + Math.max(0, text.length - 40) * 45);
     setTimeout(() => t.classList.add('out'), ms);
@@ -1045,7 +1050,7 @@ export class UI {
       const war = atWar(g, HUMAN, p.id);
       const col = '#' + p.color.toString(16).padStart(6, '0');
       h += `<div class="row"><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col}"></i> ${p.name}${p.defeated ? ' – besiegt' : ''}</span><b>${p.defeated ? '🏳️' : war ? '⚔️ Krieg' : '🕊️ Frieden'}</b></div>`;
-      if (!war && !p.defeated && p.warnAt !== undefined) h += `<p class="sub">⚠️ Rüstet zum Krieg – noch ${Math.max(1, Math.ceil((p.warnAt - g.time) / 60))} Min. Burg, Soldaten, Türme und Kriegsschiffe schützen dich.</p>`;
+      if (!war && !p.defeated && p.warnAt !== undefined) h += `<p class="sub">⚠️ Rüstet zum Krieg – noch ${Math.max(1, Math.ceil((p.warnAt - g.time) / 60))} Min. ${defenseAdvice(g)}</p>`;
       if (p.defeated) continue;
       h += `<p class="sub">Streitmacht: ${strength(g, p.id)}</p>`;
       if (war) {

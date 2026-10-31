@@ -103,6 +103,16 @@ export function buyProtection(g: Game): Check {
   return { ok: true };
 }
 
+/** Was den Spieler gerade schützen kann (nur Freigeschaltetes) */
+export function defenseAdvice(g: Game): string {
+  const parts: string[] = [];
+  if (g.isUnlocked('burg')) parts.push('Burg und Soldaten');
+  if (g.isUnlocked('wachturm') || g.isUnlocked('holzturm')) parts.push('Wachtürme');
+  if (g.isUnlocked('werft')) parts.push('Kriegsschiffe');
+  const peace = 'Nach einer Kriegserklärung kannst du im Menü ☰ Frieden anbieten';
+  return parts.length ? `${parts.join(', ').replace(/, ([^,]*)$/, ' und $1')} schützen dich. ${peace}.` : `${peace}.`;
+}
+
 // ---------- Ziele ----------
 
 export function resolve(g: Game, id: number): Target | undefined {
@@ -162,9 +172,9 @@ function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: n
       s.hp = Math.max(s.hp, 5);
       const loot = s.slots.reduce((n, sl) => n + sl.n, 0);
       for (const sl of s.slots) { sl.g = null; sl.n = 0; }
-      s.safeUntil = g.time + 600;
+      s.safeUntil = g.time + (loot ? 600 : 1800);
       for (const p of g.ships) if (p.owner === from && p.target === s.id) { p.target = undefined; S.shipChase.delete(p.id); sailAway(g, p); }
-      if (s.owner === HUMAN) g.ev.message(`🏴‍☠️ Piraten haben die ${s.name} überfallen${loot ? ` und ${loot} t Ladung geraubt` : ''}! Kriegsschiffe, Wachtürme oder Schutz (Menü ☰) helfen.`, 'bad');
+      if (s.owner === HUMAN && loot) g.ev.message(`🏴‍☠️ Piraten haben die ${s.name} überfallen${loot ? ` und ${loot} t Ladung geraubt` : ''}! Kriegsschiffe, Wachtürme oder Schutz (Menü ☰) helfen.`, 'bad');
       return;
     }
     if (s.hp <= 0) sinkShip(g, s, from);
@@ -281,6 +291,7 @@ function checkDefeat(g: Game, owner: number, by: number) {
   if (!p || p.pirate || p.defeated) return;
   if (g.buildings.some((b) => b.owner === owner) || g.ships.some((s) => s.owner === owner)) return;
   p.defeated = true;
+  p.warnAt = undefined;
   for (const u of g.units.filter((x) => x.owner === owner)) killUnit(g, u);
   for (const q of g.players) q.war = (q.war ?? []).filter((x) => x !== owner);
   if (owner === HUMAN) { g.ev.message('🏳️ Du hast alles verloren.', 'bad'); return; }
@@ -731,7 +742,7 @@ function tickAIMilitary(g: Game) {
   for (const p of g.players) {
     if (!p.ai || p.defeated) continue;
     const k = g.kontor(p.id);
-    if (!k) continue;
+    if (!k) { p.warnAt = undefined; continue; }
     const pop = g.buildings.reduce((n, b) => n + (b.owner === p.id && b.type === 'haus' ? b.residents : 0), 0);
     const mine = g.units.filter((u) => u.owner === p.id);
     const war = atWar(g, p.id, HUMAN);
@@ -762,22 +773,21 @@ function tickAIMilitary(g: Game) {
     // Krieg erklären: erst nach einer Weile, wenn deutlich stärker
     // erst, wenn sich der Spieler wehren kann (Burg/Türme ab 200 Siedlern) oder sehr spät
     const canDefend = g.players[HUMAN].defendAt;
-    const ready = !war && g.time > 2400 && ((canDefend !== undefined && g.time - canDefend > 900) || g.time > 5400)
+    const ready = !war && g.time > 2400 && g.time > (g.players[HUMAN].graceUntil ?? 0) && ((canDefend !== undefined && g.time - canDefend > 900) || g.time > 5400)
       && g.time - (p.peaceAt?.[HUMAN] ?? -9999) > 900 && strength(g, p.id) > strength(g, HUMAN) * 1.2 + 3;
     if (!ready) {
       // Lage hat sich geändert: Vorwarnung verfällt
-      if (p.warnAt !== undefined && !war) g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good');
+      if (p.warnAt !== undefined && !war) { g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good'); p.calmUntil = g.time + 300; }
       p.warnAt = undefined;
     } else if (p.warnAt !== undefined) {
       if (g.time >= p.warnAt) { p.warnAt = undefined; declareWar(g, p.id, HUMAN); }
     } else {
       // nie zwei Vorwarnungen gleichzeitig und frühestens 10 Minuten nach der letzten Kriegserklärung
-      const busy = g.players.some((o) => o.ai && o !== p && o.warnAt !== undefined) || g.time - (g.players[HUMAN].lastWarAt ?? -9999) < 600;
+      const busy = g.players.some((o) => o.ai && o !== p && o.warnAt !== undefined) || g.time - (g.players[HUMAN].lastWarAt ?? -9999) < 600 || g.time < (p.calmUntil ?? 0);
       if (!busy && Math.random() < 0.04) {
         // erst eine Vorwarnung, drei Minuten später der Krieg
         p.warnAt = g.time + 180;
-        const help = g.isUnlocked('burg') ? 'Burg, Soldaten und Wachtürme schützen dich' : 'Kriegsschiffe schützen dich – oder biete im Menü ☰ Frieden an';
-        g.ev.message(`⚠️ ${p.name} rüstet zum Krieg gegen dich! ${help}.`, 'bad');
+        g.ev.message(`⚠️ ${p.name} rüstet zum Krieg gegen dich! ${defenseAdvice(g)}`, 'bad');
       }
     }
     // Soldaten, die noch an Bord sitzen (z. B. nach dem Laden eines Spielstands): heimfahren und absetzen
@@ -907,6 +917,9 @@ function rescue(g: Game) {
 export function restart(g: Game) {
   const me = g.players[HUMAN];
   me.defeated = false;
+  // Neubeginn: 40 Minuten Ruhe vor Kriegen, Schutzfrist für das Wehren beginnt neu
+  me.defendAt = undefined;
+  me.graceUntil = g.time + 2400;
   for (const p of g.players) if (p.id !== HUMAN && !p.pirate) { makePeace(g, HUMAN, p.id); p.warnAt = undefined; }
   me.protectedUntil = g.time + 1200;
   st(g).rescueT = 0;

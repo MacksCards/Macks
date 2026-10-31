@@ -146,6 +146,10 @@ export interface Player {
   lastWarAt?: number;
   /** Ruhe vor Piraten je Insel bis zu dieser Zeit */
   restAt?: Record<number, number>;
+  /** Spieler: bis dahin keine Kriegserklärungen (nach einem Neubeginn) */
+  graceUntil?: number;
+  /** KI: nach dem Abrüsten bis dahin keine neue Vorwarnung */
+  calmUntil?: number;
 }
 
 type Goods = Record<GoodId, number>;
