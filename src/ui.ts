@@ -895,6 +895,9 @@ export class UI {
     for (const k of ['holz', 'werkzeug', 'nahrung'] as GoodId[]) relevant.add(k);
     // Waffen, sobald man Soldaten ausbilden kann
     if (g.isUnlocked('burg')) for (const [, ud] of Object.entries(UNITS)) if (g.reached(ud.unlock)) for (const k of Object.keys(ud.cost)) relevant.add(k as GoodId);
+    // Baustoffe freigeschalteter Gebäude (z. B. Kanonen für Wachtürme) und Kanonen für Schiffe, sobald es eine Werft gibt
+    for (const d of Object.values(BUILDINGS)) if (d.category && g.isUnlocked(d.id)) for (const k of Object.keys(d.cost)) if (k !== 'taler') relevant.add(k as GoodId);
+    if (g.isUnlocked('werft')) relevant.add('kanonen');
     for (const d of Object.values(BUILDINGS)) {
       if (!d.prod || !g.isUnlocked(d.id) || !d.category) continue;
       relevant.add(d.prod.output);
@@ -1030,7 +1033,7 @@ export class UI {
       h += `<p class="sub">Streitmacht: ${strength(g, p.id)}</p>`;
       if (war) {
         const price = peacePrice(g, p.id);
-        h += `<button class="btn wide ok" data-peace="${p.id}">🕊️ Frieden anbieten${price ? ` (💰${price} Entschädigung)` : ' – er nimmt an'}</button>`;
+        h += `<button class="btn wide ok" data-peace="${p.id}">🕊️ Frieden anbieten${price ? ` (💰${price} Entschädigung)` : ' – wird angenommen'}</button>`;
       } else h += `<button class="btn wide danger" data-war="${p.id}">⚔️ Krieg erklären</button>`;
     }
     const pir = pirates(g);

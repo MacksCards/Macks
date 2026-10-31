@@ -151,7 +151,7 @@ body.paused .top { border-bottom-color: var(--gold); }
   position: absolute; top: calc(56px + var(--in-t)); left: 50%; transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none !important; width: 90%;
 }
-.info-open .toasts { left: calc((100% - 290px) / 2); width: calc(100% - 300px); }
+.info-open .toasts { left: calc(76px + (100% - 290px - 76px) / 2); width: calc(100% - 380px); }
 .toast {
   background: rgba(43, 33, 24, .95); border: 1px solid var(--rand); border-radius: 8px; padding: 6px 12px;
   font-size: 14px; text-align: center; transition: opacity .4s; width: max-content; max-width: min(480px, 90vw);

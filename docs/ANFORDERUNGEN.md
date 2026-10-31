@@ -47,7 +47,7 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - K4 Schiffe: Kanonen am Kontor laden (bis 6/8/10/14 je Schiffstyp), Seeschlachten, Versenken, Ausbessern an der Werft, Soldaten übersetzen und an Land setzen.
 - K5 Eroberung: Fällt Kontor oder Marktplatz, während eigene Soldaten danebenstehen, wechseln es und alle Gebäude im Gebiet den Besitzer; sonst wird es zerstört. Gegner ohne Gebäude und Schiffe ist besiegt → ein Triumphbogen je Sieg, jeder erlaubt ein Schiff mehr.
 - K6 Krieg & Frieden mit jedem Konkurrenten (Krieg erklären, Frieden gegen Entschädigung); Angriff im Frieden nur nach Rückfrage. Die KI wirbt Soldaten an, erklärt Krieg, wenn sie deutlich stärker ist (mit Vorwarnung drei Minuten vorher; frühestens nach 40 Minuten und 15 Minuten, nachdem der Spieler Burg/Türme bauen kann, spätestens ab 90 Minuten), schickt Kriegsschiffe und landet Truppen.
-- K7 Piraten: tauchen nach ca. 30 Minuten auf, überfallen Schiffe (Handelsschiffe werden ausgeraubt, Kriegsschiffe bekämpft; danach 10 Minuten Ruhe), beschießen ungeschützte Küsten erst ab ca. 50 Minuten und 15 Minuten nach Freischaltung der Wachtürme; Kontore werden geplündert, nicht zerstört; ohne Kontor und ohne Material für ein Kontor kommt ein neues Schiff mit Startladung; Schutz kaufen möglich; drei versenkte Piratenschiffe → Triumphbogen.
+- K7 Piraten: tauchen nach ca. 30 Minuten auf, überfallen Schiffe (Handelsschiffe werden ausgeraubt, Kriegsschiffe bekämpft; danach 10 Minuten Ruhe), beschießen ungeschützte Küsten erst ab ca. 50 Minuten und 15 Minuten nach Freischaltung der Wachtürme; Kontore werden geplündert, nicht zerstört; nach jedem Küstenüberfall hat die ganze Insel 10 Minuten Ruhe; ohne Kontor und ohne Material für ein Kontor kommt ein neues Schiff mit Startladung; Schutz kaufen möglich; drei versenkte Piratenschiffe → Triumphbogen.
 - K8 Sichtbar und hörbar: Lebensbalken, Mündungsfeuer, Kanonenkugeln, Rauch, brennende Gebäude, sinkende Schiffe; Klänge für Schwerter, Musketen, Kanonen, Sturmglocke.
 
 ## Bevölkerung
@@ -72,4 +72,4 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 
 ## Später (fest eingeplant, siehe docs/OFFEN.md)
 - Händlerschiff, Ureinwohner, Handelsrouten, Steuersatz.
-- Feuer, Pest, Feuerwehr, Arzt, Galgen; Prestigebauten (Palast, Kathedrale, Denkmal, Triumphbogen).
+- Feuer, Pest, Feuerwehr, Arzt, Galgen; Prestigebauten (Palast, Kathedrale, Denkmal).

@@ -138,6 +138,10 @@ export interface Player {
   protectedUntil?: number;
   /** Zeitpunkt des letzten Friedensschlusses je Gegner */
   peaceAt?: Record<number, number>;
+  /** seit dieser Spielzeit kann sich der Spieler wehren (200 Siedler) */
+  defendAt?: number;
+  /** KI: Kriegserklärung zu diesem Zeitpunkt (vorher gewarnt) */
+  warnAt?: number;
 }
 
 type Goods = Record<GoodId, number>;
