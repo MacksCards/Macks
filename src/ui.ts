@@ -59,7 +59,8 @@ export class UI {
     this.buildDom();
     new Input($('#c'), view, {
       tap: (x, y) => this.tap(x, y),
-      wantsPaint: () => this.mode.kind === 'road',
+      // Wege werden per Tippen gebaut (Start, Ziel, ✓) – ein Finger verschiebt immer nur die Karte
+      wantsPaint: () => false,
       paintStart: (x, y) => this.roadStartAt(x, y),
       paintMove: (x, y) => this.roadMoveTo(x, y),
       paintEnd: (cancel) => this.roadEnd(cancel),
@@ -174,7 +175,7 @@ export class UI {
       <button id="hintOk" class="btn ok">✓ Bauen</button><button id="hintX" class="btn">✕</button>`);
     hint.id = 'hint';
     hud.appendChild(hint);
-    $('#hintOk').addEventListener('click', () => this.confirmBuild());
+    $('#hintOk').addEventListener('click', () => { if (this.mode.kind === 'road') this.confirmRoad(); else this.confirmBuild(); });
     $('#hintX').addEventListener('click', () => this.setMode({ kind: 'none' }));
 
     hud.appendChild(el('div', 'toasts', '')).id = 'toasts';
@@ -187,6 +188,8 @@ export class UI {
 
   setMode(m: Mode) {
     this.mode = m;
+    this.roadStart = null;
+    this.roadCells = [];
     this.view.setGhost(null);
     this.view.setRoadPreview([], []);
     const building = m.kind !== 'none';
@@ -196,7 +199,7 @@ export class UI {
     const hint = $('#hint');
     hint.classList.toggle('hidden', !building);
     $('#quest').classList.toggle('hidden', building);
-    $('#hintOk').classList.toggle('hidden', m.kind !== 'build');
+    $('#hintOk').classList.toggle('hidden', m.kind !== 'build' && m.kind !== 'road');
     this.updateHint();
   }
 
@@ -225,7 +228,16 @@ export class UI {
       ($('#hintOk') as HTMLButtonElement).disabled = !(m.has && chk.ok);
     } else if (m.kind === 'road') {
       const d = BUILDINGS[m.type];
-      t.innerHTML = `<b>${d.icon} ${d.name}</b> <span class="cost">${costText(d.cost)} je Feld</span><br><small>Mit dem Finger ziehen, um zu bauen${m.type === 'steinweg' ? ' (Feldwege werden dabei gepflastert)' : ''}. Zwei Finger bewegen die Karte.</small>`;
+      const n = this.roadCells.length;
+      const ok = n > 0 && this.roadEndSet;
+      const build = ok ? this.roadBuildable() : 0;
+      const msg = !this.roadStart ? 'Tippe auf das Feld, wo der Weg beginnen soll.'
+        : !ok ? 'Tippe jetzt auf das Ziel. Die Karte kannst du dabei mit dem Finger verschieben.'
+        : build ? `${build} Felder – ✓ zum Bauen (oder nochmal aufs Ziel tippen). Anderes Ziel antippen ändert den Weg.`
+        : 'Hier kann kein Weg gebaut werden – tippe ein anderes Ziel an.';
+      const total = build ? ` · zusammen ${costText(Object.fromEntries(Object.entries(d.cost).map(([k, v]) => [k, (v ?? 0) * build])))}` : '';
+      t.innerHTML = `<b>${d.icon} ${d.name}</b> <span class="cost">${costText(d.cost)} je Feld${total}</span><br><small>${msg}${m.type === 'steinweg' && !this.roadStart ? ' Feldwege werden dabei gepflastert.' : ''}</small>`;
+      ($('#hintOk') as HTMLButtonElement).disabled = !build;
     } else if (m.kind === 'demolish') {
       t.innerHTML = `<b>💥 Abreißen</b><br><small>Tippe auf ein Gebäude oder einen Weg. Du bekommst die Hälfte des Materials zurück.</small>`;
     }
@@ -293,6 +305,7 @@ export class UI {
       this.updateHint();
       return;
     }
+    if (m.kind === 'road') { this.roadTap(x, y); return; }
     if (m.kind === 'demolish') {
       const t = this.view.pick(x, y, true);
       if (!t) return;
@@ -452,26 +465,76 @@ export class UI {
 
   // ---------- Wege ziehen ----------
 
-  private roadStartAt(x: number, y: number) {
-    this.roadStart = this.view.pick(x, y, false);
-    this.roadCells = this.roadStart ? [this.roadStart] : [];
-    this.previewRoad();
-  }
+  private roadEndSet = false;
 
-  private roadMoveTo(x: number, y: number) {
-    if (!this.roadStart) { this.roadStartAt(x, y); return; }
+  /** Wege per Tippen: erstes Tippen = Start, zweites = Ziel (Vorschau), nochmal Ziel oder ✓ = bauen */
+  private roadTap(x: number, y: number) {
     const t = this.view.pick(x, y, false);
     if (!t) return;
-    const [x0, y0] = this.roadStart;
+    if (!this.roadStart) {
+      this.roadStart = t;
+      this.roadCells = [t];
+      this.roadEndSet = false;
+      sound.play('klick');
+    } else {
+      const end = this.roadCells[this.roadCells.length - 1];
+      if (this.roadEndSet && end && end[0] === t[0] && end[1] === t[1]) { this.confirmRoad(); return; }
+      this.roadTo(t);
+      this.roadEndSet = true;
+      sound.play('weg');
+    }
+    this.previewRoad();
+    this.updateHint();
+  }
+
+  /** Weg vom Start zum Ziel: um Wasser und Gebäude herum, möglichst gerade (wenige Ecken). Ohne Durchgang: L-Form */
+  private roadTo(t: [number, number]) {
+    const g = this.g, N = g.size;
+    const [x0, y0] = this.roadStart!;
     const [x1, y1] = t;
+    const type = this.mode.kind === 'road' ? this.mode.type : 'weg';
+    const road = type === 'weg' || type === 'steinweg';
+    const pass = (x: number, y: number) => g.inMap(x, y) && (g.roads[g.idx(x, y)] > 0 || (road ? g.canRoad(x, y, HUMAN, type).ok : g.canPlace(type, x, y).ok));
+    const pad = 12;
+    const bx0 = Math.max(0, Math.min(x0, x1) - pad), by0 = Math.max(0, Math.min(y0, y1) - pad);
+    const bx1 = Math.min(N - 1, Math.max(x0, x1) + pad), by1 = Math.min(N - 1, Math.max(y0, y1) + pad);
+    const W = bx1 - bx0 + 1, H = by1 - by0 + 1;
+    const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    // Zustand = Feld × Richtung; Ecken kosten etwas mehr, damit der Weg gerade bleibt
+    const cost = new Float64Array(W * H * 4).fill(Infinity);
+    const from = new Int32Array(W * H * 4).fill(-1);
+    const id = (x: number, y: number, d: number) => ((y - by0) * W + (x - bx0)) * 4 + d;
+    const open: [number, number][] = [];
+    const push = (st: number, c: number) => { open.push([st, c]); };
+    if (pass(x0, y0) || g.roads[g.idx(x0, y0)]) for (let d = 0; d < 4; d++) { cost[id(x0, y0, d)] = 0; push(id(x0, y0, d), 0); }
+    let goal = -1;
+    let guard = 0;
+    while (open.length && guard++ < 60000) {
+      // kleinste Kosten zuerst (einfach, Suchraum ist klein)
+      let bi = 0; for (let i = 1; i < open.length; i++) if (open[i][1] < open[bi][1]) bi = i;
+      const [st, c] = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+      if (c > cost[st]) continue;
+      const d = st % 4, cell = (st - d) / 4, x = cell % W + bx0, y = Math.floor(cell / W) + by0;
+      if (x === x1 && y === y1) { goal = st; break; }
+      for (let nd = 0; nd < 4; nd++) {
+        const nx = x + DIRS[nd][0], ny = y + DIRS[nd][1];
+        if (nx < bx0 || ny < by0 || nx > bx1 || ny > by1) continue;
+        if (!pass(nx, ny) && !(nx === x1 && ny === y1)) continue;
+        const nc = c + 1 + (nd !== d ? 0.6 : 0) + (g.roads[g.idx(nx, ny)] ? -0.3 : 0);
+        const ns = id(nx, ny, nd);
+        if (nc < cost[ns]) { cost[ns] = nc; from[ns] = st; push(ns, nc); }
+      }
+    }
+    if (goal >= 0) {
+      const cells: [number, number][] = [];
+      for (let st = goal; st >= 0; st = from[st]) { const cell = (st - (st % 4)) / 4; cells.push([cell % W + bx0, Math.floor(cell / W) + by0]); }
+      cells.reverse();
+      this.roadCells = cells.slice(0, 200);
+      return;
+    }
+    // kein Durchgang gefunden: L-Form (rote Felder zeigen, wo es nicht geht)
     const cells: [number, number][] = [];
-    // L-Form: zuerst die längere Richtung
-    const line = (a: number, b: number) => {
-      const out: number[] = [];
-      const st = Math.sign(b - a);
-      for (let v = a; ; v += st) { out.push(v); if (v === b) break; }
-      return out;
-    };
+    const line = (a: number, b: number) => { const out: number[] = []; const st = Math.sign(b - a); for (let v = a; ; v += st) { out.push(v); if (v === b) break; } return out; };
     if (Math.abs(x1 - x0) >= Math.abs(y1 - y0)) {
       for (const xx of line(x0, x1)) cells.push([xx, y0]);
       for (const yy of line(y0, y1).slice(1)) cells.push([x1, yy]);
@@ -479,10 +542,35 @@ export class UI {
       for (const yy of line(y0, y1)) cells.push([x0, yy]);
       for (const xx of line(x0, x1).slice(1)) cells.push([xx, y1]);
     }
-    if (cells.length !== this.roadCells.length) sound.play('weg');
     this.roadCells = cells.slice(0, 200);
-    this.previewRoad();
   }
+
+  /** wie viele Felder der Vorschau wirklich neu gebaut würden */
+  private roadBuildable(): number {
+    const type = this.mode.kind === 'road' ? this.mode.type : 'weg';
+    const road = type === 'weg' || type === 'steinweg';
+    return this.roadCells.filter(([x, y]) => road ? this.g.canRoad(x, y, HUMAN, type).ok : this.g.canPlace(type, x, y).ok).length;
+  }
+
+  /** Vorschau bauen; danach geht es vom Ziel aus weiter */
+  private confirmRoad() {
+    if (this.mode.kind !== 'road' || !this.roadEndSet || !this.roadCells.length) return;
+    const type = this.mode.type;
+    const end = this.roadCells[this.roadCells.length - 1];
+    const n = type === 'weg' || type === 'steinweg' ? this.g.placeRoads(this.roadCells, HUMAN, type) : this.g.placeMany(type, this.roadCells);
+    if (n) { sound.play(type === 'weg' || type === 'steinweg' ? 'weg' : 'bauen'); this.toast(`${n} ${type === 'weg' || type === 'steinweg' ? 'Wegfelder' : 'Felder'} gebaut`, 'info'); }
+    else this.toast('Nichts gebaut – zu wenig Material oder kein Platz', 'bad');
+    // weiterbauen: das Ziel ist der neue Start
+    this.roadStart = end;
+    this.roadCells = [end];
+    this.roadEndSet = false;
+    this.previewRoad();
+    this.updateHint();
+  }
+
+  private roadStartAt(x: number, y: number) { this.roadTap(x, y); }
+  private roadMoveTo(_x: number, _y: number) { /* Wege werden nicht mehr gezogen */ }
+  private roadEnd(_cancel: boolean) { /* siehe confirmRoad */ }
 
   private previewRoad() {
     const type = this.mode.kind === 'road' ? this.mode.type : 'weg';
@@ -490,18 +578,6 @@ export class UI {
       ? this.g.canRoad(x, y, HUMAN, type).ok || this.g.roads[this.g.idx(x, y)] === (type === 'steinweg' ? 2 : 1)
       : this.g.canPlace(type, x, y).ok);
     this.view.setRoadPreview(this.roadCells, ok);
-  }
-
-  private roadEnd(cancel: boolean) {
-    if (!cancel && this.roadCells.length) {
-      const type = this.mode.kind === 'road' ? this.mode.type : 'weg';
-      const n = type === 'weg' || type === 'steinweg' ? this.g.placeRoads(this.roadCells, HUMAN, type) : this.g.placeMany(type, this.roadCells);
-      if (n > 1) this.toast(`${n} Wegfelder gebaut`, 'info');
-      if (n) sound.play(type === 'weg' || type === 'steinweg' ? 'weg' : 'bauen');
-    }
-    this.roadStart = null;
-    this.roadCells = [];
-    this.view.setRoadPreview([], []);
   }
 
   // ---------- Info-Fenster ----------

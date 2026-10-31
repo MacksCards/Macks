@@ -382,23 +382,26 @@ export class UnitLayer {
     const far = cam ? Math.max(40, cam.dist * 2.2) : 1e9;
     for (const u of g.units) {
       alive.add(u.id);
+      // flüssige Position zwischen den Rechenschritten
+      const [ux, uy] = g.ip(u), udir = g.ipDir(u);
       let tr = this.track.get(u.id);
-      if (!tr) { tr = { x: u.x, y: u.y, ph: Math.random() * 6, mv: 0 }; this.track.set(u.id, tr); }
-      const moved = Math.hypot(u.x - tr.x, u.y - tr.y);
-      tr.x = u.x; tr.y = u.y;
-      const moving = moved > 0.0005 && dt > 0;
+      if (!tr) { tr = { x: ux, y: uy, ph: Math.random() * 6, mv: 0 }; this.track.set(u.id, tr); }
+      const moved = Math.hypot(ux - tr.x, uy - tr.y);
+      tr.x = ux; tr.y = uy;
+      // Beine bewegen sich, solange der Soldat einen Weg hat (nicht nur bei Positionsänderung im Bild)
+      const moving = dt > 0 && (moved > 0.0005 || u.path.length > 0);
       tr.mv += ((moving ? 1 : 0) - tr.mv) * Math.min(1, dt * 8);
       tr.ph += moved * (u.type === 'reiter' ? 7 : 13);
       if (!this.visible(u)) continue;
-      if (cam && Math.abs(u.x - cam.x) > far && Math.abs(u.y - cam.z) > far) continue;
+      if (cam && Math.abs(ux - cam.x) > far && Math.abs(uy - cam.z) > far) continue;
       const k = this.kinds.get(u.type);
       if (!k) continue;
       const i = counts.get(u.type) ?? 0;
       if (i >= MAX) continue;
       counts.set(u.type, i + 1);
-      const gy = Math.max(0.02, this.height(u.x, u.y));
+      const gy = Math.max(0.02, this.height(ux, uy));
       const bob = Math.abs(Math.sin(tr.ph)) * 0.025 * tr.mv * (u.type === 'reiter' ? 2 : 1);
-      tm.base.compose(tm.v.set(u.x, gy + bob, u.y), tm.q.setFromAxisAngle(tm.s.set(0, 1, 0), u.dir), tm.s.set(S, S, S));
+      tm.base.compose(tm.v.set(ux, gy + bob, uy), tm.q.setFromAxisAngle(tm.s.set(0, 1, 0), udir), tm.s.set(S, S, S));
       const atk = u.atk !== undefined ? g.time - u.atk : 99;
       const color = g.players[u.owner]?.color ?? 0xffffff;
       k.def.parts.forEach((p, pi) => {
@@ -415,10 +418,10 @@ export class UnitLayer {
       });
       if (this.selected.has(u.id) && rings < MAX) {
         const r = k.def.ring * S * 1.6;
-        tm.part.compose(tm.v.set(u.x, gy + 0.04, u.y), tm.q.identity(), tm.s.set(r, 1, r));
+        tm.part.compose(tm.v.set(ux, gy + 0.04, uy), tm.q.identity(), tm.s.set(r, 1, r));
         this.rings.setMatrixAt(rings++, tm.part);
       }
-      this.shown.push({ u, x: u.x, y: gy, z: u.y, top: gy + k.def.bar * S });
+      this.shown.push({ u, x: ux, y: gy, z: uy, top: gy + k.def.bar * S });
     }
     for (const [t2, k] of this.kinds) {
       const n = counts.get(t2) ?? 0;

@@ -17,6 +17,9 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - B5 Abreißen ist möglich, mit teilweiser Rückerstattung.
 - B6 Bedienelemente groß genug für Finger (mind. ~40 px), Notch/Rundungen werden berücksichtigt.
 
+- B-Touch: Wege und Mauern werden per Tippen gebaut (Start, Ziel, Vorschau mit Kosten, ✓); der Weg führt selbst um Wasser und Gebäude herum. Ein Finger verschiebt immer nur die Karte, zwei Finger zoomen/drehen – dabei wird nie gebaut.
+- B-Flüssig: Schiffe, Soldaten und Karren werden zwischen den Rechenschritten flüssig dargestellt; Tiere laufen, bleiben stehen und grasen; Figuren rutschen nicht.
+
 ## Zeit & Speichern
 - C1 Echtzeit mit Pause und Tempo 1x / 2x / 4x.
 - C2 Automatisches Speichern (regelmäßig und beim Verlassen). Beim Öffnen geht es exakt dort weiter.

@@ -191,6 +191,7 @@ export class ShipLayer {
       const v = this.view(s);
       if (v.sink !== undefined) continue;
       const visible = s.owner === 0 || this.g.seen[this.g.idx(Math.floor(s.x), Math.floor(s.y))] === 1;
+      const [sx, sy] = this.g.ip(s), sdir = this.g.ipDir(s);
       v.mesh.visible = visible;
       const large = this.isLarge(s);
       const scale = large ? 1.6 : 1.3;
@@ -198,19 +199,19 @@ export class ShipLayer {
       const frac = s.hp === undefined ? 1 : Math.max(0, s.hp / max);
       v.hpFrac = frac;
       const bob = Math.sin(t * 1.6 + s.id) * 0.03;
-      v.mesh.position.set(s.x, 0.08 + bob - (1 - frac) * 0.06, s.y);
+      v.mesh.position.set(sx, 0.08 + bob - (1 - frac) * 0.06, sy);
       v.mesh.scale.setScalar(scale);
       // beschädigt: Schlagseite
-      v.mesh.rotation.set(Math.sin(t * 1.3 + s.id) * 0.04, s.dir, Math.cos(t * 1.1 + s.id) * 0.05 + (1 - frac) * 0.12);
+      v.mesh.rotation.set(Math.sin(t * 1.3 + s.id) * 0.04, sdir, Math.cos(t * 1.1 + s.id) * 0.05 + (1 - frac) * 0.12);
       v.guns.visible = (s.guns ?? 0) > 0;
       // Fahne flattert
       v.flag.rotation.y = Math.sin(t * 5 + s.id) * 0.12;
       v.ring.visible = this.selected === s.id;
-      v.ring.position.set(s.x, 0.06, s.y);
+      v.ring.position.set(sx, 0.06, sy);
       v.wake.visible = visible && s.path.length > 0;
-      v.wake.position.set(s.x, 0.04, s.y);
-      v.wake.rotation.y = s.dir;
-      if (visible) this.shown.push({ s, x: s.x, z: s.y, frac, scale });
+      v.wake.position.set(sx, 0.04, sy);
+      v.wake.rotation.y = sdir;
+      if (visible) this.shown.push({ s, x: sx, z: sy, frac, scale });
     }
     for (const [id, v] of this.views) {
       if (alive.has(id) && v.sink === undefined) continue;

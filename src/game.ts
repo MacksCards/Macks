@@ -246,6 +246,9 @@ export class Game {
   byId = new Map<number, Building>();
   ships: Ship[] = [];
   units: Unit[] = [];
+  /** Für flüssige Darstellung: Position vor dem letzten Rechenschritt und Anteil (0..1) bis zum nächsten */
+  private prev = new Map<number, [number, number, number]>();
+  alpha = 1;
   /** Piraten: Zeit bis zum nächsten Auftauchen, versenkte Piratenschiffe, schon gesichtet? */
   pirateT = 0;
   pirateSunk = 0;
@@ -1181,7 +1184,29 @@ export class Game {
     return { tax, upkeep };
   }
 
+  /** Darstellungsort zwischen zwei Rechenschritten (Schiffe, Soldaten, Karren gleiten statt zu springen) */
+  ip(o: { id: number; x: number; y: number }): [number, number] {
+    const p = this.prev.get(o.id);
+    if (!p) return [o.x, o.y];
+    const dx = o.x - p[0], dy = o.y - p[1];
+    if (dx * dx + dy * dy > 9) return [o.x, o.y]; // Sprung (z. B. an Land gesetzt): nicht gleiten
+    return [p[0] + dx * this.alpha, p[1] + dy * this.alpha];
+  }
+  /** Blickrichtung zwischen zwei Rechenschritten */
+  ipDir(o: { id: number; dir: number }): number {
+    const p = this.prev.get(o.id);
+    if (!p) return o.dir;
+    let d = o.dir - p[2];
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return p[2] + d * this.alpha;
+  }
+
   tick(dt: number) {
+    this.prev.clear();
+    for (const s of this.ships) this.prev.set(s.id, [s.x, s.y, s.dir]);
+    for (const u of this.units) this.prev.set(u.id, [u.x, u.y, u.dir]);
+    for (const c of this.carts) this.prev.set(c.id, [c.x, c.y, 0]);
     this.time += dt;
     for (const s of this.ships) this.tickShip(s, dt);
     this.sightT += dt;

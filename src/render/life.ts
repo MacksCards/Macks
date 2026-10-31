@@ -173,19 +173,31 @@ export class LifeLayer {
     this.ripples.count = nr;
     this.ripples.instanceMatrix.needsUpdate = true;
 
+    // Tiere laufen ein Stück, bleiben stehen und grasen (statt ständig zu gleiten)
+    const walk = (tt: number, period: number, ph: number) => {
+      const q = tt / period + ph;
+      const n = Math.floor(q), f = q - n;
+      const mv = 0.35; // Anteil der Zeit in Bewegung
+      const e = f < mv ? f / mv : 1;
+      return { s: n + e * e * (3 - 2 * e), moving: f < mv };
+    };
     // Hirsche im Wald, so viele wie Wild da ist
     let nd = 0;
     for (const h of this.herds) {
       if (g.wild[h.k] < 0.5 || !near(h.x, h.z)) continue;
       for (let i = 0; i < 2 && nd < 300; i++) {
-        const a = h.ph + i * 2.1 + t * h.spd;
+        const w = walk(t, 7 + i, h.ph + i * 0.37);
+        const a = h.ph + i * 2.1 + w.s * 7 * h.spd;
         const x = h.x + Math.cos(a) * 2.2 + Math.sin(a * 2.3) * 0.6, z = h.z + Math.sin(a * 0.8) * 2.2;
         const kx = Math.floor(x), kz = Math.floor(z);
         if (kx < 0 || kz < 0 || kx >= N || kz >= N) continue;
         const tt = g.tiles[kz * N + kx];
         if (tt === T.Wasser || tt === T.Berg || g.occ[kz * N + kx] || g.roads[kz * N + kx]) continue;
-        const grazing = Math.sin(t * 0.7 + h.ph + i) > 0.3;
-        place(this.deer, nd++, x, Math.max(this.height(x, z), 0.05), z, a + Math.PI / 2 + (grazing ? 0.4 : 0), 1.7);
+        // Blickrichtung = Laufrichtung (aus der Bahn berechnet), beim Laufen leichtes Auf und Ab
+        const a2 = a + 0.05, x2 = h.x + Math.cos(a2) * 2.2 + Math.sin(a2 * 2.3) * 0.6, z2 = h.z + Math.sin(a2 * 0.8) * 2.2;
+        const head = Math.atan2(x2 - x, z2 - z);
+        const hop = w.moving ? Math.abs(Math.sin(t * 9 + i)) * 0.03 : 0;
+        place(this.deer, nd++, x, Math.max(this.height(x, z), 0.05) + hop, z, head, 1.7);
       }
     }
     this.deer.count = nd;
@@ -203,12 +215,15 @@ export class LifeLayer {
         const mesh = b.type === 'schaffarm' ? this.sheep : this.pigs;
         for (let i = 0; i < 5; i++) {
           const ph = b.id * 1.7 + i * 1.3;
-          const a = ph + t * 0.05;
+          const w = walk(t, 9 + i * 1.3, ph);
+          const a = ph + w.s * 0.6;
           // innerhalb des Zauns (Hof 3×3) umherlaufen
           const R = d.size / 2 - 0.35;
-          const x = cx + Math.cos(a) * R * (0.4 + 0.6 * Math.abs(Math.sin(ph + t * 0.03))), z = cz + Math.sin(a * 1.3) * R * (0.4 + 0.6 * Math.abs(Math.cos(ph)));
+          const pos = (aa: number) => [cx + Math.cos(aa) * R * (0.4 + 0.6 * Math.abs(Math.sin(ph + aa * 0.6))), cz + Math.sin(aa * 1.3) * R * (0.4 + 0.6 * Math.abs(Math.cos(ph)))];
+          const [x, z] = pos(a), [x2, z2] = pos(a + 0.05);
           const n = mesh === this.sheep ? ns++ : np++;
-          place(mesh, n, x, Math.max(this.height(x, z), 0.05), z, a + Math.PI / 2 + Math.sin(t + i) * 0.3, 1.2);
+          const hop = w.moving ? Math.abs(Math.sin(t * 8 + i)) * 0.02 : 0;
+          place(mesh, n, x, Math.max(this.height(x, z), 0.05) + hop, z, Math.atan2(x2 - x, z2 - z), 1.2);
         }
       }
       if (!d.harvest || !b.loaded || b.target === undefined || !d.prod) continue;

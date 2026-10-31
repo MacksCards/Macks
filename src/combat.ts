@@ -613,17 +613,28 @@ function tickUnit(g: Game, u: Unit, dt: number) {
   if (!u.path.length) u.goal = undefined;
 }
 
-/** stehende Soldaten nicht übereinander */
+/** stehende Soldaten nicht übereinander: einer macht ein paar Schritte zur Seite (läuft sichtbar, statt zu rutschen) */
 function separate(g: Game) {
-  const land = g.units.filter((u) => u.ship === undefined);
+  const land = g.units.filter((u) => u.ship === undefined && !u.path.length && u.target === undefined && !u.dest);
+  const taken = new Set<number>();
   for (let i = 0; i < land.length; i++) for (let j = i + 1; j < land.length; j++) {
     const a = land[i], b = land[j];
-    const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
-    if (d > 0.55 || d < 1e-4) continue;
-    const push = (0.55 - d) * 0.25;
-    const ax = a.x - (dx / d) * push, ay = a.y - (dy / d) * push, bx = b.x + (dx / d) * push, by = b.y + (dy / d) * push;
-    if (!a.path.length && walkableOrSame(g, a, ax, ay)) { a.x = ax; a.y = ay; }
-    if (!b.path.length && walkableOrSame(g, b, bx, by)) { b.x = bx; b.y = by; }
+    if (b.path.length || a.path.length) continue;
+    const d = Math.hypot(b.x - a.x, b.y - a.y);
+    if (d > 0.4) continue;
+    // freien Platz in der Nähe suchen (Feldmitte oder Viertelpunkt eines freien Nachbarfelds)
+    const spots: [number, number][] = [];
+    for (const [ox, oy] of [[0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3], [0.8, 0.8], [-0.8, 0.8], [0.8, -0.8], [-0.8, -0.8], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const x = b.x + ox, y = b.y + oy;
+      const k = g.idx(Math.floor(x), Math.floor(y));
+      if (!walkableOrSame(g, b, x, y) || taken.has(Math.round(x * 4) * 10000 + Math.round(y * 4))) continue;
+      if (land.some((o) => o !== b && Math.hypot(o.x - x, o.y - y) < 0.45)) continue;
+      spots.push([x, y]); void k;
+    }
+    if (!spots.length) continue;
+    const [x, y] = spots[0];
+    taken.add(Math.round(x * 4) * 10000 + Math.round(y * 4));
+    b.path = [[x, y]];
   }
 }
 function walkableOrSame(g: Game, u: Unit, x: number, y: number) {

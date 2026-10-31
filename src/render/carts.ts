@@ -48,14 +48,23 @@ export class CartLayer {
       }
       m.visible = c.state !== 'idle' && this.g.seen[this.g.idx(Math.floor(c.x), Math.floor(c.y))] === 1;
       m.geometry = c.n > 0 ? this.geoFull : this.geoEmpty;
+      const [cx, cy] = this.g.ip(c);
       const prev = this.last.get(c.id);
+      let moving = false;
       if (prev) {
-        const dx = c.x - prev[0], dz = c.y - prev[1];
-        if (dx * dx + dz * dz > 1e-6) m.rotation.y = Math.atan2(dx, dz);
+        const dx = cx - prev[0], dz = cy - prev[1];
+        if (dx * dx + dz * dz > 1e-7) {
+          moving = true;
+          // sanft in die neue Richtung drehen
+          let d = Math.atan2(dx, dz) - m.rotation.y;
+          while (d > Math.PI) d -= Math.PI * 2;
+          while (d < -Math.PI) d += Math.PI * 2;
+          m.rotation.y += d * 0.3;
+        }
       }
-      this.last.set(c.id, [c.x, c.y]);
-      const bob = m.visible ? Math.abs(Math.sin(t * 9 + c.id)) * 0.015 : 0;
-      m.position.set(c.x, Math.max(this.height(c.x, c.y), 0.05) + 0.03 + bob, c.y);
+      this.last.set(c.id, [cx, cy]);
+      const bob = m.visible && moving ? Math.abs(Math.sin(t * 9 + c.id)) * 0.015 : 0;
+      m.position.set(cx, Math.max(this.height(cx, cy), 0.05) + 0.03 + bob, cy);
     }
     for (const [id, m] of this.meshes) if (!alive.has(id)) { this.group.remove(m); this.meshes.delete(id); this.last.delete(id); }
   }

@@ -53,7 +53,10 @@ function boot() {
       acc += real * ui.speed;
       let steps = 0;
       while (acc >= TICK && steps < 40) { game.tick(TICK); acc -= TICK; steps++; gameDt += TICK; }
+      if (steps >= 40) acc = 0;
     }
+    // Anteil bis zum nächsten Rechenschritt: Bewegungen werden dazwischen flüssig dargestellt
+    game.alpha = Math.min(1, acc / TICK);
     hudT += real;
     iconT += real;
     // Fehler in der Anzeige dürfen das Spiel nie anhalten
