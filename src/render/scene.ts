@@ -347,6 +347,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
   }
 
   onRoadsChanged() {
+    if (!this.roadMesh) return; // wird beim Aufbau später gezeichnet
     const g = this.g;
     const m = new THREE.Matrix4();
     let n = 0;
