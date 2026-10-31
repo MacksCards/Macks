@@ -91,6 +91,7 @@ export interface SaveData {
   time: number;
   quest: number;
   unlocked?: BuildingId[];
+  best?: number[];
   res?: { trees: string; fish: string; wild: string; weide: string; feld?: string };
   /** verbleibendes Erz je Insel */
   ore?: number[];
@@ -176,6 +177,8 @@ export class Game {
   private sightT = 0;
   /** Bereits freigeschaltete Gebäude (bleiben freigeschaltet) */
   unlocked = new Set<BuildingId>();
+  /** höchste je erreichte Einwohnerzahl je Stufe (Freischaltungen bleiben erhalten, wenn sie wieder sinkt) */
+  best: number[] = [0, 0, 0, 0, 0];
   private unlockT = 0;
   private cartT = 0;
 
@@ -281,6 +284,7 @@ export class Game {
     g.recompute();
     for (const t of d.unlocked ?? []) if (BUILDINGS[t]) g.unlocked.add(t);
     (d.ore ?? []).forEach((v, i) => { if (g.islands[i]) g.islands[i].erz = v; });
+    if (d.best) g.best = d.best;
     if (d.res) {
       const dec = (str: string, arr: Float32Array) => { for (let i = 0; i < arr.length && i < str.length; i++) arr[i] = (str.charCodeAt(i) - 48) / 40; };
       dec(d.res.trees, g.trees); dec(d.res.fish, g.fish); dec(d.res.wild, g.wild); dec(d.res.weide, g.weide);
@@ -294,7 +298,7 @@ export class Game {
     return {
       v: 3, seed: this.seed, tiles: enc(this.tiles), roads: enc(this.roads), seen: enc(this.seen),
       buildings: this.buildings, ships: this.ships, players: this.players, lager: this.lager,
-      nextId: this.nextId, time: this.time, quest: this.quest, unlocked: [...this.unlocked],
+      nextId: this.nextId, time: this.time, quest: this.quest, unlocked: [...this.unlocked], best: this.best,
       res: { trees: encR(this.trees), fish: encR(this.fish), wild: encR(this.wild), weide: encR(this.weide), feld: encR(this.feld) },
       ore: this.islands.map((i) => i.erz),
     };
@@ -393,14 +397,23 @@ export class Game {
     return !u || this.maxPop(u.tier) >= u.n;
   }
 
+  /** Ist eine Schwelle (z. B. 120 Siedler) für den Spieler schon einmal erreicht worden? */
+  reached(u: { tier: number; n: number }, owner = HUMAN): boolean {
+    return owner === HUMAN ? Math.max(this.best[u.tier] ?? 0, this.maxPop(u.tier)) >= u.n : this.maxPop(u.tier, owner) >= u.n;
+  }
+
   checkUnlocks(silent = false) {
+    for (let t = 0; t < TIERS.length; t++) this.best[t] = Math.max(this.best[t] ?? 0, this.maxPop(t));
     const fresh: BuildingId[] = [];
     for (const d of Object.values(BUILDINGS)) {
       if (!d.category || this.unlocked.has(d.id)) continue;
       const u = d.unlock;
       if (!u || this.maxPop(u.tier) >= u.n) { this.unlocked.add(d.id); if (u) fresh.push(d.id); }
     }
-    if (!silent && fresh.length) this.ev.message(`Neu freigeschaltet: ${fresh.map((t) => `${BUILDINGS[t].icon} ${BUILDINGS[t].name}`).join(', ')}`, 'good');
+    if (!silent && fresh.length) {
+      const names = fresh.map((t) => `${BUILDINGS[t].icon} ${BUILDINGS[t].name}`);
+      this.ev.message(`Neu freigeschaltet: ${names.slice(0, 3).join(', ')}${names.length > 3 ? ` und ${names.length - 3} weitere` : ''}`, 'good');
+    }
   }
 
   /** Nächste Freischaltung in einer Kategorie (für Hinweise) */
@@ -653,8 +666,10 @@ export class Game {
     const fert = this.fertility(type, x, y);
     if (fert <= 0) return 0;
     if (d.deposit) {
-      const isl = this.islands[this.islandOf[this.idx(x, y)]];
-      if (!isl || (d.deposit === 'erz' ? isl.erz <= 0 : !isl.gold)) return 0;
+      const id = this.islandOf[this.idx(x, y)];
+      const isl = this.islands[id];
+      const ok = !isl ? false : d.deposit === 'erz' ? isl.erz > 0 : d.deposit === 'tiefErz' ? this.hadOre(id) : !!isl.gold;
+      if (!ok) return 0;
     }
     if (d.needs === 'berg') {
       for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Berg) return 1;
@@ -834,7 +849,7 @@ export class Game {
     }
     if (d.category && d.unlock && (owner === HUMAN ? !this.isUnlocked(type) : this.maxPop(d.unlock.tier, owner) < d.unlock.n)) {
       const u = d.unlock;
-      return { ok: false, reason: `Erst ab ${u.n} ${TIERS[u.tier].name}` };
+      return { ok: false, reason: `Erst ab ${u.n} ${TIERS[u.tier].dat}` };
     }
     if (type === 'kontor') {
       if (this.kontor(owner, isl)) return { ok: false, reason: 'Auf dieser Insel hast du schon ein Kontor' };
@@ -867,8 +882,9 @@ export class Game {
       const il = this.islands[isl];
       if (d.deposit === 'erz' && !(il?.erz > 0)) return { ok: false, reason: il && il.erz === 0 && this.hadOre(isl) ? 'Das Erzvorkommen ist erschöpft' : 'Diese Insel hat kein Erz im Berg' };
       if (d.deposit === 'gold' && !il?.gold) return { ok: false, reason: 'Diese Insel hat kein Gold im Berg' };
+      if (d.deposit === 'tiefErz' && !this.hadOre(isl)) return { ok: false, reason: 'Diese Insel hat kein Erz im Berg' };
     }
-    if (d.pflanze && this.fertility(type, x, y) <= 0) return { ok: false, reason: `Auf dieser Insel wächst kein ${PFLANZEN[d.pflanze].name}` };
+    if (d.pflanze && this.fertility(type, x, y) <= 0) return { ok: false, reason: `Diese Insel ist nicht fruchtbar für ${PFLANZEN[d.pflanze].name}` };
     return this.canAfford(d.cost, owner, isl);
   }
 
@@ -958,7 +974,7 @@ export class Game {
     const lv = (b.level ?? 0) + 1;
     const next = KONTOR_LEVELS[lv];
     if (!next) return { ok: false, reason: 'Höchste Ausbaustufe erreicht' };
-    if (next.unlock && this.maxPop(next.unlock.tier, b.owner) < next.unlock.n) return { ok: false, reason: `Erst ab ${next.unlock.n} ${TIERS[next.unlock.tier].name}` };
+    if (next.unlock && !this.reached(next.unlock, b.owner)) return { ok: false, reason: `Erst ab ${next.unlock.n} ${TIERS[next.unlock.tier].dat}` };
     const c = this.canAfford(next.cost, b.owner, b.island);
     if (!c.ok) return c;
     this.pay(next.cost, b.owner, b.island);
@@ -971,7 +987,7 @@ export class Game {
     const sd = SHIPS[type];
     if (w.job) return { ok: false, reason: 'Die Werft baut gerade' };
     if (sd.werft === 'grosswerft' && w.type !== 'grosswerft') return { ok: false, reason: 'Nur auf der großen Werft' };
-    if (this.maxPop(sd.unlock.tier, w.owner) < sd.unlock.n) return { ok: false, reason: `Erst ab ${sd.unlock.n} ${TIERS[sd.unlock.tier].name}` };
+    if (!this.reached(sd.unlock, w.owner)) return { ok: false, reason: `Erst ab ${sd.unlock.n} ${TIERS[sd.unlock.tier].dat}` };
     if (this.ships.filter((s) => s.owner === w.owner).length >= 20) return { ok: false, reason: 'Höchstens 20 Schiffe' };
     const l = this.lagerOf(w.owner, w.island);
     if (this.players[w.owner].money < sd.cost.taler) return { ok: false, reason: 'Zu wenig Taler' };

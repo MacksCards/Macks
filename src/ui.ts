@@ -188,7 +188,7 @@ export class UI {
         const fert = this.g.fertility(m.type, m.gx, m.gy);
         if (d.pflanze && fert > 0 && fert < 1) msg = `🌱 Insel nur zu ${Math.round(fert * 100)} % fruchtbar dafür. ` + msg;
         const shared = this.g.buildings.some((o) => o.type === m.type && Math.hypot(this.g.center(o)[0] - m.gx, this.g.center(o)[1] - m.gy) < (d.work ?? 4) * 2);
-        if (eff < 0.2) msg = `⚠️ Hier gibt es kaum ${what} – such dir einen besseren Platz. ` + msg;
+        if (eff < 0.2 && !(d.pflanze && fert <= 0)) msg = `⚠️ Hier gibt es kaum ${what} – such dir einen besseren Platz. ` + msg;
         scale = `<div class="effbar" title="Ergiebigkeit"><i style="width:${pct}%;background:${col}"></i><span>${what}: ${pct} %${shared ? ' · geteilt mit Nachbarn' : ''}</span></div>`;
       }
       if (!m.has && d.prod) msg += ' Danach mit einem Weg verbinden!';
@@ -228,7 +228,7 @@ export class UI {
       p.appendChild(card);
     }
     const nx = this.g.nextUnlock(c);
-    if (nx) p.appendChild(el('div', 'card next', `<span class="ic">🔒</span><b>Weitere Gebäude</b><small class="desc">ab ${nx.n} ${TIERS[nx.tier].name} auf einer Insel (z. B. ${BUILDINGS[nx.type].icon} ${BUILDINGS[nx.type].name})</small>`));
+    if (nx) p.appendChild(el('div', 'card next', `<span class="ic">🔒</span><b>Weitere Gebäude</b><small class="desc">ab ${nx.n} ${TIERS[nx.tier].dat} auf einer Insel (z. B. ${BUILDINGS[nx.type].icon} ${BUILDINGS[nx.type].name})</small>`));
     this.refreshCards();
   }
 
@@ -420,8 +420,8 @@ export class UI {
         const nl = KONTOR_LEVELS[(b.level ?? 0) + 1];
         h += `<p class="sub">Kontor ${['I', 'II', 'III', 'IV'][b.level ?? 0]}</p>`;
         if (nl) {
-          const locked = nl.unlock && g.maxPop(nl.unlock.tier) < nl.unlock.n;
-          h += locked ? `<p class="sub">🔒 Ausbau ab ${nl.unlock!.n} ${TIERS[nl.unlock!.tier].name}</p>`
+          const locked = nl.unlock && !g.reached(nl.unlock);
+          h += locked ? `<p class="sub">🔒 Ausbau ab ${nl.unlock!.n} ${TIERS[nl.unlock!.tier].dat}</p>`
             : `<button class="btn wide ok" id="kUp">⬆️ Ausbauen: Lager ${nl.storage} t (${costText(nl.cost)})</button>`;
         }
         h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
@@ -434,6 +434,7 @@ export class UI {
       h += `<h4>Lager</h4><div class="grid">`;
       for (const gd of GOODS) {
         const v = g.goods[gd.id];
+        if (!this.relevant.has(gd.id) && v < 1) continue;
         h += `<div class="row ${v >= g.capacity ? 'warn' : ''}"><span>${gd.icon} ${gd.name}</span><b>${fmt(v)}</b></div>`;
       }
       h += `</div><h4>Bilanz pro Minute</h4>
@@ -484,7 +485,7 @@ export class UI {
         }
         for (const sv of tier.next?.services ?? []) {
           const unl = g.isUnlocked(sv);
-          h += `<div class="row"><span>${BUILDINGS[sv].icon} ${BUILDINGS[sv].name} in der Nähe${unl ? '' : ` <small>(ab ${BUILDINGS[sv].unlock!.n} ${TIERS[BUILDINGS[sv].unlock!.tier].name})</small>`}</span><b>${cov.has(sv) ? '✅' : '❌'}</b></div>`;
+          h += `<div class="row"><span>${BUILDINGS[sv].icon} ${BUILDINGS[sv].name} in der Nähe${unl ? '' : ` <small>(ab ${BUILDINGS[sv].unlock!.n} ${TIERS[BUILDINGS[sv].unlock!.tier].dat})</small>`}</span><b>${cov.has(sv) ? '✅' : '❌'}</b></div>`;
         }
         h += `<p class="sub">Baumaterial: ${costText(next.upgradeCost)}</p>`;
       } else h += `<p class="sub">🏆 Höchste Stufe erreicht</p>`;

@@ -44,7 +44,7 @@ export type BuildingId =
   | 'weg' | 'steinweg' | 'kontor' | 'markt' | 'haus'
   | 'kapelle' | 'wirtshaus' | 'schule' | 'kirche' | 'badehaus' | 'hochschule' | 'theater'
   | 'holzfaeller' | 'fischer' | 'jagdhuette' | 'schweinezucht' | 'fleischerei' | 'getreidefarm' | 'muehle' | 'baeckerei'
-  | 'schaffarm' | 'steinbruch' | 'erzmine' | 'goldmine'
+  | 'schaffarm' | 'steinbruch' | 'erzmine' | 'tiefeErzmine' | 'goldmine'
   | 'baumwollplantage' | 'tabakplantage' | 'zuckerrohrplantage' | 'weingut' | 'gewuerzplantage' | 'kakaoplantage'
   | 'weberei' | 'schneiderei' | 'rumbrennerei' | 'brauerei' | 'tabakwaren' | 'erzschmelze' | 'schmiede'
   | 'schwertschmiede' | 'buechsenmacher' | 'kanonengiesserei' | 'goldschmied'
@@ -75,7 +75,7 @@ export interface BuildingDef {
   /** Standortbedingung */
   needs?: 'wald' | 'wasser' | 'berg' | 'kueste';
   /** Vorkommen im Berg (nur Inseln mit Erz bzw. Gold) */
-  deposit?: 'erz' | 'gold';
+  deposit?: 'erz' | 'tiefErz' | 'gold';
   /** Pflanze: wächst nur auf Inseln, die dafür fruchtbar sind (Ertrag × Fruchtbarkeit) */
   pflanze?: Pflanze;
   storage?: number; // zusätzliche Lagerkapazität je Ware
@@ -151,6 +151,8 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     stock: 8, work: 4, harvest: { res: 'weide', per: 4 }, prod: { time: 16, output: 'wolle' }, desc: 'Schafe grasen ringsum und liefern Wolle für die Weberei.' },
   erzmine: { id: 'erzmine', name: 'Erzmine', icon: '⛏️', category: 'rohstoffe', size: 2, cost: { taler: 1000, holz: 20, werkzeug: 10, stein: 5 }, upkeep: 60, unlock: S(120),
     stock: 4, prod: { time: 18, output: 'erz' }, needs: 'berg', deposit: 'erz', desc: 'Fördert Erz – nur am Berg einer Insel mit Erzvorkommen. Das Vorkommen geht irgendwann zur Neige.' },
+  tiefeErzmine: { id: 'tiefeErzmine', name: 'Tiefe Erzmine', icon: '⛏️', category: 'rohstoffe', size: 2, cost: { taler: 1800, holz: 30, werkzeug: 15, stein: 7 }, upkeep: 60, unlock: K(400),
+    stock: 4, prod: { time: 18, output: 'erz' }, needs: 'berg', deposit: 'tiefErz', desc: 'Gräbt tief in einen Erz-Berg – auch wenn das Vorkommen oben schon erschöpft ist. Liefert dauerhaft Erz.' },
   goldmine: { id: 'goldmine', name: 'Goldmine', icon: '🥇', category: 'rohstoffe', size: 2, cost: { taler: 1000, holz: 20, werkzeug: 10, stein: 5 }, upkeep: 60, unlock: B(150),
     stock: 4, prod: { time: 30, output: 'gold' }, needs: 'berg', deposit: 'gold', desc: 'Fördert Gold – nur auf Inseln mit Goldvorkommen (selten, eher kleine Inseln).' },
   // ---------- Plantagen (nur auf fruchtbaren Inseln) ----------
@@ -191,7 +193,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     stock: 4, prod: { time: 20, input: { gold: 2 }, output: 'schmuck', amount: 4 }, desc: 'Fertigt aus Gold Schmuck für Aristokraten (2 Gold → 4 Schmuck).' },
   // ---------- Hafen ----------
   werft: { id: 'werft', name: 'Kleine Werft', icon: '🛠️', category: 'hafen', size: 3, cost: { taler: 1100, holz: 12, werkzeug: 8, stein: 3 }, upkeep: 20, unlock: S(120), needs: 'kueste',
-    desc: 'Baut kleine Handels- und Kriegsschiffe und repariert Schiffe. Muss an der Küste stehen.' },
+    desc: 'Baut kleine Handels- und Kriegsschiffe. Muss an der Küste stehen.' },
   grosswerft: { id: 'grosswerft', name: 'Große Werft', icon: '⚓', category: 'hafen', size: 3, cost: { taler: 2800, holz: 25, werkzeug: 10, stein: 63 }, upkeep: 30, unlock: K(500), needs: 'kueste',
     desc: 'Baut auch große Handels- und Kriegsschiffe – schneller als die kleine Werft.' },
   // ---------- Militär ----------
@@ -219,6 +221,8 @@ export const CATEGORIES: { id: Category; name: string; icon: string }[] = [
 
 export interface TierDef {
   name: string;
+  /** für „ab 30 Pionieren“ */
+  dat: string;
   maxResidents: number;
   tax: number; // Taler pro Bewohner und Minute bei voller Zufriedenheit
   /** Verbrauch pro Bewohner und Minute */
@@ -233,15 +237,15 @@ export interface TierDef {
 
 /** Fünf Stufen wie im Vorbild. Verbrauch ≈ Original × 8 (das Spiel läuft schneller). */
 export const TIERS: TierDef[] = [
-  { name: 'Pioniere', maxResidents: 3, tax: 1.0, consumes: { nahrung: 0.1 }, services: ['markt'], upgradeCost: {},
+  { name: 'Pioniere', dat: 'Pionieren', maxResidents: 3, tax: 1.0, consumes: { nahrung: 0.1 }, services: ['markt'], upgradeCost: {},
     next: { goods: [['stoff']], services: ['kapelle'] } },
-  { name: 'Siedler', maxResidents: 7, tax: 1.8, consumes: { nahrung: 0.1, stoff: 0.045, alkohol: 0.035 }, services: ['markt', 'kapelle'], upgradeCost: { holz: 3, werkzeug: 1 },
+  { name: 'Siedler', dat: 'Siedlern', maxResidents: 7, tax: 1.8, consumes: { nahrung: 0.1, stoff: 0.045, alkohol: 0.035 }, services: ['markt', 'kapelle'], upgradeCost: { holz: 3, werkzeug: 1 },
     next: { goods: [['alkohol'], ['tabakwaren', 'gewuerze']], services: ['wirtshaus', 'schule'] } },
-  { name: 'Bürger', maxResidents: 15, tax: 2.8, consumes: { nahrung: 0.1, stoff: 0.05, alkohol: 0.045, gewuerze: 0.035, tabakwaren: 0.035 }, services: ['markt', 'kapelle', 'wirtshaus', 'schule'], upgradeCost: { holz: 2, werkzeug: 2, stein: 6 },
+  { name: 'Bürger', dat: 'Bürgern', maxResidents: 15, tax: 2.8, consumes: { nahrung: 0.1, stoff: 0.05, alkohol: 0.045, gewuerze: 0.035, tabakwaren: 0.035 }, services: ['markt', 'kapelle', 'wirtshaus', 'schule'], upgradeCost: { holz: 2, werkzeug: 2, stein: 6 },
     next: { goods: [['kakao']], services: ['kirche', 'badehaus'] } },
-  { name: 'Kaufleute', maxResidents: 25, tax: 4.2, consumes: { nahrung: 0.1, stoff: 0.055, alkohol: 0.05, gewuerze: 0.045, tabakwaren: 0.045, kakao: 0.05 }, services: ['markt', 'kirche', 'wirtshaus', 'schule', 'badehaus'], upgradeCost: { holz: 3, werkzeug: 3, stein: 9 },
+  { name: 'Kaufleute', dat: 'Kaufleuten', maxResidents: 25, tax: 4.2, consumes: { nahrung: 0.1, stoff: 0.055, alkohol: 0.05, gewuerze: 0.045, tabakwaren: 0.045, kakao: 0.05 }, services: ['markt', 'kirche', 'wirtshaus', 'schule', 'badehaus'], upgradeCost: { holz: 3, werkzeug: 3, stein: 9 },
     next: { goods: [['schmuck'], ['kleidung']], services: ['hochschule', 'theater'] } },
-  { name: 'Aristokraten', maxResidents: 40, tax: 6.0, consumes: { nahrung: 0.1, alkohol: 0.055, gewuerze: 0.045, tabakwaren: 0.045, kakao: 0.045, kleidung: 0.035, schmuck: 0.012 }, services: ['markt', 'kirche', 'wirtshaus', 'badehaus', 'hochschule', 'theater'], upgradeCost: { holz: 3, werkzeug: 3, stein: 12 } },
+  { name: 'Aristokraten', dat: 'Aristokraten', maxResidents: 40, tax: 6.0, consumes: { nahrung: 0.1, alkohol: 0.055, gewuerze: 0.045, tabakwaren: 0.045, kakao: 0.045, kleidung: 0.035, schmuck: 0.012 }, services: ['markt', 'kirche', 'wirtshaus', 'badehaus', 'hochschule', 'theater'], upgradeCost: { holz: 3, werkzeug: 3, stein: 12 } },
 ];
 
 /** Schiffstypen (Werte relativ zum Vorbild): Laderäume à 50 t, Tempo, Kanonen */

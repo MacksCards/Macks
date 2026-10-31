@@ -286,9 +286,11 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 | Original | Neue Ufer | Grund |
 |---|---|---|
 | Rinderfarm → Fleischerei | **Schweinezucht → Fleischerei** | Wunsch des Nutzers (Regel 3) |
-| Forsthaus pflanzt Bäume | Holzfäller im vorhandenen Wald (später: Förster pflanzt nach) | Etappe 1 vereinfacht |
-| Pioniere brauchen Stoffe zum Aufstieg | Siedler brauchen Stoffe (aktuell) → **anpassen ans Original** | Original-Treue |
-| Bürger: Bier statt Alkohol (Startinsel) | Später „Alkohol“ aus Weingut/Rumbrennerei wie im Original | Etappe 1 hat nur eine Insel |
-| Steinbruch liefert direkt Stein | Steinbruch + Steinmetz → **Ziegel** wie im Original | Original-Treue (umsetzen) |
-| Werkzeug direkt aus Erz + Holz | Erz → Erzschmelze → Eisen → Werkzeugschmiede wie im Original | Original-Treue (umsetzen) |
+| Steinbruch + Steinmetz → Ziegel | **Steinbruch → Steine** (ohne Steinmetz) | Wunsch des Nutzers (Regel 11) |
+| Forsthaus pflanzt Bäume | Holzfäller fällt reife Bäume, Setzlinge wachsen von selbst nach | einfacher, gleicher Effekt |
+| Webstube + Weberei (zwei Gebäude) | eine Weberei für Schafwolle und Baumwolle | vereinfacht |
+| – | **Brauerei**: Getreide → Alkohol | zusätzliche Alkohol-Quelle für Inseln ohne Wein/Zuckerrohr |
+| Bäckerei 2 Mehl → 1 Nahrung, Fleischerei 2 Rinder → 1 Nahrung | 1 → 2 (Spiel läuft schneller, kleinere Mengen) | Balancing für Handy-Spielzeit |
 | Markennamen, Texte, Grafik | eigene Namen/Texte, realistische 3D-Grafik | rechtlich sauber |
+
+Offene Punkte (noch nicht umgesetzt): siehe `docs/OFFEN.md`.

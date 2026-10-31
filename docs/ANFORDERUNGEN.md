@@ -60,7 +60,7 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - G2 Das Spiel ist eine Webseite plus Modell-Dateien (models/*.glb), leicht zu verteilen und vorzuschauen.
 - G3 Fehler im Speicher (z. B. privater Modus) bringen das Spiel nicht zum Absturz.
 
-## Später (nicht Etappe 1, aber fest eingeplant)
-- Etappe 2: Schiffe, weitere Inseln mit anderen Rohstoffen (z. B. Tabak, Gewürze), Stufe Kaufleute.
-- Etappe 3: **Kampf** – Piraten, Militär, Seeschlachten, Computergegner.
-- Etappe 4: Handel – freie Händler, Handelsrouten.
+## Später (fest eingeplant, siehe docs/OFFEN.md)
+- Kampf (Regel 1): Soldaten aus der Burg (Infanterie, Reiter, Musketiere, Kanoniere), Seeschlachten, Eroberung, Piraten, Krieg mit Konkurrenten.
+- Händlerschiff, Ureinwohner, Handelsrouten, Steuersatz.
+- Feuer, Pest, Feuerwehr, Arzt, Galgen; Prestigebauten (Palast, Kathedrale, Denkmal, Triumphbogen).
