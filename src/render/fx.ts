@@ -279,7 +279,9 @@ export class Fx {
     while (a >= 1) {
       a -= 1;
       const ox = (Math.random() - 0.5) * spread * 2, oz = (Math.random() - 0.5) * spread * 2;
-      if (strength > 0.25 && Math.random() < 0.6) this.glow.spawn(K.Feuer, x + ox, y, z + oz, (Math.random() - 0.5) * 0.1, 0.25 + Math.random() * 0.3, (Math.random() - 0.5) * 0.1, 0.5 + Math.random() * 0.4);
+      // kräftige, flackernde Flammen (mehrere Zungen je Schub), dazu Glutfunken
+      if (strength > 0.2) for (let n = 0; n < 2 + Math.round(strength * 2); n++) this.glow.spawn(K.Feuer, x + ox + (Math.random() - 0.5) * spread, y, z + oz + (Math.random() - 0.5) * spread, (Math.random() - 0.5) * 0.15, 0.35 + Math.random() * 0.45, (Math.random() - 0.5) * 0.15, 0.8 + Math.random() * 0.8 * strength + 0.3);
+      if (strength > 0.4 && Math.random() < 0.3) this.glow.spawn(K.Funke, x + ox, y + 0.1, z + oz, (Math.random() - 0.5) * 0.6, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 0.6, 0.12);
       this.soft.spawn(K.Rauch, x + ox, y + 0.15, z + oz, 0, 0.25 + Math.random() * 0.2, 0, 2.5 + Math.random() * 2);
     }
     this.burnAcc.set(key, a);

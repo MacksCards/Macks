@@ -153,7 +153,7 @@ export interface SaveData {
   /** verbleibendes Erz je Insel */
   ore?: number[];
   units?: Unit[];
-  pirate?: { t: number; sunk: number; seen: boolean };
+  pirate?: { t: number; sunk: number; seen: boolean; victories?: number };
 }
 
 export interface GameEvents {
@@ -230,6 +230,8 @@ export class Game {
   pirateT = 0;
   pirateSunk = 0;
   pirateSeen = false;
+  /** Siege über Gegner/Piraten: so viele Triumphbögen darf man bauen */
+  victories = 0;
   carts: Cart[] = [];
   players: Player[] = [];
   lager: Record<string, Goods> = {};
@@ -359,7 +361,8 @@ export class Game {
     (d.ore ?? []).forEach((v, i) => { if (g.islands[i]) g.islands[i].erz = v; });
     if (d.best) g.best = d.best;
     g.units = d.units ?? [];
-    if (d.pirate) { g.pirateT = d.pirate.t; g.pirateSunk = d.pirate.sunk; g.pirateSeen = d.pirate.seen; }
+    if (d.pirate) { g.pirateT = d.pirate.t; g.pirateSunk = d.pirate.sunk; g.pirateSeen = d.pirate.seen; g.victories = d.pirate.victories ?? 0; }
+    else g.pirateT = 900; // alter Spielstand: Piraten erst nach einer Schonfrist
     if (d.res) {
       const dec = (str: string, arr: Float32Array) => { for (let i = 0; i < arr.length && i < str.length; i++) arr[i] = (str.charCodeAt(i) - 48) / 40; };
       dec(d.res.trees, g.trees); dec(d.res.fish, g.fish); dec(d.res.wild, g.wild); dec(d.res.weide, g.weide);
@@ -376,7 +379,7 @@ export class Game {
       nextId: this.nextId, time: this.time, quest: this.quest, unlocked: [...this.unlocked], best: this.best,
       res: { trees: encR(this.trees), fish: encR(this.fish), wild: encR(this.wild), weide: encR(this.weide), feld: encR(this.feld) },
       ore: this.islands.map((i) => i.erz),
-      units: this.units, pirate: { t: this.pirateT, sunk: this.pirateSunk, seen: this.pirateSeen },
+      units: this.units, pirate: { t: this.pirateT, sunk: this.pirateSunk, seen: this.pirateSeen, victories: this.victories },
     };
   }
 
@@ -933,7 +936,7 @@ export class Game {
         if (this.own[k] >= 0 && this.own[k] !== owner) return { ok: false, reason: 'Das Land gehört schon jemand anderem' };
       } else if (this.own[k] !== owner) return { ok: false, reason: 'Außerhalb deines Gebiets – baue einen Marktplatz' };
     }
-    if (d.victory && !this.unlocked.has(type)) return { ok: false, reason: 'Erst nach einem Sieg' };
+    if (d.victory && (!this.unlocked.has(type) || this.buildings.filter((b) => b.type === type && b.owner === owner).length >= this.victories)) return { ok: false, reason: this.victories ? 'Ein Triumphbogen je Sieg' : 'Erst nach einem Sieg' };
     if (d.category && d.unlock && (owner === HUMAN ? !this.isUnlocked(type) : this.maxPop(d.unlock.tier, owner) < d.unlock.n)) {
       const u = d.unlock;
       return { ok: false, reason: `Erst ab ${u.n} ${TIERS[u.tier].dat}` };
@@ -1075,7 +1078,8 @@ export class Game {
     if (w.job) return { ok: false, reason: 'Die Werft baut gerade' };
     if (sd.werft === 'grosswerft' && w.type !== 'grosswerft') return { ok: false, reason: 'Nur auf der großen Werft' };
     if (!this.reached(sd.unlock, w.owner)) return { ok: false, reason: `Erst ab ${sd.unlock.n} ${TIERS[sd.unlock.tier].dat}` };
-    if (this.ships.filter((s) => s.owner === w.owner).length >= 20) return { ok: false, reason: 'Höchstens 20 Schiffe' };
+    const maxShips = 20 + this.buildings.filter((b) => b.type === 'triumphbogen' && b.owner === w.owner).length;
+    if (this.ships.filter((s) => s.owner === w.owner).length >= maxShips) return { ok: false, reason: `Höchstens ${maxShips} Schiffe` };
     const l = this.lagerOf(w.owner, w.island);
     if (this.players[w.owner].money < sd.cost.taler) return { ok: false, reason: 'Zu wenig Taler' };
     if (!l || l.holz < sd.cost.holz) return { ok: false, reason: 'Zu wenig Holz' };

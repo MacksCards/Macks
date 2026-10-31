@@ -293,7 +293,11 @@ Lager/Kontor: Reichweite 16 (Einfluss) bzw. 6 (Abholung); jedes Kontor hat einen
 | Bäckerei 2 Mehl → 1 Nahrung, Fleischerei 2 Rinder → 1 Nahrung | 1 → 2 (Spiel läuft schneller, kleinere Mengen) | Balancing für Handy-Spielzeit |
 | Ausbildung 200/140/100 s | 100/70/50 s | Spiel läuft schneller |
 | Soldaten belegen Laderaum | eigene Truppenplätze je Schiff (8/6/12/16) | übersichtlicher |
-| KI baut Burgen und Waffenketten | KI wirbt Soldaten mit Geld an | KI siedelt langsamer als der Spieler |
+| KI baut Burgen und Waffenketten | KI wirbt Soldaten an (höchstens einen pro Minute) und bekommt im Krieg ein Kriegsschiff ohne Werft | KI siedelt langsamer als der Spieler |
+| Schiffsbauzeiten 120/150/105/140 s, kleine und große Werft verschieden schnell | 60/75/55/70 s, eine Zeit je Schiff | Spiel läuft schneller, einfacher |
+| Schiff beladen langsamer (100/60) | gleiches Tempo leer und beladen; großes Handelsschiff 85 statt 80, Piraten 95 statt 90 | einfacher |
+| Ausbessern an der Werft mit Holz und Stoffen | nur mit Holz | einfacher |
+| Piraten versenken Handelsschiffe | Piraten rauben unbewaffnete Schiffe aus und plündern Kontore, versenken sie aber nicht | fairer Einstieg auf dem Handy |
 | Markennamen, Texte, Grafik | eigene Namen/Texte, realistische 3D-Grafik | rechtlich sauber |
 
 Offene Punkte (noch nicht umgesetzt): siehe `docs/OFFEN.md`.

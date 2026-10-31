@@ -410,6 +410,20 @@ export class UI {
     this.selUnits = list;
     this.view.units.selected = new Set(list.map((u) => u.id));
     this.renderInfo();
+    if (list.length) this.keepLeft(list[0].x, list[0].y);
+  }
+
+  /** Kamera so verschieben, dass ein Punkt links vom Infofenster liegt (rechts davon wäre er verdeckt) */
+  private keepLeft(x: number, y: number) {
+    const v = this.view, cam = v.camera;
+    const p = cam.position.clone().set(x, 0.3, y).project(cam);
+    if (p.x < -0.15) return;
+    // Bildschirm-Rechts auf den Boden projiziert
+    const e = cam.matrixWorld.elements;
+    const rx = e[0], rz = e[2], len = Math.hypot(rx, rz) || 1;
+    const shift = (p.x + 0.35) * v.rig.dist * 0.45;
+    v.rig.tx += (rx / len) * shift;
+    v.rig.tz += (rz / len) * shift;
   }
 
   selectShip(s: Ship | null) {
@@ -518,6 +532,7 @@ export class UI {
     const g = this.g;
     let h = `<button class="close btn sq" id="infoX">✕</button>`;
     if (this.selShip) { this.renderShip(box, h); return; }
+    box.classList.toggle('slim', this.selUnits.length > 0);
     if (this.selUnits.length) { this.renderUnits(box, h); return; }
     if (this.islandInfo !== null) { if (!this.setHtml(box, h + this.islandHtml(this.islandInfo))) return; $('#infoX').addEventListener('click', () => this.select(null)); return; }
     if (b && b.owner !== HUMAN) {
@@ -956,7 +971,7 @@ export class UI {
       <h2>⚓ Neue Ufer</h2>
       <button class="btn wide" id="mResume">▶️ Weiterspielen</button>
       <button class="btn wide" id="mSave">💾 Speichern</button>
-      ${this.g.players.length > 1 ? '<button class="btn wide" id="mDipl">🤝 Krieg &amp; Frieden</button>' : ''}
+      ${this.g.players.some((p) => p.id !== HUMAN && (p.pirate ? this.g.pirateSeen : this.met(p.id))) ? '<button class="btn wide" id="mDipl">🤝 Krieg &amp; Frieden</button>' : ''}
       <div class="row2"><button class="btn" id="mTon">${sound.soundOn ? '🔊 Ton an' : '🔇 Ton aus'}</button><button class="btn" id="mMusik">${sound.musicOn ? '🎵 Musik an' : '🔕 Musik aus'}</button></div>
       <button class="btn wide" id="mHelp">❓ Anleitung</button>
       <button class="btn wide danger" id="mNew">🏝️ Neues Spiel (neue Inselwelt)</button>
@@ -987,6 +1002,13 @@ export class UI {
     });
   }
 
+  /** Gegner, die man schon getroffen hat (Gebäude oder Schiff im entdeckten Gebiet) oder mit denen Krieg herrscht */
+  private met(id: number): boolean {
+    const g = this.g;
+    if (atWar(g, HUMAN, id)) return true;
+    return g.buildings.some((b) => b.owner === id && g.seen[g.idx(b.x, b.y)] === 1) || g.ships.some((s) => s.owner === id && this.visible(s.x, s.y));
+  }
+
   /** Krieg und Frieden mit den Konkurrenten, Schutz vor Piraten */
   openDiplomacy() {
     const g = this.g, m = $('#modal');
@@ -994,7 +1016,7 @@ export class UI {
     const me = strength(g, HUMAN);
     let h = `<div class="box"><h2>🤝 Krieg &amp; Frieden</h2><p class="sub">Deine Streitmacht: ${me} (Soldaten, Kanonen auf Schiffen, Türme)</p>`;
     for (const p of g.players) {
-      if (p.id === HUMAN || p.pirate) continue;
+      if (p.id === HUMAN || p.pirate || !this.met(p.id)) continue;
       const war = atWar(g, HUMAN, p.id);
       const col = '#' + p.color.toString(16).padStart(6, '0');
       h += `<div class="row"><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col}"></i> ${p.name}${p.defeated ? ' – besiegt' : ''}</span><b>${p.defeated ? '🏳️' : war ? '⚔️ Krieg' : '🕊️ Frieden'}</b></div>`;
@@ -1006,7 +1028,7 @@ export class UI {
       } else h += `<button class="btn wide danger" data-war="${p.id}">⚔️ Krieg erklären</button>`;
     }
     const pir = pirates(g);
-    if (pir && (g.time > 600 || g.ships.some((s) => s.owner === pir.id))) {
+    if (pir && g.pirateSeen) {
       const prot = (g.players[HUMAN].protectedUntil ?? 0) - g.time;
       h += `<h4>🏴‍☠️ Piraten</h4><p class="sub">${prot > 0 ? `Du hast Schutz gekauft – noch ${Math.ceil(prot / 60)} Minuten.` : 'Sie überfallen Schiffe und beschießen schlecht bewachte Küsten. Wachtürme und Kriegsschiffe helfen.'}</p>`;
       if (prot <= 0) h += `<button class="btn wide" id="dProt">💰 Schutz kaufen (${protectionPrice(g)} Taler, 20 Minuten)</button>`;

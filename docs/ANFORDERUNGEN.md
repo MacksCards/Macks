@@ -45,9 +45,9 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - K2 Führen per Tippen: Soldat antippen, mehrere in der Nähe dazunehmen, hinlaufen, angreifen, aufs Schiff steigen; Soldaten wehren sich selbst und greifen Feinde in der Nähe an; Musketiere und Kanoniere schießen nicht durch Wald.
 - K3 Mauern und Tore halten Feinde auf (eigene Leute gehen durch Tore); Wachtürme schießen auf Soldaten und Schiffe (Reichweite 8).
 - K4 Schiffe: Kanonen am Kontor laden (bis 6/8/10/14 je Schiffstyp), Seeschlachten, Versenken, Ausbessern an der Werft, Soldaten übersetzen und an Land setzen.
-- K5 Eroberung: Fällt Kontor oder Marktplatz, während eigene Soldaten danebenstehen, wechseln es und alle Gebäude im Gebiet den Besitzer; sonst wird es zerstört. Gegner ohne Gebäude und Schiffe ist besiegt → Triumphbogen.
-- K6 Krieg & Frieden mit jedem Konkurrenten (Krieg erklären, Frieden gegen Entschädigung); Angriff im Frieden nur nach Rückfrage. Die KI wirbt Soldaten an, erklärt Krieg, wenn sie deutlich stärker ist (frühestens nach 40 Minuten und erst, wenn der Spieler Burg/Türme bauen kann), schickt Kriegsschiffe und landet Truppen.
-- K7 Piraten: tauchen nach ca. 30 Minuten auf, jagen Schiffe, beschießen später (ab ca. 50 Minuten) ungeschützte Küsten; Schutz kaufen möglich; drei versenkte Piratenschiffe → Triumphbogen.
+- K5 Eroberung: Fällt Kontor oder Marktplatz, während eigene Soldaten danebenstehen, wechseln es und alle Gebäude im Gebiet den Besitzer; sonst wird es zerstört. Gegner ohne Gebäude und Schiffe ist besiegt → ein Triumphbogen je Sieg, jeder erlaubt ein Schiff mehr.
+- K6 Krieg & Frieden mit jedem Konkurrenten (Krieg erklären, Frieden gegen Entschädigung); Angriff im Frieden nur nach Rückfrage. Die KI wirbt Soldaten an, erklärt Krieg, wenn sie deutlich stärker ist (frühestens nach 40 Minuten und 15 Minuten, nachdem der Spieler Burg/Türme bauen kann, spätestens ab 90 Minuten), schickt Kriegsschiffe und landet Truppen.
+- K7 Piraten: tauchen nach ca. 30 Minuten auf, überfallen Schiffe (unbewaffnete werden ausgeraubt, bewaffnete bekämpft), beschießen ungeschützte Küsten erst ab ca. 50 Minuten und 15 Minuten nach Freischaltung der Wachtürme; Kontore werden geplündert, nicht zerstört; ohne Kontor und Schiff kommt ein neues Schiff mit Startladung; Schutz kaufen möglich; drei versenkte Piratenschiffe → Triumphbogen.
 - K8 Sichtbar und hörbar: Lebensbalken, Mündungsfeuer, Kanonenkugeln, Rauch, brennende Gebäude, sinkende Schiffe; Klänge für Schwerter, Musketen, Kanonen, Sturmglocke.
 
 ## Bevölkerung

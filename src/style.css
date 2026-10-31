@@ -117,6 +117,7 @@ body.paused .top { border-bottom-color: var(--gold); }
   background: rgba(43, 33, 24, .95); border: 1px solid var(--rand); border-radius: 10px;
   font-variant-numeric: tabular-nums;
 }
+.info.slim { bottom: auto; max-height: calc(100% - 64px); width: 220px; }
 .info h3 { font: 21px/1.1 var(--display); margin: 0 40px 6px 0; color: var(--gold); text-wrap: balance; }
 .info h4 { font: 15px var(--display); margin: 10px 0 4px; color: var(--gold); letter-spacing: .04em; }
 .info .sub { font-size: 13px; color: var(--pergament-2); margin: 3px 0; }

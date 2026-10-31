@@ -227,7 +227,7 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   festung: { id: 'festung', name: 'Festung', icon: '🛡️', category: 'militaer', size: 3, cost: { taler: 2500, holz: 8, werkzeug: 12, stein: 25 }, upkeep: 130, unlock: A(600), hp: 380,
     trains: { slots: 8, time: 50 }, desc: 'Die stärkste Anlage: bis zu 8 Soldaten gleichzeitig, am schnellsten.' },
   triumphbogen: { id: 'triumphbogen', name: 'Triumphbogen', icon: '🏛️', category: 'militaer', size: 2, cost: { taler: 1500, stein: 20, werkzeug: 5 }, upkeep: 0, victory: true, hp: 200,
-    desc: 'Denkmal für einen Sieg über einen Gegner oder die Piraten. Erlaubt ein Schiff mehr.' },
+    desc: 'Denkmal für einen Sieg über einen Gegner oder die Piraten (einer je Sieg). Jeder Triumphbogen erlaubt ein Schiff mehr.' },
 };
 
 export const CATEGORIES: { id: Category; name: string; icon: string }[] = [
