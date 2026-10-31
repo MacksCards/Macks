@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import type { Game, ShotKind } from '../game';
 import { T } from '../world';
+import { flushInstances } from './instances';
 
 /** Teilchen-Arten */
 const enum K { Rauch, Staub, Gischt, Blitz, Feuer, Funke, Splitter }
@@ -27,6 +28,8 @@ class Particles {
   private next = 0;
   private c0 = new THREE.Color(); private c1 = new THREE.Color();
   live = 0;
+  /** seit dem letzten Bild neu entstanden (dann muss hochgeladen werden, auch wenn vorher nichts lebte) */
+  private spawned = false;
 
   constructor(n: number, additive: boolean) {
     this.n = n;
@@ -64,9 +67,11 @@ class Particles {
           #include <colorspace_fragment>
         }`,
     });
+    for (const a of Object.values(geo.attributes)) (a as THREE.BufferAttribute).setUsage(THREE.DynamicDrawUsage);
     this.points = new THREE.Points(geo, mat);
     this.points.frustumCulled = false;
     this.points.renderOrder = 6;
+    this.points.visible = false;
   }
 
   spawn(kind: K, x: number, y: number, z: number, vx: number, vy: number, vz: number, life: number) {
@@ -75,13 +80,23 @@ class Particles {
     this.pos[i * 3] = x; this.pos[i * 3 + 1] = y; this.pos[i * 3 + 2] = z;
     this.vel[i * 3] = vx; this.vel[i * 3 + 1] = vy; this.vel[i * 3 + 2] = vz;
     this.age[i] = 0; this.life[i] = life; this.kind[i] = kind;
+    this.spawned = true;
   }
 
   update(dt: number, vh: number) {
-    let live = 0;
+    // nichts lebt und nichts Neues: keine Rechnung, kein Hochladen, nicht zeichnen
+    if (this.live === 0 && !this.spawned) { this.points.visible = false; return; }
+    this.spawned = false;
+    let live = 0, lo = this.n, hi = -1;
     for (let i = 0; i < this.n; i++) {
-      if (this.age[i] >= 1) { if (this.alpha[i] !== 0) this.alpha[i] = 0; continue; }
+      if (this.age[i] >= 1) {
+        // gerade erloschen: einmal unsichtbar hochladen
+        if (this.alpha[i] !== 0) { this.alpha[i] = 0; if (i < lo) lo = i; if (i > hi) hi = i; }
+        continue;
+      }
       live++;
+      if (i < lo) lo = i;
+      if (i > hi) hi = i;
       const L = LOOK[this.kind[i] as K];
       const a = (this.age[i] += dt / this.life[i]);
       const dr = Math.max(0, 1 - L.drag * dt);
@@ -98,11 +113,17 @@ class Particles {
       this.alpha[i] = a >= 1 ? 0 : L.a * Math.min(1, a * 12) * (1 - t) ** (this.kind[i] === K.Rauch ? 1.2 : 0.8);
     }
     this.live = live;
-    const g = this.points.geometry;
-    (g.attributes.position as THREE.BufferAttribute).needsUpdate = true;
-    (g.attributes.pcol as THREE.BufferAttribute).needsUpdate = true;
-    (g.attributes.psize as THREE.BufferAttribute).needsUpdate = true;
-    (g.attributes.palpha as THREE.BufferAttribute).needsUpdate = true;
+    this.points.visible = live > 0;
+    if (hi < lo) return;
+    // nur den Bereich mit lebenden (oder gerade erloschenen) Teilchen hochladen
+    const g = this.points.geometry, n = hi - lo + 1;
+    for (const name of ['position', 'pcol', 'psize', 'palpha']) {
+      const a = g.attributes[name] as THREE.BufferAttribute;
+      a.clearUpdateRanges();
+      a.addUpdateRange(lo * a.itemSize, n * a.itemSize);
+      a.needsUpdate = true;
+    }
+    g.setDrawRange(lo, n);
     (this.points.material as THREE.ShaderMaterial).uniforms.uScale.value = vh * 0.9;
   }
 }
@@ -163,6 +184,7 @@ export class Fx {
   constructor(private g: Game, private height: (x: number, z: number) => number) {
     this.ballMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.045, 8, 6), new THREE.MeshStandardMaterial({ color: 0x1c1c1e, roughness: 0.5, metalness: 0.6 }), 96);
     this.ballMesh.count = 0;
+    this.ballMesh.visible = false;
     this.ballMesh.frustumCulled = false;
     for (let i = 0; i < 96; i++) this.balls.push({ on: false, fx: 0, fy: 0, fz: 0, tx: 0, ty: 0, tz: 0, t: 0, dur: 1, arc: 0, water: false, hit: false });
     this.group.add(this.soft.points, this.glow.points, this.ballMesh, this.bars.group);
@@ -321,8 +343,7 @@ export class Fx {
       this.ballMesh.setMatrixAt(n++, this.m);
       if (Math.random() < 0.5) this.soft.spawn(K.Rauch, x, y, z, 0, 0.05, 0, 0.5); // feine Rauchspur
     }
-    this.ballMesh.count = n;
-    this.ballMesh.instanceMatrix.needsUpdate = true;
+    if (n || this.ballMesh.count) flushInstances(this.ballMesh, n);
     this.soft.update(dt, viewportHeight);
     this.glow.update(dt, viewportHeight);
   }

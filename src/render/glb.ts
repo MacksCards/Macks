@@ -1,9 +1,17 @@
 // Lädt die von Meshy erzeugten 3D-Modelle (public/models/*.glb, Liste in manifest.json).
 // Fehlt ein Modell, zeigt das Spiel weiter das Platzhalter-Modell aus Code.
+// Der Lader (ca. 65 KB) kommt nur ins Spiel, wenn beim Bauen der Datei Modelle in manifest.json stehen
+// (__MODELLE__ setzt vite.config.ts), und wird erst geladen, wenn die Liste Einträge hat.
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { BuildingId } from '../data';
+
+declare const __MODELLE__: boolean;
+
+/** Lader nur einbauen, wenn es beim Bauen Modelle gab (sonst entfernt das Bauwerkzeug diesen Teil ganz) */
+// (typeof-Prüfung: in Tests ohne Bauwerkzeug ist __MODELLE__ nicht gesetzt)
+const loadLoader = typeof __MODELLE__ !== 'undefined' && __MODELLE__
+  ? () => Promise.all([import('three/examples/jsm/loaders/GLTFLoader.js'), import('three/examples/jsm/libs/meshopt_decoder.module.js')])
+  : null;
 
 interface Entry { file: string; art: string; building?: BuildingId; tier?: number; size?: number }
 
@@ -21,6 +29,9 @@ export class ModelLibrary {
     } catch {
       return; // keine Modelle vorhanden (z. B. Vorschau ohne Dateien)
     }
+    if (!manifest || typeof manifest !== 'object' || !Object.keys(manifest).length) return;
+    if (!loadLoader) { console.warn('Modelle vorhanden, aber diese Datei wurde ohne Modell-Lader gebaut (npm run build neu ausführen).'); return; }
+    const [{ GLTFLoader }, { MeshoptDecoder }] = await loadLoader();
     const loader = new GLTFLoader();
     loader.setMeshoptDecoder(MeshoptDecoder);
     const jobs = Object.entries(manifest).map(async ([id, e]) => {

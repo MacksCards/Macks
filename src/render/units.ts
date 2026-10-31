@@ -6,10 +6,12 @@ import type { UnitType } from '../data';
 import type { Game, Unit } from '../game';
 import { Builder, M, Paint } from './kit';
 import { buildingMaterial } from './materials';
+import { flushInstances } from './instances';
 
 /** Maßstab: Figuren werden in „1 = Körpergröße“ gebaut */
 const S = 0.5;
-const MAX = 256;
+/** Plätze je Figurenteil: höchstens 99 Soldaten je Spieler, gezeichnet werden nur die in Kameranähe */
+const MAX = 128;
 
 const haut = 0xe2b896, hautDunkel = 0xc99a74;
 const leder = { c: 0x5e3f26, p: 0 }, lederHell = { c: 0x8a6036, p: 0 };
@@ -312,6 +314,10 @@ export class UnitLayer {
   };
   /** sichtbare Soldaten mit Weltposition (für Lebensbalken und Antippen) */
   shown: { u: Unit; x: number; y: number; z: number; top: number }[] = [];
+  // je Bild wiederverwendet (kein neuer Speicher)
+  private counts = new Map<UnitType, number>();
+  private alive = new Set<number>();
+  private pz = { rx: 0, dz: 0 };
 
   constructor(private g: Game, private height: (x: number, z: number) => number) {
     for (const t of Object.keys(KINDS) as UnitType[]) {
@@ -319,6 +325,7 @@ export class UnitLayer {
       const meshes = def.parts.map((p) => {
         const m = new THREE.InstancedMesh(p.geo, p.metal ? this.metalMat : this.mat, MAX);
         m.count = 0;
+        m.visible = false;
         m.castShadow = true;
         m.frustumCulled = false;
         if (p.tint) m.setColorAt(0, this.col.setHex(0xffffff));
@@ -330,6 +337,7 @@ export class UnitLayer {
     this.rings = new THREE.InstancedMesh(new THREE.RingGeometry(0.85, 1, 32).rotateX(-Math.PI / 2),
       new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.9, depthWrite: false }), MAX);
     this.rings.count = 0;
+    this.rings.visible = false;
     this.rings.frustumCulled = false;
     this.rings.renderOrder = 3;
     this.group.add(this.rings);
@@ -351,23 +359,28 @@ export class UnitLayer {
 
   /** Winkel eines Teils (Drehung um x) bzw. Verschiebung (z) für die aktuelle Bewegung */
   private pose(anim: Anim, ph: number, mv: number, atk: number, kind: UnitType): { rx: number; dz: number } {
+    const o = this.pz;
+    o.dz = 0;
+    o.rx = this.poseRx(anim, ph, mv, atk, kind);
+    if (anim === 'musket' && atk < 0.15) o.dz = -0.04; // Rückstoß
+    else if (anim === 'recoil' && atk < 0.5) o.dz = -0.12 * (1 - atk / 0.5);
+    return o;
+  }
+
+  private poseRx(anim: Anim, ph: number, mv: number, atk: number, kind: UnitType): number {
     const sw = Math.sin(ph) * 0.65 * mv;
     switch (anim) {
-      case 'legL': return { rx: sw, dz: 0 };
-      case 'legR': return { rx: -sw, dz: 0 };
-      case 'hfl': case 'hbr': return { rx: Math.sin(ph) * 0.55 * mv, dz: 0 };
-      case 'hfr': case 'hbl': return { rx: -Math.sin(ph) * 0.55 * mv, dz: 0 };
+      case 'legL': return sw;
+      case 'legR': return -sw;
+      case 'hfl': case 'hbr': return Math.sin(ph) * 0.55 * mv;
+      case 'hfr': case 'hbl': return -Math.sin(ph) * 0.55 * mv;
       case 'swing': {
-        if (atk < 0.4) { const k = atk / 0.4; return { rx: k < 0.35 ? 2.4 * (k / 0.35) : 2.4 - 3.0 * ((k - 0.35) / 0.65), dz: 0 }; }
-        return { rx: kind === 'reiter' ? -0.5 : -sw * 0.5 - 0.15, dz: 0 };
+        if (atk < 0.4) { const k = atk / 0.4; return k < 0.35 ? 2.4 * (k / 0.35) : 2.4 - 3.0 * ((k - 0.35) / 0.65); }
+        return kind === 'reiter' ? -0.5 : -sw * 0.5 - 0.15;
       }
-      case 'musket': {
-        if (atk < 1.4) return { rx: atk < 0.15 ? -0.25 * (1 - atk / 0.15) : 0, dz: atk < 0.15 ? -0.04 : 0 }; // angelegt, Rückstoß
-        return { rx: -1.25, dz: 0 }; // geschultert
-      }
-      case 'recoil': return { rx: 0, dz: atk < 0.5 ? -0.12 * (1 - atk / 0.5) : 0 };
-      case 'ram': return { rx: atk < 0.6 ? -0.9 + atk : -sw * 0.5, dz: 0 };
-      default: return { rx: 0, dz: 0 };
+      case 'musket': return atk < 1.4 ? (atk < 0.15 ? -0.25 * (1 - atk / 0.15) : 0) : -1.25; // angelegt bzw. geschultert
+      case 'ram': return atk < 0.6 ? -0.9 + atk : -sw * 0.5;
+      default: return 0;
     }
   }
 
@@ -375,9 +388,11 @@ export class UnitLayer {
     const dt = Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
     const g = this.g, tm = this.tm;
-    const counts = new Map<UnitType, number>();
+    const counts = this.counts;
+    counts.clear();
     let rings = 0;
-    const alive = new Set<number>();
+    const alive = this.alive;
+    alive.clear();
     this.shown.length = 0;
     const far = cam ? Math.max(40, cam.dist * 2.2) : 1e9;
     for (const u of g.units) {
@@ -404,18 +419,19 @@ export class UnitLayer {
       tm.base.compose(tm.v.set(ux, gy + bob, uy), tm.q.setFromAxisAngle(tm.s.set(0, 1, 0), udir), tm.s.set(S, S, S));
       const atk = u.atk !== undefined ? g.time - u.atk : 99;
       const color = g.players[u.owner]?.color ?? 0xffffff;
-      k.def.parts.forEach((p, pi) => {
-        const m = k.meshes[pi];
+      const parts = k.def.parts;
+      for (let pi = 0; pi < parts.length; pi++) {
+        const p = parts[pi], m = k.meshes[pi];
         if (p.anim === 'none') tm.part.copy(tm.base);
         else {
-          const { rx, dz } = this.pose(p.anim, tr!.ph, tr!.mv, atk, u.type);
-          tm.tmp.makeRotationX(rx);
-          tm.part.makeTranslation(p.pivot[0], p.pivot[1], p.pivot[2] + dz).multiply(tm.tmp);
+          const ps = this.pose(p.anim, tr.ph, tr.mv, atk, u.type);
+          tm.tmp.makeRotationX(ps.rx);
+          tm.part.makeTranslation(p.pivot[0], p.pivot[1], p.pivot[2] + ps.dz).multiply(tm.tmp);
           tm.part.premultiply(tm.base);
         }
         m.setMatrixAt(i, tm.part);
         if (p.tint) m.setColorAt(i, this.col.setHex(color));
-      });
+      }
       if (this.selected.has(u.id) && rings < MAX) {
         const r = k.def.ring * S * 1.6;
         tm.part.compose(tm.v.set(ux, gy + 0.04, uy), tm.q.identity(), tm.s.set(r, 1, r));
@@ -425,14 +441,9 @@ export class UnitLayer {
     }
     for (const [t2, k] of this.kinds) {
       const n = counts.get(t2) ?? 0;
-      k.meshes.forEach((m) => {
-        m.count = n;
-        m.instanceMatrix.needsUpdate = true;
-        if (m.instanceColor) m.instanceColor.needsUpdate = true;
-      });
+      for (let mi = 0; mi < k.meshes.length; mi++) flushInstances(k.meshes[mi], n);
     }
-    this.rings.count = rings;
-    this.rings.instanceMatrix.needsUpdate = true;
+    flushInstances(this.rings, rings);
     for (const id of this.track.keys()) if (!alive.has(id)) this.track.delete(id);
     for (const id of this.selected) if (!alive.has(id)) this.selected.delete(id);
     this.animateDying(dt);
@@ -467,6 +478,7 @@ export class UnitLayer {
       d.group.children.forEach((c) => c.quaternion.setFromAxisAngle(d.axis, fall * Math.PI * 0.47));
       if (d.t > 2) for (const m of d.mats) { m.opacity = Math.max(0, 1 - (d.t - 2) / 1.5); }
     }
+    if (!this.dying.length) return;
     const done = this.dying.filter((d) => d.t > 3.5);
     for (const d of done) { this.group.remove(d.group); d.mats.forEach((m) => m.dispose()); }
     if (done.length) this.dying = this.dying.filter((d) => d.t <= 3.5);
