@@ -26,6 +26,14 @@ Arbeitstitel: **Neue Ufer** – ein Aufbau-Strategiespiel, inhaltlich so nah wie
 - Etappen (neu): 1) Kernablauf – Inselwelt, Schiff, Kontor, Einfluss, Wege, Marktkarren, Original-Ketten und Freischaltungen, KI-Konkurrenten siedeln → 2) alle fünf Stufen, Handel mit Händlern/Ureinwohnern, Piraten → 3) Kampf (Militär, Seeschlachten, Eroberung) → 4) Feinschliff, Szenarien, Endwertung.
 - Sprache im Spiel und in der Kommunikation: Deutsch, einfach und ohne Fachchinesisch.
 
+## Entscheidungen aus dem 1:1-Abgleich mit 1602 (31.10.2026, Details: docs/ABGLEICH-1602.md)
+- **Steuern wie 1602:** Regler je Stufe mit den Höchstsätzen des Originals (48 % … 35 %), zu hohe Steuern machen unzufrieden bis zum Auszug, flache Steuerkurve (Aristokrat ≈ 1,4 × Pionier); Gesamteinnahmen so eingestellt, dass das Spiel nicht schwerer wird.
+- **Wirtschaftstempo wie 1602:** Betriebe so beschleunigen, dass einer wieder 60–100 % so viele Bewohner versorgt wie im Original (Verhältnisse wie 1602).
+- **Felder:** Farm/Plantage legt beim Bau automatisch sichtbare Felder an (5 Taler je Feld, sie reifen erst); Feld-Werkzeug zum Nachbessern.
+- **Grafik:** sichtbare Fehler sofort im Code beheben, dann Meshy-Probe mit 3 Modellen (Wohnhaus, Kontor, Schaf); nach Freigabe alle Modelle mit Meshy, im Code nur nachbauen, was Meshy nicht liefert. Schlüssel MESHY_API_KEY legt der Nutzer in den Umgebungs-Einstellungen an (nie im Chat).
+- **Schwierigkeit wählbar** (leicht/normal/schwer, Startgeld 20 000/15 000/10 000); Standard „normal“: Gegner wachsen bis Kaufleute, besiedeln 2–3 Inseln, greifen nach Vorwarnung an; Katastrophen standardmäßig „mild“.
+- **Inselgrößen wie 1602** (fünf Größenklassen, größere Welt, beim Start wählbar) – erst nach der Grafik-Leistungsarbeit und einem Test auf dem iPhone des Nutzers.
+
 ## Arbeitsweise
 - Vor jeder Lieferung prüft ein separater Agent ohne Vorwissen das Ergebnis gegen `docs/ANFORDERUNGEN.md` und diese Regeln.
 - Neue Korrekturen des Nutzers hier als dauerhafte Regel ergänzen.
