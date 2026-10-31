@@ -1,1 +1,5 @@
-{}
+{
+ "haus-1": { "file": "haus-1.glb", "art": "gebaeude", "building": "haus", "tier": 1, "size": 2 },
+ "kontor": { "file": "kontor.glb", "art": "gebaeude", "building": "kontor", "tier": 0, "size": 3 },
+ "schaf": { "file": "schaf.glb", "art": "tier" }
+}
