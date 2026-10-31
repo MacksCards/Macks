@@ -185,6 +185,7 @@ export class UI {
         const col = eff < 0.4 ? '#e2553f' : eff < 0.75 ? '#e8b93a' : '#7cc95a';
         const what = { baum: 'Wald', fisch: 'Fischgründe', wild: 'Wild', weide: 'Weideland' }[d.harvest.res];
         const shared = this.g.buildings.some((o) => o.type === m.type && Math.hypot(this.g.center(o)[0] - m.gx, this.g.center(o)[1] - m.gy) < (d.work ?? 4) * 2);
+        if (eff < 0.2) msg = `⚠️ Hier gibt es kaum ${what} – such dir einen besseren Platz. ` + msg;
         scale = `<div class="effbar" title="Ergiebigkeit"><i style="width:${pct}%;background:${col}"></i><span>${what}: ${pct} %${shared ? ' · geteilt mit Nachbarn' : ''}</span></div>`;
       }
       if (!m.has && d.prod) msg += ' Danach mit einem Weg verbinden!';

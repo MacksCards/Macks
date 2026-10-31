@@ -39,7 +39,7 @@ function deerGeo() {
 }
 function workerGeo(carry: 'nichts' | 'stamm' | 'wild') {
   const b = new Builder();
-  b.person(0, 0, 0, carry === 'wild' ? 0x5c6b3a : 0x7a5434, 1.7);
+  b.person(0, 0, 0, carry === 'wild' ? 0x9c3d2e : 0xd2a03a, 1.9);
   if (carry === 'stamm') b.log(0.04, 0.35, M.holz, 0, 0.25, 0, Math.PI / 2 - 0.2);
   else if (carry === 'wild') b.sphere(0.06, 0x8a5a33, 0.05, 0.24, -0.04, 1, 0.7, 1.4);
   else b.box(0.015, 0.2, 0.015, M.dunkelholz, 0.07, 0.08, 0.02); // Axt/Bogen in der Hand
@@ -111,21 +111,36 @@ export class LifeLayer {
         if (g.fishCap[k] > bv) { bv = g.fishCap[k]; best = k; }
       }
       if (best >= 0 && bv >= 0.55 && g.seen[best] && this.shoals.length < 220) {
-        const fish = Array.from({ length: 9 }, () => ({ r: 0.25 + Math.random() * 0.8, w: (0.5 + Math.random() * 0.7) * (Math.random() < 0.5 ? -1 : 1), ph: Math.random() * 6.28, d: 0.02 + Math.random() * 0.05 }));
-        this.shoals.push({ x: (best % N) + 0.5, z: ((best / N) | 0) + 0.5, k: best, fish, jump: Math.random() * 10 });
+        // feste Zufallswerte je Fanggrund, damit Schwärme beim Neuaufbau nicht springen
+        let a = best * 9.137;
+        const rnd = () => { a = Math.sin(a) * 43758.5453; return a - Math.floor(a); };
+        const fish = Array.from({ length: 10 }, () => ({ r: 0.25 + rnd() * 0.8, w: (0.5 + rnd() * 0.7) * (rnd() < 0.5 ? -1 : 1), ph: rnd() * 6.28, d: 0.02 + rnd() * 0.05 }));
+        this.shoals.push({ x: (best % N) + 0.5, z: ((best / N) | 0) + 0.5, k: best, fish, jump: rnd() * 10 });
       }
     }
     for (let y = 1; y < N - 1; y += 7) for (let x = 1; x < N - 1; x += 7) {
       const k = y * N + x;
-      if (g.tiles[k] === T.Wald && g.seen[k] && this.herds.length < 280) this.herds.push({ x: x + 0.5, z: y + 0.5, k, ph: Math.random() * 6.28, spd: 0.04 + Math.random() * 0.05 });
+      if (g.tiles[k] !== T.Wald || !g.seen[k] || this.herds.length >= 280) continue;
+      // nur am Waldrand (Lichtung/Wiese daneben), damit man die Tiere sieht
+      let edge = false;
+      for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) { const t2 = g.tiles[(y + j) * N + x + i]; if (t2 === T.Gras || t2 === T.Sand) edge = true; }
+      if (edge) this.herds.push({ x: x + 0.5, z: y + 0.5, k, ph: (k * 0.731) % 6.28, spd: 0.04 + ((k * 0.317) % 1) * 0.05 });
     }
   }
 
-  update(t: number) {
+  /** cam = Kameraziel (x, z) und Abstand; weit weg wird nichts gezeichnet (spart Rechenzeit) */
+  update(t: number, cam: { x: number; z: number; dist: number }) {
     const g = this.g, N = g.size;
+    const R = Math.max(18, cam.dist * 1.4);
+    const near = (x: number, z: number) => Math.abs(x - cam.x) < R && Math.abs(z - cam.z) < R;
+    if (cam.dist > 60) {
+      for (const m of [this.fish, this.ripples, this.deer, this.sheep, this.pigs, this.boats, this.workers.nichts, this.workers.stamm, this.workers.wild]) m.count = 0;
+      return;
+    }
     // Fischschwärme: Anzahl sichtbarer Fische = aktueller Bestand des Fanggrunds
     let nf = 0;
     for (const s of this.shoals) {
+      if (!near(s.x, s.z) || cam.dist > 30) continue;
       const fill = g.fishCap[s.k] > 0 ? g.fish[s.k] / g.fishCap[s.k] : 0;
       const show = Math.round(s.fish.length * fill);
       for (let i = 0; i < show && nf < 2000; i++) {
@@ -135,7 +150,7 @@ export class LifeLayer {
         let y = -f.d + Math.sin(t * 2 + i) * 0.01;
         // ab und zu springt ein Fisch aus dem Wasser
         if (i === 0) { const jt = (t + s.jump) % 9; if (jt < 0.7) y = Math.sin((jt / 0.7) * Math.PI) * 0.3; }
-        place(this.fish, nf++, x, y, z, a + (f.w > 0 ? Math.PI : 0), 1.5);
+        place(this.fish, nf++, x, y, z, a + (f.w > 0 ? Math.PI : 0), 1.8);
       }
     }
     this.fish.count = nf;
@@ -143,6 +158,7 @@ export class LifeLayer {
     // je Schwarm zwei Kräuselringe, die sich ausbreiten (nur bei gutem Bestand)
     let nr = 0;
     for (const s of this.shoals) {
+      if (!near(s.x, s.z)) continue;
       const fill = g.fishCap[s.k] > 0 ? g.fish[s.k] / g.fishCap[s.k] : 0;
       if (fill < 0.35 || nr > 490) continue;
       for (let j = 0; j < 2; j++) {
@@ -158,14 +174,16 @@ export class LifeLayer {
     // Hirsche im Wald, so viele wie Wild da ist
     let nd = 0;
     for (const h of this.herds) {
-      if (g.wild[h.k] < 0.5) continue;
+      if (g.wild[h.k] < 0.5 || !near(h.x, h.z)) continue;
       for (let i = 0; i < 2 && nd < 300; i++) {
         const a = h.ph + i * 2.1 + t * h.spd;
         const x = h.x + Math.cos(a) * 2.2 + Math.sin(a * 2.3) * 0.6, z = h.z + Math.sin(a * 0.8) * 2.2;
         const kx = Math.floor(x), kz = Math.floor(z);
-        if (kx < 0 || kz < 0 || kx >= N || kz >= N || g.tiles[kz * N + kx] !== T.Wald) continue;
+        if (kx < 0 || kz < 0 || kx >= N || kz >= N) continue;
+        const tt = g.tiles[kz * N + kx];
+        if (tt === T.Wasser || tt === T.Berg || g.occ[kz * N + kx] || g.roads[kz * N + kx]) continue;
         const grazing = Math.sin(t * 0.7 + h.ph + i) > 0.3;
-        place(this.deer, nd++, x, Math.max(this.height(x, z), 0.05), z, a + Math.PI / 2 + (grazing ? 0.4 : 0), 1.2);
+        place(this.deer, nd++, x, Math.max(this.height(x, z), 0.05), z, a + Math.PI / 2 + (grazing ? 0.4 : 0), 1.7);
       }
     }
     this.deer.count = nd;
@@ -178,15 +196,15 @@ export class LifeLayer {
       if (!g.seen[g.idx(b.x, b.y)]) continue;
       const d = BUILDINGS[b.type];
       const [cx, cz] = g.center(b);
+      if (!near(cx, cz)) continue;
       if (b.type === 'schaffarm' || b.type === 'schweinezucht') {
         const mesh = b.type === 'schaffarm' ? this.sheep : this.pigs;
         for (let i = 0; i < 5; i++) {
           const ph = b.id * 1.7 + i * 1.3;
           const a = ph + t * 0.05;
-          const R = (d.work ?? 3) * 0.75;
-          let x = cx + Math.cos(a) * R * (0.5 + 0.5 * Math.sin(ph)), z = cz + Math.sin(a * 1.3) * R * (0.5 + 0.5 * Math.cos(ph));
-          const k = Math.floor(z) * N + Math.floor(x);
-          if (g.tiles[k] === T.Wasser || g.tiles[k] === T.Berg || g.occ[k] && g.occ[k] !== b.id) { x = cx + (i - 2) * 0.3; z = cz + 1.7; }
+          // innerhalb des Zauns (Hof 3×3) umherlaufen
+          const R = d.size / 2 - 0.35;
+          const x = cx + Math.cos(a) * R * (0.4 + 0.6 * Math.abs(Math.sin(ph + t * 0.03))), z = cz + Math.sin(a * 1.3) * R * (0.4 + 0.6 * Math.abs(Math.cos(ph)));
           const n = mesh === this.sheep ? ns++ : np++;
           place(mesh, n, x, Math.max(this.height(x, z), 0.05), z, a + Math.PI / 2 + Math.sin(t + i) * 0.3, 1.2);
         }
@@ -203,13 +221,16 @@ export class LifeLayer {
         const heading = Math.atan2(tx - start[0], tz - start[1]) + (p > 0.8 ? Math.PI : 0);
         place(this.boats, nb++, x, 0.03 + Math.sin(t * 2 + b.id) * 0.02, z, heading + (p > 0.3 && p < 0.8 ? Math.sin(t) * 0.3 : 0), 1.3);
       } else if (d.harvest.res === 'baum' || d.harvest.res === 'wild') {
-        const x = cx + (tx - cx) * f, z = cz + (tz - cz) * f;
+        // am Baum auf der Hof-Seite stehen (sonst verdecken die Kronen die Figur)
+        const dl = Math.hypot(tx - cx, tz - cz) || 1;
+        const ex = tx - ((tx - cx) / dl) * 0.6, ez = tz - ((tz - cz) / dl) * 0.6;
+        const x = cx + (ex - cx) * f, z = cz + (ez - cz) * f;
         const heading = Math.atan2(tx - cx, tz - cz) + (p > 0.8 ? Math.PI : 0);
         const kind = p > 0.8 ? (d.harvest.res === 'baum' ? 'stamm' : 'wild') : 'nichts';
         // beim Hacken leicht vor und zurück wippen
         const chop = p > 0.3 && p < 0.8 && d.harvest.res === 'baum' ? Math.abs(Math.sin(t * 7)) * 0.05 : 0;
         const mesh = this.workers[kind];
-        if (nw[kind] < 300) place(mesh, nw[kind]++, x - Math.sin(heading) * chop, Math.max(this.height(x, z), 0.05), z - Math.cos(heading) * chop, heading, 1.3);
+        if (nw[kind] < 300) place(mesh, nw[kind]++, x - Math.sin(heading) * chop, Math.max(this.height(x, z), 0.05), z - Math.cos(heading) * chop, heading, 1.6);
       }
     }
     for (const [m, n] of [[this.sheep, ns], [this.pigs, np], [this.boats, nb], [this.workers.nichts, nw.nichts], [this.workers.stamm, nw.stamm], [this.workers.wild, nw.wild]] as const) {

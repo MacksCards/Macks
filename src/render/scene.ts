@@ -660,7 +660,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     if (this.growT > 1.5) { this.growT = 0; this.veg.updateGrowth(); }
     this.ships.update(t);
     this.carts.update(t);
-    this.life.update(t);
+    this.life.update(t, { x: this.rig.tx, z: this.rig.tz, dist: this.rig.dist });
     this.waterUniforms.uTime.value = t;
     windTime.value = t;
     for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;
