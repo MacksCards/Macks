@@ -3,3 +3,6 @@ dist
 *.log
 .DS_Store
 assets/raw/
+
+# Arbeitskopien paralleler Arbeitspakete (werden nie eingecheckt)
+.claude/worktrees/
