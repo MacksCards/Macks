@@ -7,7 +7,8 @@ import { findSeaPath } from './path';
 import { thinkAI } from './ai';
 import { Island, T, WORLD_SIZE, generateWorld, rng } from './world';
 
-export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen';
+export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft';
+export type Res = 'baum' | 'fisch' | 'wild' | 'weide';
 
 export interface Building {
   id: number;
@@ -32,6 +33,9 @@ export interface Building {
   upT: number;
   /** eigenes kleines Lager des Betriebs (wartet auf den Marktkarren) */
   stock: number;
+  /** Feld, an dem gerade geerntet wird (Baum, Fanggrund, Wild …), -1 = keins */
+  target?: number;
+  cut?: boolean;
 }
 
 /** Marktkarren: holt Waren von Betrieben ab und bringt sie ins Inselllager */
@@ -81,6 +85,7 @@ export interface SaveData {
   time: number;
   quest: number;
   unlocked?: BuildingId[];
+  res?: { trees: string; fish: string; wild: string; weide: string };
 }
 
 export interface GameEvents {
@@ -89,6 +94,8 @@ export interface GameEvents {
   changed(b: Building): void;
   roads(): void;
   trees(): void;
+  /** ein Baum wurde gefällt (Feld-Index) */
+  felled(k: number): void;
   seen(): void;
   message(text: string, kind?: 'info' | 'good' | 'bad'): void;
 }
@@ -100,6 +107,8 @@ const SAVE_KEY = 'neue-ufer-save-v3';
 export const HUMAN = 0;
 const SHIP_SPEED = 3.2; // Kacheln pro Spielsekunde
 const SHIP_SIGHT = 9;
+/** Nachwachsen je Sekunde (voller Bestand = 1): Baum ~5 min, Fischgrund ~2,5 min, Wild ~6,5 min, Weide ~1,5 min */
+const REGEN: Record<Res, number> = { baum: 1 / 300, fisch: 1 / 150, wild: 1 / 400, weide: 1 / 90 };
 const CART_SPEED = 1.8; // Felder pro Spielsekunde
 const CART_CAP = 6; // Tonnen pro Fahrt
 export const DOCK_RANGE = 5; // so nah muss ein Schiff am Kontor/Bauplatz sein
@@ -112,6 +121,7 @@ export const OPPONENTS = [
 ];
 
 const enc = (a: ArrayLike<number>) => { let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(a[i] + 48); return s; };
+const encR = (a: Float32Array) => { let s = ''; for (let i = 0; i < a.length; i++) s += String.fromCharCode(48 + Math.round(Math.max(0, Math.min(1, a[i])) * 40)); return s; };
 const zeroGoods = (): Goods => Object.fromEntries(GOODS.map((g) => [g.id, 0])) as Goods;
 const EMPTY: Goods = Object.freeze(zeroGoods()) as Goods;
 
@@ -125,6 +135,15 @@ export class Game {
   roads: Uint8Array = new Uint8Array(0);
   seen: Uint8Array = new Uint8Array(0);
   occ = new Int32Array(0);
+  /** Rohstoffbestände je Feld (0..1): Reife der Bäume, Fisch, Wild, Weide; fishCap = Ergiebigkeit des Fanggrunds */
+  trees: Float32Array = new Float32Array(0);
+  fish: Float32Array = new Float32Array(0);
+  fishCap: Float32Array = new Float32Array(0);
+  wild: Float32Array = new Float32Array(0);
+  weide: Float32Array = new Float32Array(0);
+  private regenT = 0;
+  /** wie viele Ernte-Betriebe je Rohstoff ein Feld nutzen (für die Ergiebigkeit) */
+  private share: Partial<Record<Res, Uint8Array>> = {};
   buildings: Building[] = [];
   byId = new Map<number, Building>();
   ships: Ship[] = [];
@@ -151,7 +170,7 @@ export class Game {
   private unlockT = 0;
   private cartT = 0;
 
-  ev: GameEvents = { added() {}, removed() {}, changed() {}, roads() {}, trees() {}, seen() {}, message() {} };
+  ev: GameEvents = { added() {}, removed() {}, changed() {}, roads() {}, trees() {}, felled() {}, seen() {}, message() {} };
 
   // ---------- Erstellen / Laden ----------
 
@@ -167,6 +186,44 @@ export class Game {
     this.roads = new Uint8Array(N);
     this.seen = new Uint8Array(N);
     this.occ = new Int32Array(N);
+    this.initResources(seed);
+  }
+
+  /** Startbestände: Wald voll, Fischgründe je nach Lage (Schwärme an Küsten, reiche und arme Stellen) */
+  private initResources(seed: number) {
+    const N = this.size, NN = N * N;
+    this.trees = new Float32Array(NN); this.wild = new Float32Array(NN); this.weide = new Float32Array(NN);
+    this.fish = new Float32Array(NN); this.fishCap = new Float32Array(NN);
+    const dist = new Float32Array(NN).fill(99);
+    const q: number[] = [];
+    for (let k = 0; k < NN; k++) if (this.tiles[k] !== T.Wasser) { dist[k] = 0; q.push(k); }
+    for (let h = 0; h < q.length; h++) {
+      const k = q[h], x = k % N, y = (k / N) | 0;
+      if (dist[k] >= 6) continue;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
+        const nk = ny * N + nx;
+        if (dist[nk] > dist[k] + 1) { dist[nk] = dist[k] + 1; q.push(nk); }
+      }
+    }
+    const r = rng(seed + 501);
+    // grobe Schwarm-Flecken: Zufallszentren mit weichem Rand
+    const shoals: [number, number, number][] = [];
+    for (let i = 0; i < 140; i++) shoals.push([r() * N, r() * N, 3 + r() * 5]);
+    for (let k = 0; k < NN; k++) {
+      const t = this.tiles[k];
+      if (t === T.Wald) { this.trees[k] = r() < 0.85 ? 1 : 0.3 + r() * 0.6; this.wild[k] = 1; }
+      if (t === T.Gras || t === T.Sand) this.weide[k] = 1;
+      if (t === T.Wasser && dist[k] <= 5) {
+        const x = k % N + 0.5, y = ((k / N) | 0) + 0.5;
+        let sh = 0;
+        for (const [sx, sy, sr] of shoals) { const d = Math.hypot(x - sx, y - sy); if (d < sr) sh = Math.max(sh, 1 - d / sr); }
+        const depth = dist[k] <= 1 ? 0.55 : dist[k] <= 3 ? 1 : 0.7;
+        this.fishCap[k] = Math.min(1, (0.25 + sh * 0.9) * depth);
+        this.fish[k] = this.fishCap[k];
+      }
+    }
   }
 
   static create(seed: number, opponents = 2): Game {
@@ -213,6 +270,10 @@ export class Game {
     }
     g.recompute();
     for (const t of d.unlocked ?? []) if (BUILDINGS[t]) g.unlocked.add(t);
+    if (d.res) {
+      const dec = (str: string, arr: Float32Array) => { for (let i = 0; i < arr.length && i < str.length; i++) arr[i] = (str.charCodeAt(i) - 48) / 40; };
+      dec(d.res.trees, g.trees); dec(d.res.fish, g.fish); dec(d.res.wild, g.wild); dec(d.res.weide, g.weide);
+    }
     g.checkUnlocks(true);
     return g;
   }
@@ -222,6 +283,7 @@ export class Game {
       v: 3, seed: this.seed, tiles: enc(this.tiles), roads: enc(this.roads), seen: enc(this.seen),
       buildings: this.buildings, ships: this.ships, players: this.players, lager: this.lager,
       nextId: this.nextId, time: this.time, quest: this.quest, unlocked: [...this.unlocked],
+      res: { trees: encR(this.trees), fish: encR(this.fish), wild: encR(this.wild), weide: encR(this.weide) },
     };
   }
 
@@ -424,7 +486,14 @@ export class Game {
       }
       this.coverage.set(h.id, set);
     }
-    for (const b of this.buildings) b.eff = this.siteEfficiency(b.type, b.x, b.y);
+    this.share = {};
+    for (const o of this.buildings) {
+      const res = BUILDINGS[o.type].harvest?.res;
+      if (!res) continue;
+      const arr = (this.share[res] ??= new Uint8Array(N * N));
+      for (const k of this.workTiles(o.type, o.x, o.y)) if (arr[k] < 255) arr[k]++;
+    }
+    for (const b of this.buildings) b.eff = this.siteEfficiency(b.type, b.x, b.y, b.id);
     // Marktkarren: Kontor 2, Marktplatz 1
     this.carts = this.carts.filter((c) => this.byId.has(c.home));
     for (const b of claimers) {
@@ -523,26 +592,56 @@ export class Game {
     return out;
   }
 
-  siteEfficiency(type: BuildingId, x: number, y: number): number {
+  /** Felder im Arbeitsradius eines Betriebs (ohne die eigene Grundfläche) */
+  workTiles(type: BuildingId, x: number, y: number): number[] {
     const d = BUILDINGS[type];
-    if (!d.needs) return 1;
+    const R = d.work ?? 4;
+    const cx = x + d.size / 2, cy = y + d.size / 2;
+    const out: number[] = [];
+    for (let j = Math.floor(cy - R); j <= Math.ceil(cy + R); j++) for (let i = Math.floor(cx - R); i <= Math.ceil(cx + R); i++) {
+      if (!this.inMap(i, j)) continue;
+      if ((i + 0.5 - cx) ** 2 + (j + 0.5 - cy) ** 2 > R * R) continue;
+      if (i >= x && i < x + d.size && j >= y && j < y + d.size) continue;
+      out.push(this.idx(i, j));
+    }
+    return out;
+  }
+
+  /** Taugt dieses Feld für den Rohstoff? (Weide nur auf freiem Gras/Sand) */
+  resOk(res: Res, k: number): boolean {
+    const t = this.tiles[k];
+    if (res === 'fisch') return this.fishCap[k] > 0;
+    if (res === 'baum' || res === 'wild') return t === T.Wald;
+    return (t === T.Gras || t === T.Sand) && !this.occ[k] && !this.roads[k];
+  }
+
+  resStock(res: Res): Float32Array {
+    return res === 'baum' ? this.trees : res === 'fisch' ? this.fish : res === 'wild' ? this.wild : this.weide;
+  }
+
+  /**
+   * Ergiebigkeit 0..1: wie viel im Arbeitsradius dauerhaft nachwächst, geteilt durch alle
+   * gleichartigen Betriebe, die dieselben Felder nutzen – verglichen mit dem Bedarf bei voller Arbeit.
+   */
+  siteEfficiency(type: BuildingId, x: number, y: number, self = -1): number {
+    const d = BUILDINGS[type];
     if (d.needs === 'berg') {
       for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Berg) return 1;
       return 0;
     }
-    const want = d.needs === 'wald' ? T.Wald : T.Wasser;
-    const R = d.work ?? 4;
-    // so viel Wald/Wasser im Arbeitsradius braucht ein Betrieb für volle Leistung
-    const full = Math.round(Math.PI * R * R * (d.needs === 'wald' ? (type === 'jagdhuette' ? 0.18 : 0.28) : 0.2));
-    const cx = x + d.size / 2, cy = y + d.size / 2;
-    let n = 0;
-    for (let j = -R - 1; j <= R + 1; j++) for (let i = -R - 1; i <= R + 1; i++) {
-      const tx = Math.floor(cx + i), ty = Math.floor(cy + j);
-      if ((tx + 0.5 - cx) ** 2 + (ty + 0.5 - cy) ** 2 > R * R) continue;
-      if (tx >= x && tx < x + d.size && ty >= y && ty < y + d.size) continue;
-      if (this.tile(tx, ty) === want) n++;
+    if (!d.harvest || !d.prod) return 1;
+    const res = d.harvest.res;
+    const need = d.harvest.per / d.prod.time;
+    // wer nutzt welche Felder schon mit? (self zählt sich selbst nicht doppelt)
+    const sh = this.share[res];
+    const minus = self >= 0 ? 1 : 0;
+    let supply = 0;
+    for (const k of this.workTiles(type, x, y)) {
+      if (!this.resOk(res, k)) continue;
+      const cap = res === 'fisch' ? this.fishCap[k] : 1;
+      supply += (REGEN[res] * cap) / (1 + Math.max(0, (sh ? sh[k] : 0) - minus));
     }
-    return Math.min(1, n / full);
+    return Math.min(1, supply / need);
   }
 
   // ---------- Schiffe ----------
@@ -838,6 +937,8 @@ export class Game {
       if (b.type === 'haus') this.tickHouse(b, dt);
       else if (this.def(b).prod) this.tickProduction(b, dt);
     }
+    this.regenT += dt;
+    if (this.regenT >= 1) { this.regrow(this.regenT); this.regenT = 0; }
     this.cartT += dt;
     this.tickCarts(dt);
     for (const p of this.players) if (p.ai && p.brain) thinkAI(this, p, dt);
@@ -850,15 +951,76 @@ export class Game {
     this.checkQuest();
   }
 
+  private regrow(dt: number) {
+    const NN = this.trees.length;
+    const rb = REGEN.baum * dt, rf = REGEN.fisch * dt, rw = REGEN.wild * dt, rg = REGEN.weide * dt;
+    for (let k = 0; k < NN; k++) {
+      const t = this.tiles[k];
+      if (t === T.Wald) {
+        if (this.trees[k] < 1) this.trees[k] = Math.min(1, this.trees[k] + rb);
+        if (this.wild[k] < 1) this.wild[k] = Math.min(1, this.wild[k] + rw);
+      } else if (t === T.Wasser) {
+        const c = this.fishCap[k];
+        if (c > 0 && this.fish[k] < c) this.fish[k] = Math.min(c, this.fish[k] + rf * c);
+      } else if (this.weide[k] < 1) this.weide[k] = Math.min(1, this.weide[k] + rg);
+    }
+  }
+
+  /** Arbeitsgang beginnen: Ziel wählen (reifer Baum / ergiebigstes Feld). false = nichts mehr da */
+  private startHarvest(b: Building): boolean {
+    const h = this.def(b).harvest!;
+    const st = this.resStock(h.res);
+    const tiles = this.workTiles(b.type, b.x, b.y).filter((k) => this.resOk(h.res, k));
+    if (h.res === 'baum') {
+      const taken = new Set(this.buildings.filter((o) => o !== b && o.loaded && o.target !== undefined).map((o) => o.target));
+      const [cx, cy] = this.center(b);
+      let best = -1, bd = 1e9;
+      for (const k of tiles) {
+        if (st[k] < 0.999 || taken.has(k)) continue;
+        const d = Math.hypot(k % this.size + 0.5 - cx, ((k / this.size) | 0) + 0.5 - cy);
+        if (d < bd) { bd = d; best = k; }
+      }
+      if (best < 0) return false;
+      b.target = best; b.cut = false;
+      return true;
+    }
+    let sum = 0, best = -1, bv = 0;
+    for (const k of tiles) { sum += st[k]; if (st[k] > bv) { bv = st[k]; best = k; } }
+    if (sum < h.per) return false;
+    b.target = best;
+    return true;
+  }
+
+  /** Arbeitsgang abschließen: Rohstoff aus der Umgebung nehmen */
+  private finishHarvest(b: Building): boolean {
+    const h = this.def(b).harvest!;
+    if (h.res === 'baum') {
+      if (!b.cut && b.target !== undefined && b.target >= 0) { this.trees[b.target] = 0; this.ev.felled(b.target); b.cut = true; }
+      return true;
+    }
+    const st = this.resStock(h.res);
+    const N = this.size;
+    const tx = (b.target ?? 0) % N, ty = ((b.target ?? 0) / N) | 0;
+    // nahe am Ziel zuerst abernten (Fische im Schwarm, Schafe auf einer Weidefläche)
+    const tiles = this.workTiles(b.type, b.x, b.y).filter((k) => this.resOk(h.res, k))
+      .sort((p, q) => Math.hypot(p % N - tx, ((p / N) | 0) - ty) - Math.hypot(q % N - tx, ((q / N) | 0) - ty));
+    let left = h.per;
+    for (const k of tiles) { if (left <= 0) break; const t = Math.min(st[k], left, h.res === 'weide' ? 1 : 0.34); st[k] -= t; left -= t; }
+    return left < h.per * 0.5;
+  }
+
   private tickProduction(b: Building, dt: number) {
     const p = this.def(b).prod!;
     const l = this.lagerOf(b.owner, b.island);
     let working = false;
     b.missing = [];
+    const hv = this.def(b).harvest;
     if (!l || !this.linked.has(b.id)) b.status = 'keinWeg';
-    else if (b.eff <= 0) b.status = this.def(b).needs === 'wasser' ? 'keinWasser' : 'keinWald';
+    else if (b.eff <= 0 && !hv) b.status = this.def(b).needs === 'wasser' ? 'keinWasser' : 'keinWald';
     else if (b.stock >= (this.def(b).stock ?? 4)) b.status = 'lagerVoll';
+    else if (hv && !b.loaded && !this.startHarvest(b)) b.status = 'erschoepft';
     else {
+      if (hv) b.loaded = true;
       if (!b.loaded) {
         const inp = p.input ?? {};
         for (const [g, n] of Object.entries(inp) as [GoodId, number][]) if (l[g] < n) b.missing.push(g);
@@ -870,11 +1032,17 @@ export class Game {
       if (b.loaded) {
         working = true;
         b.status = 'ok';
-        b.progress += dt * b.eff;
+        b.progress += dt * (hv ? 1 : b.eff);
+        // Baum fällt kurz vor Ende des Arbeitsgangs (Holzfäller hackt erst)
+        if (hv?.res === 'baum' && !b.cut && b.progress >= p.time * 0.8 && b.target !== undefined) {
+          this.trees[b.target] = 0; this.ev.felled(b.target); b.cut = true;
+        }
         if (b.progress >= p.time) {
           b.progress = 0;
           b.loaded = false;
-          b.stock = Math.min(this.def(b).stock ?? 4, b.stock + (p.amount ?? 1));
+          const ok = hv ? this.finishHarvest(b) : true;
+          if (ok) b.stock = Math.min(this.def(b).stock ?? 4, b.stock + (p.amount ?? 1));
+          b.target = undefined;
         }
       } else b.status = 'rohstoff';
     }

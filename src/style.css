@@ -202,3 +202,9 @@ body.paused .top { border-bottom-color: var(--gold); }
 .card.next { opacity: .75; border-style: dashed; cursor: default; }
 .modal .box.map { width: min(560px, 100%); align-items: center; }
 .modal .box.map canvas { width: min(100%, calc(100vh - 150px)); aspect-ratio: 1; border-radius: 8px; border: 1px solid var(--rand); image-rendering: pixelated; touch-action: manipulation; }
+
+/* Ergiebigkeits-Skala beim Bauen */
+.effbar { position: relative; height: 18px; margin: 4px 0 2px; background: rgba(0, 0, 0, .35); border-radius: 9px; overflow: hidden; }
+.effbar i { position: absolute; inset: 0 auto 0 0; border-radius: 9px; }
+.effbar span { position: relative; display: block; font-size: 12px; line-height: 18px; padding: 0 8px; color: #fff; text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
+.hint small { display: block; }

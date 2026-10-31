@@ -10,6 +10,7 @@ import { Vegetation, windTime } from './vegetation';
 import { ModelLibrary } from './glb';
 import { ShipLayer } from './ships';
 import { CartLayer } from './carts';
+import { LifeLayer } from './life';
 import { buildingMaterial } from './materials';
 import { ModelDef } from './kit';
 
@@ -26,6 +27,7 @@ export class View {
   private terrain!: Terrain;
   ships!: ShipLayer;
   private carts!: CartLayer;
+  private life!: LifeLayer;
   private seenTex!: THREE.DataTexture;
   private seenCount: number[] = [];
   private border: THREE.Mesh | null = null;
@@ -145,6 +147,7 @@ export class View {
     if (!this.ships) { this.ships = new ShipLayer(g); this.scene.add(this.ships.group); }
     const h = (x: number, z: number) => this.terrain.heightAt(x, z);
     if (!this.carts) { this.carts = new CartLayer(g, h); this.scene.add(this.carts.group); } else this.carts.setGame(g, h);
+    if (!this.life) { this.life = new LifeLayer(g, h); this.scene.add(this.life.group); } else this.life.setGame(g, h);
     this.seenCount = g.islands.map(() => -1);
     this.areaShown = false;
     this.buildWater();
@@ -193,7 +196,7 @@ export class View {
 
     const geo = new THREE.PlaneGeometry(N * 5, N * 5, 160, 160).rotateX(-Math.PI / 2);
     const mat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, transparent: true, roughness: 0.09, metalness: 0.0, envMapIntensity: 0.75,
+      color: 0xffffff, transparent: true, roughness: 0.22, metalness: 0.0, envMapIntensity: 0.7,
     });
     const uni = this.waterUniforms as Record<string, THREE.IUniform>;
     uni.uDepth = { value: depthTex };
@@ -310,6 +313,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     for (let i = 0; i < N * N; i++) { const v = g.seen[i] ? 255 : 0; data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255; }
     this.seenTex.needsUpdate = true;
     this.terrain.updateFog();
+    this.life?.rebuild();
     const changed: number[] = [];
     g.islands.forEach((isl, id) => {
       let n = 0;
@@ -322,6 +326,39 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       const b = g.byId.get(id);
       if (b) { v.mesh.visible = g.seen[g.idx(b.x, b.y)] === 1; v.icon.visible = v.icon.visible && v.mesh.visible; }
     }
+  }
+
+  /** Baum gefällt: Bäume des Feldes kippen um, ein Setzling bleibt stehen */
+  private falling: { mesh: THREE.Mesh; t: number; axis: THREE.Vector3; base: THREE.Quaternion }[] = [];
+  onFelled(k: number) {
+    const list = this.veg.slots.get(k);
+    if (!list || !this.g.seen[k]) return;
+    for (const t of list) {
+      const mesh = new THREE.Mesh(t.mesh.geometry, this.veg.material);
+      mesh.position.set(t.x, t.y, t.z);
+      const base = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), t.rot);
+      mesh.quaternion.copy(base);
+      mesh.scale.set(t.s * 0.9, t.sy * 0.9, t.s * 0.9);
+      mesh.castShadow = true;
+      const a = Math.random() * Math.PI * 2;
+      this.scene.add(mesh);
+      this.falling.push({ mesh, t: 0, axis: new THREE.Vector3(Math.cos(a), 0, Math.sin(a)), base });
+    }
+    this.veg.updateGrowth();
+  }
+
+  private animateFalling(dt: number) {
+    const q = new THREE.Quaternion();
+    for (const f of this.falling) {
+      f.t += dt;
+      // erst langsam, dann schneller umkippen; danach liegen lassen und im Boden versinken
+      const fall = Math.min(1, (f.t / 1.4) ** 2);
+      q.setFromAxisAngle(f.axis, fall * Math.PI * 0.48);
+      f.mesh.quaternion.copy(q).multiply(f.base);
+      if (f.t > 3) f.mesh.position.y -= dt * 0.25;
+    }
+    for (const f of this.falling.filter((x) => x.t > 5)) this.scene.remove(f.mesh);
+    this.falling = this.falling.filter((x) => x.t <= 5);
   }
 
   onTreesChanged() {
@@ -483,6 +520,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
         case 'lagerVoll': key = '📦'; break;
         case 'keinWald': key = '🌲'; break;
         case 'keinWasser': key = '🌊'; break;
+        case 'erschoepft': key = ({ baum: '🌲', fisch: '🐟', wild: '🦌', weide: '🌿' } as Record<string, string>)[BUILDINGS[b.type].harvest?.res ?? 'baum']; break;
         case 'wohnen': key = b.happy < 0.45 ? '😠' : ''; break;
       }
       if (key !== v.iconKey) {
@@ -612,9 +650,17 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     return this.ships.pick(this.raycaster);
   }
 
+  private growT = 0;
+  private lastT = 0;
   frame(t: number, gameDt: number) {
+    const dt = Math.min(0.1, Math.max(0, t - this.lastT));
+    this.lastT = t;
+    this.animateFalling(dt);
+    this.growT += dt;
+    if (this.growT > 1.5) { this.growT = 0; this.veg.updateGrowth(); }
     this.ships.update(t);
     this.carts.update(t);
+    this.life.update(t);
     this.waterUniforms.uTime.value = t;
     windTime.value = t;
     for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;

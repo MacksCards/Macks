@@ -111,6 +111,12 @@ uniform float uWind;`)
 
 interface IslandVeg { conifers: THREE.InstancedMesh[]; broad: THREE.InstancedMesh; grass: THREE.InstancedMesh }
 
+/** Ein Waldbaum: wo er steht und wie groß er ausgewachsen ist */
+export interface TreeSlot { mesh: THREE.InstancedMesh; i: number; x: number; y: number; z: number; rot: number; s: number; sy: number; m: number }
+
+/** Größe je nach Reife: Setzling → ausgewachsener Baum */
+const growth = (m: number) => (m < 0.04 ? 0.14 : 0.22 + 0.78 * Math.pow(m, 0.8));
+
 export class Vegetation {
   group = new THREE.Group();
   private per = new Map<number, IslandVeg>();
@@ -119,6 +125,9 @@ export class Vegetation {
   private geoG = tuft();
   private treeMat = windMaterial({}, 0.06, 'baum-wind');
   private grassMat = windMaterial({ side: THREE.DoubleSide }, 3.5, 'gras-wind');
+  /** Bäume je Feld (für Wachsen/Fällen) */
+  slots = new Map<number, TreeSlot[]>();
+  get material() { return this.treeMat; }
 
   constructor(private g: Game, private terrain: Terrain) {
     this.refresh();
@@ -152,6 +161,7 @@ export class Vegetation {
     for (const isl of g.islands) {
       if (only && !only.includes(isl.id)) continue;
       const v = this.veg(isl.id);
+      for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) this.slots.delete(y * N + x);
       const counts = [0, 0];
       let nb = 0, ng = 0;
       for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) {
@@ -167,13 +177,23 @@ export class Vegetation {
           for (let k = 0; k < n; k++) {
             const px = x + 0.15 + rnd() * 0.7, pz = y + 0.15 + rnd() * 0.7;
             const s = 1.1 + rnd() * 0.9;
-            q.setFromAxisAngle(up, rnd() * 6.28);
-            m.compose(new THREE.Vector3(px, this.terrain.heightAt(px, pz) - 0.02, pz), q, new THREE.Vector3(s, s * (0.9 + rnd() * 0.4), s));
+            const rot = rnd() * 6.28;
+            const sy = s * (0.9 + rnd() * 0.4);
+            const py = this.terrain.heightAt(px, pz) - 0.02;
+            const mat = g.trees[i];
+            const gs = growth(mat);
+            q.setFromAxisAngle(up, rot);
+            m.compose(new THREE.Vector3(px, py, pz), q, new THREE.Vector3(s * gs, sy * gs, s * gs));
             tint.setRGB(0.85 + rnd() * 0.3, 0.85 + rnd() * 0.3, 0.8 + rnd() * 0.3);
+            let mesh: THREE.InstancedMesh, idx: number;
             if (rnd() < 0.78) {
               const c = rnd() < 0.5 ? 0 : 1;
-              v.conifers[c].setMatrixAt(counts[c], m); v.conifers[c].setColorAt(counts[c], tint); counts[c]++;
-            } else { v.broad.setMatrixAt(nb, m); v.broad.setColorAt(nb, tint); nb++; }
+              mesh = v.conifers[c]; idx = counts[c]++;
+            } else { mesh = v.broad; idx = nb++; }
+            mesh.setMatrixAt(idx, m); mesh.setColorAt(idx, tint);
+            const list = this.slots.get(i) ?? [];
+            list.push({ mesh, i: idx, x: px, y: py, z: pz, rot, s, sy, m: mat });
+            this.slots.set(i, list);
           }
         } else if (free) {
           if (t === T.Gras && rnd() < 0.035) {
@@ -205,6 +225,25 @@ export class Vegetation {
       fin(v.broad, nb);
       fin(v.grass, ng);
     }
+  }
+
+  /** Bäume an die aktuelle Reife anpassen (nur geänderte) */
+  updateGrowth() {
+    const g = this.g;
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    const dirty = new Set<THREE.InstancedMesh>();
+    for (const [k, list] of this.slots) {
+      const mat = g.trees[k];
+      if (Math.abs(mat - list[0].m) < 0.02) continue;
+      for (const t of list) {
+        t.m = mat;
+        const gs = growth(mat);
+        m.compose(v.set(t.x, t.y, t.z), q.setFromAxisAngle(up, t.rot), sc.set(t.s * gs, t.sy * gs, t.s * gs));
+        t.mesh.setMatrixAt(t.i, m);
+        dirty.add(t.mesh);
+      }
+    }
+    for (const d of dirty) d.instanceMatrix.needsUpdate = true;
   }
 
   dispose() {

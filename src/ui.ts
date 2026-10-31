@@ -66,6 +66,7 @@ export class UI {
       changed: (b) => v.changedBuilding(b),
       roads: () => v.onRoadsChanged(),
       trees: () => v.onTreesChanged(),
+      felled: (k) => v.onFelled(k),
       seen: () => v.onSeen(),
       message: (t, k) => this.toast(t, k),
     };
@@ -176,13 +177,18 @@ export class UI {
       const d = BUILDINGS[m.type];
       const chk = m.has ? this.g.canPlace(m.type, m.gx, m.gy) : this.g.canAfford(d.cost);
       let msg = !m.has ? 'Tippe auf die Insel, wo es stehen soll.' : chk.ok ? 'Nochmal tippen oder ✓ zum Bauen.' : `⚠️ ${chk.reason}`;
-      if (m.has && chk.ok && d.prod) {
+      let scale = '';
+      if (m.has && d.harvest) {
+        // Ergiebigkeit: wie viel wächst hier nach, geteilt mit gleichartigen Betrieben in der Nähe
         const eff = this.g.siteEfficiency(m.type, m.gx, m.gy);
-        if (d.needs === 'wald' && eff < 0.5) msg += ` Wenig Wald hier (${Math.round(eff * 100)} %).`;
-        if (d.needs === 'wasser' && eff < 0.5) msg += ` Wenig Wasser hier (${Math.round(eff * 100)} %).`;
+        const pct = Math.round(eff * 100);
+        const col = eff < 0.4 ? '#e2553f' : eff < 0.75 ? '#e8b93a' : '#7cc95a';
+        const what = { baum: 'Wald', fisch: 'Fischgründe', wild: 'Wild', weide: 'Weideland' }[d.harvest.res];
+        const shared = this.g.buildings.some((o) => o.type === m.type && Math.hypot(this.g.center(o)[0] - m.gx, this.g.center(o)[1] - m.gy) < (d.work ?? 4) * 2);
+        scale = `<div class="effbar" title="Ergiebigkeit"><i style="width:${pct}%;background:${col}"></i><span>${what}: ${pct} %${shared ? ' · geteilt mit Nachbarn' : ''}</span></div>`;
       }
       if (!m.has && d.prod) msg += ' Danach mit einem Weg verbinden!';
-      t.innerHTML = `<b>${d.icon} ${d.name}</b> <span class="cost">${costText(d.cost)}</span><br><small>${msg}</small>`;
+      t.innerHTML = `<b>${d.icon} ${d.name}</b> <span class="cost">${costText(d.cost)}</span>${scale}<small>${msg}</small>`;
       ($('#hintOk') as HTMLButtonElement).disabled = !(m.has && chk.ok);
     } else if (m.kind === 'road') {
       t.innerHTML = `<b>🟫 Feldweg</b> <span class="cost">💰5 je Feld</span><br><small>Mit dem Finger ziehen, um Wege zu bauen. Zwei Finger bewegen die Karte.</small>`;
@@ -458,12 +464,14 @@ export class UI {
         const st: Record<string, string> = {
           ok: '✅ Arbeitet', keinWeg: '🚧 Kein Weg zum Kontor oder Marktplatz', lagerVoll: '📦 Voll – wartet auf den Marktkarren (Weg + Reichweite von Kontor/Marktplatz?)',
           keinWald: '🌲 Kein Wald in der Nähe', keinWasser: '🌊 Kein Wasser in der Nähe',
+          erschoepft: ({ baum: '🌲 Keine erntereifen Bäume – Setzlinge wachsen nach', fisch: '🐟 Fischgründe leergefischt – erholen sich', wild: '🦌 Kein Wild mehr – kommt langsam zurück', weide: '🌿 Weide abgegrast – wächst nach' } as Record<string, string>)[d.harvest?.res ?? 'baum'],
           rohstoff: `⚠️ Es fehlt: ${b.missing.map((m) => GOOD[m].name).join(', ')}`,
         };
         const inp = Object.entries(d.prod.input ?? {}).map(([k, n]) => `${n} ${GOOD[k as GoodId].icon}`).join(' + ');
         h += `<div class="row"><span>Status</span><b>${st[b.status] ?? ''}</b></div>
           <div class="row"><span>Produziert</span><b>${inp ? inp + ' → ' : ''}${d.prod.amount ?? 1} ${GOOD[d.prod.output].icon} ${GOOD[d.prod.output].name} / ${Math.round(d.prod.time / Math.max(0.05, b.eff))} s</b></div>
-          <div class="row"><span>Standort</span><b>${Math.round(b.eff * 100)} %</b></div>
+          <div class="row"><span>${d.harvest ? 'Ergiebigkeit' : 'Standort'}</span><b>${Math.round(b.eff * 100)} %</b></div>
+          ${d.harvest ? `<div class="bar"><i style="width:${Math.round(b.eff * 100)}%;background:${b.eff < 0.4 ? '#e2553f' : b.eff < 0.75 ? '#e8b93a' : '#7cc95a'}"></i></div>` : ''}
           <div class="row"><span>Im Betrieb gelagert</span><b>${Math.floor(b.stock)} / ${d.stock ?? 4} t</b></div>
           <div class="row"><span>Auslastung</span><b>${Math.round(b.active * 100)} %</b></div>
           <div class="bar"><i style="width:${Math.round((b.progress / d.prod.time) * 100)}%"></i></div>`;
