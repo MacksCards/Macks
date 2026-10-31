@@ -4,6 +4,7 @@ import { Building, Game, HUMAN, QUESTS, Ship, newSeed } from './game';
 import { PFLANZEN, Pflanze, depositText } from './world';
 import { Input } from './input';
 import { View } from './render/scene';
+import { sound } from './audio';
 
 type Mode =
   | { kind: 'none' }
@@ -63,11 +64,11 @@ export class UI {
     const v = this.view;
     this.g.ev = {
       added: (b) => { v.addBuilding(b); if (b.type === 'kontor' || b.type === 'markt') v.onTerritory(); },
-      removed: (b) => { v.removeBuilding(b); if (b.type === 'markt') v.onTerritory(); if (this.selected === b) this.select(null); },
+      removed: (b) => { v.removeBuilding(b); if (b.type === 'markt') v.onTerritory(); if (this.selected === b) this.select(null); if (b.owner === HUMAN) sound.play('abriss'); },
       changed: (b) => v.changedBuilding(b),
       roads: () => v.onRoadsChanged(),
       trees: () => v.onTreesChanged(),
-      felled: (k) => v.onFelled(k),
+      felled: (k) => { v.onFelled(k); if (this.g.seen[k]) sound.play('baum', { x: k % this.g.size, z: Math.floor(k / this.g.size) }); },
       seen: () => v.onSeen(),
       message: (t, k) => this.toast(t, k),
     };
@@ -151,6 +152,8 @@ export class UI {
     $('#hintX').addEventListener('click', () => this.setMode({ kind: 'none' }));
 
     hud.appendChild(el('div', 'toasts', '')).id = 'toasts';
+    // jeder Knopf klickt hörbar
+    hud.addEventListener('pointerdown', (e) => { if ((e.target as HTMLElement).closest('button')) sound.play('klick'); });
     hud.appendChild(el('div', 'modal hidden', '')).id = 'modal';
   }
 
@@ -211,6 +214,7 @@ export class UI {
       return;
     }
     this.openCat = c;
+    sound.play('auf');
     this.select(null);
     document.querySelectorAll('.cat').forEach((b) => b.classList.toggle('active', (b as HTMLElement).dataset.cat === c));
     const p = $('#buildPanel');
@@ -287,7 +291,7 @@ export class UI {
     if (this.selShip && !b) {
       const gt = this.view.pick(x, y, false);
       if (gt && this.g.tiles[this.g.idx(gt[0], gt[1])] === 0) {
-        if (this.g.moveShip(this.selShip, gt[0] + 0.5, gt[1] + 0.5)) this.toast('⛵ Kurs gesetzt', 'info');
+        if (this.g.moveShip(this.selShip, gt[0] + 0.5, gt[1] + 0.5)) { this.toast('⛵ Kurs gesetzt', 'info'); sound.play('glocke'); }
         else this.toast('Dorthin findet das Schiff keinen Weg', 'bad');
         return;
       }
@@ -313,6 +317,7 @@ export class UI {
     const m = this.mode;
     if (m.kind !== 'build' || !m.has) return;
     const r = this.g.place(m.type, m.gx, m.gy);
+    if (r.ok) sound.play(m.type === 'kontor' ? 'kontor' : 'bauen');
     if (!r.ok) { this.toast(r.reason ?? 'Geht nicht', 'bad'); return; }
     if (m.type === 'kontor') { this.setMode({ kind: 'none' }); return; }
     // Vorschau bleibt aktiv für das nächste Gebäude
@@ -353,6 +358,7 @@ export class UI {
       for (const yy of line(y0, y1)) cells.push([x0, yy]);
       for (const xx of line(x0, x1).slice(1)) cells.push([xx, y1]);
     }
+    if (cells.length !== this.roadCells.length) sound.play('weg');
     this.roadCells = cells.slice(0, 200);
     this.previewRoad();
   }
@@ -370,6 +376,7 @@ export class UI {
       const type = this.mode.kind === 'road' ? this.mode.type : 'weg';
       const n = type === 'weg' || type === 'steinweg' ? this.g.placeRoads(this.roadCells, HUMAN, type) : this.g.placeMany(type, this.roadCells);
       if (n > 1) this.toast(`${n} Wegfelder gebaut`, 'info');
+      if (n) sound.play(type === 'weg' || type === 'steinweg' ? 'weg' : 'bauen');
     }
     this.roadStart = null;
     this.roadCells = [];
@@ -451,6 +458,7 @@ export class UI {
       box.querySelectorAll<HTMLElement>('[data-buy],[data-sell]').forEach((bt) => bt.addEventListener('click', () => {
         const gid = (bt.dataset.buy ?? bt.dataset.sell) as GoodId;
         const n = g.trade(HUMAN, b!.island, gid, bt.dataset.buy ? 5 : -5);
+        if (n) sound.play('muenzen');
         if (!n) this.toast(bt.dataset.buy ? 'Nicht genug Taler oder Lager voll' : 'Nichts zum Verkaufen da', 'bad');
         this.renderInfo();
       }));
@@ -724,6 +732,13 @@ export class UI {
   }
 
   toast(text: string, kind: 'info' | 'good' | 'bad' = 'info') {
+    // passendes Geräusch zur Meldung
+    if (/freigeschaltet/i.test(text)) sound.play('freischalten');
+    else if (/eingezogen/.test(text)) sound.play('aufstieg');
+    else if (/Aufgabe erledigt|ausgebaut/.test(text)) sound.play('muenzen');
+    else if (/Stapel/.test(text)) sound.play('horn');
+    else if (kind === 'bad') sound.play('fehler');
+    else if (kind === 'good' || /Kontor auf/.test(text)) sound.play('nachricht');
     const box = $('#toasts');
     const t = el('div', `toast ${kind}`, text);
     box.appendChild(t);
@@ -741,6 +756,7 @@ export class UI {
       <h2>⚓ Neue Ufer</h2>
       <button class="btn wide" id="mResume">▶️ Weiterspielen</button>
       <button class="btn wide" id="mSave">💾 Speichern</button>
+      <div class="row2"><button class="btn" id="mTon">${sound.soundOn ? '🔊 Ton an' : '🔇 Ton aus'}</button><button class="btn" id="mMusik">${sound.musicOn ? '🎵 Musik an' : '🎵 Musik aus'}</button></div>
       <button class="btn wide" id="mHelp">❓ Anleitung</button>
       <button class="btn wide danger" id="mNew">🏝️ Neues Spiel (neue Inselwelt)</button>
       <p class="sub">Das Spiel speichert automatisch.</p></div>`;
@@ -751,6 +767,8 @@ export class UI {
       this.closeModal();
     });
     $('#mHelp').addEventListener('click', () => this.openHelp());
+    $('#mTon').addEventListener('click', () => { sound.setSound(!sound.soundOn); this.openMenu(); });
+    $('#mMusik').addEventListener('click', () => { sound.setMusic(!sound.musicOn); this.openMenu(); });
     $('#mNew').addEventListener('click', () => {
       const m2 = $('#modal');
       m2.innerHTML = `<div class="box"><h2>Neues Spiel</h2><p class="sub">Eine neue Inselwelt. Dein aktuelles Spiel geht verloren.</p>

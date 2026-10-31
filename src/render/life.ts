@@ -6,6 +6,7 @@ import { Building, Game } from '../game';
 import { T } from '../world';
 import { Builder, M } from './kit';
 import { buildingMaterial } from './materials';
+import { sound } from '../audio';
 
 function fishGeo() {
   const b = new Builder();
@@ -72,6 +73,7 @@ export class LifeLayer {
   private workers: Record<'nichts' | 'stamm' | 'wild', THREE.InstancedMesh>;
   private boats: THREE.InstancedMesh;
   private shoals: Shoal[] = [];
+  private beats = new Map<number, number>();
   private ripples: THREE.InstancedMesh;
   private herds: Herd[] = [];
 
@@ -229,6 +231,10 @@ export class LifeLayer {
         const kind = p > 0.8 ? (d.harvest.res === 'baum' ? 'stamm' : 'wild') : 'nichts';
         // beim Hacken leicht vor und zurück wippen
         const chop = p > 0.3 && p < 0.8 && d.harvest.res === 'baum' ? Math.abs(Math.sin(t * 7)) * 0.05 : 0;
+        if (chop) {
+          const beat = Math.floor((t * 7) / Math.PI);
+          if (this.beats.get(b.id) !== beat) { this.beats.set(b.id, beat); sound.play('axt', { x, z }); }
+        }
         const mesh = this.workers[kind];
         if (nw[kind] < 300) place(mesh, nw[kind]++, x - Math.sin(heading) * chop, Math.max(this.height(x, z), 0.05), z - Math.cos(heading) * chop, heading, 1.6);
       }
