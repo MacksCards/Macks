@@ -1,0 +1,2 @@
+/* Statistik-Fenster (Gerüst, füllt das Paket U2): breites Fenster für Reiter und Tabellen */
+.modal .box.stats { width: min(640px, 100%); }

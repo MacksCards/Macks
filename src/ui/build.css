@@ -1,0 +1,55 @@
+/* Baumenü-Karten, Bauhinweis oben (nicht antippbar) und die Knöpfe ✓ / ✕ unten rechts */
+
+/* ---------- Baukarten ---------- */
+.panel {
+  position: absolute; top: calc(var(--top) + 6px); left: calc(var(--in-l) + var(--left-w) + 12px); bottom: calc(6px + var(--in-b));
+  /* rechts bleibt Platz für die Kartenknöpfe + / − / Kompass */
+  width: min(420px, calc(100% - var(--in-l) - var(--left-w) - 30px - var(--tap) - var(--in-r)));
+  overflow-y: auto; overscroll-behavior: contain; padding: 6px;
+  /* Zeilen immer so hoch wie ihr Inhalt – auch wenn das Baumenü scrollt (sonst schrumpfen Karten auf 44 px) */
+  display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: max-content; gap: 6px; align-content: start;
+  background: rgba(43, 33, 24, .95); border: 1px solid var(--rand); border-radius: 10px;
+  /* über den gewöhnlichen Meldungen (sie verdeckten sonst die Karten); Warnungen liegen darüber (log.css) */
+  z-index: 2;
+}
+.panel .ptitle { grid-column: 1 / -1; margin: 2px 4px 0; font: 19px/1.2 var(--display); color: var(--gold); }
+.card {
+  display: grid; grid-template-columns: 38px 1fr; grid-template-rows: auto auto auto; column-gap: 6px; align-items: center;
+  min-height: var(--tap); text-align: left; font: inherit; color: var(--pergament); background: var(--holz-2);
+  border: 1px solid var(--rand); border-radius: 8px; padding: 6px; cursor: pointer; min-width: 0; touch-action: manipulation;
+}
+.card:active { background: var(--holz-3); }
+.card .ic { grid-row: 1 / span 3; font-size: 28px; text-align: center; }
+.card b { font-size: 15px; }
+.card .cost { font-size: 12px; color: var(--gold); font-variant-numeric: tabular-nums; }
+.card .desc { font-size: 12px; color: var(--pergament-2); line-height: 1.2; }
+.card.poor { opacity: .55; }
+.card.poor .cost { color: var(--schlecht); }
+.card.next { opacity: .75; border-style: dashed; cursor: default; }
+
+/* ---------- Bauhinweis: oben unter der Leiste, Tipps gehen durch zur Karte ---------- */
+#hud .hint {
+  pointer-events: none; max-width: 100%;
+  background: rgba(43, 33, 24, .9); border: 1px solid var(--rand); border-radius: 10px;
+  padding: 6px 12px; font-size: 14px; text-align: center; color: var(--pergament);
+}
+.hint b { color: var(--pergament); }
+.hint .cost { color: var(--gold); font-size: 13px; margin-left: 4px; font-variant-numeric: tabular-nums; }
+.hint small { display: block; color: var(--pergament-2); font-size: 13px; }
+.hint .msg { color: var(--pergament-2); margin-left: 4px; }
+/* Wege-Hinweis: eine Zeile. Die Kosten stehen am Ende – wird es zu eng, werden sie zuerst gekürzt, die Anweisung bleibt */
+.hint.line > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* schmaler Bildschirm: nur das Symbol des Weges, ohne Namen */
+@media (max-width: 720px) { .hint.line .nm { display: none; } }
+/* Ergiebigkeits-Skala beim Bauen */
+.effbar { position: relative; height: 18px; margin: 4px auto 2px; max-width: 320px; background: rgba(0, 0, 0, .35); border-radius: 9px; overflow: hidden; }
+.effbar i { position: absolute; inset: 0 auto 0 0; border-radius: 9px; }
+.effbar span { position: relative; display: block; font-size: 12px; line-height: 18px; padding: 0 8px; color: #fff; text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
+
+/* ---------- ✓ und ✕ unten rechts (links neben den Kartenknöpfen), je 48 px ---------- */
+#hud > .hintbtns { pointer-events: none; }
+.hintbtns { position: absolute; right: calc(6px + var(--in-r) + var(--tap) + 8px); bottom: calc(6px + var(--in-b)); display: flex; gap: 8px; }
+.hintbtns .btn { pointer-events: auto; width: 48px; height: 48px; min-height: 48px; padding: 0; font-size: 22px; }
+/* offenes Infofenster (z. B. Lager während des Bauens): neben die ausgewichenen Kartenknöpfe */
+.info:not(.hidden):not(.folded) ~ .hintbtns { right: calc(12px + var(--in-r) + var(--info-w) + var(--tap) + 8px); }
+.info.slim:not(.hidden):not(.folded) ~ .hintbtns { right: calc(12px + var(--in-r) + 220px + var(--tap) + 8px); }
