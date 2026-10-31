@@ -682,16 +682,14 @@ export class UI {
     const l = g.lagerOf(HUMAN, b.island);
     let h = `<h4>Ausbildung (${b.train?.length ?? 0} von ${d.slots})</h4>`;
     for (const j of b.train ?? []) h += `<div class="row"><span>${UNITS[j.type].icon} ${UNITS[j.type].name}</span><b>${Math.ceil(j.t)} s</b></div><div class="bar"><i style="width:${Math.round((1 - j.t / d.time) * 10) * 10}%"></i></div>`;
-    let lockShown = false;
+    const locked = (Object.values(UNITS)).filter((ud) => !g.reached(ud.unlock)).sort((a, b) => a.unlock.tier - b.unlock.tier || a.unlock.n - b.unlock.n)[0];
     for (const [id, ud] of Object.entries(UNITS) as [UnitType, typeof UNITS[UnitType]][]) {
-      if (!g.reached(ud.unlock)) {
-        if (!lockShown) { lockShown = true; h += `<p class="sub">🔒 ${ud.icon} ${ud.plural} ab ${ud.unlock.n} ${TIERS[ud.unlock.tier].dat}</p>`; }
-        continue;
-      }
+      if (!g.reached(ud.unlock)) continue;
       const chk = canTrain(g, b, id);
       const cost = Object.entries(ud.cost).map(([k, n]) => `${GOOD[k as GoodId].icon}${n} (da: ${Math.floor(l?.[k as GoodId] ?? 0)})`).join(' ');
       h += `<button class="btn wide ${chk.ok ? 'ok' : ''}" data-train="${id}">${ud.icon} ${ud.name} ausbilden<br><small>${cost} · ❤️${ud.hp} · ${ud.range > 2 ? `Reichweite ${ud.range}` : 'Nahkampf'} · ${ud.upkeep} Taler/Min${chk.ok ? '' : ` – ${chk.reason}`}</small></button>`;
     }
+    if (locked) h += `<p class="sub">🔒 ${locked.icon} ${locked.plural} ab ${locked.unlock.n} ${TIERS[locked.unlock.tier].dat}</p>`;
     const mine = g.units.filter((u) => u.owner === HUMAN).length;
     if (mine) h += `<p class="sub">Du hast ${mine} Soldaten. Tippe einen an, um ihn zu führen.</p>`;
     return h;
@@ -902,7 +900,7 @@ export class UI {
       const show = hasKontor && (!c || Object.values(BUILDINGS).some((d) => d.category === c && g.isUnlocked(d.id)));
       bt.classList.toggle('hidden', !show);
     });
-    if (this.selShip) this.renderInfo();
+    if (this.selShip || this.selUnits.length) this.renderInfo();
     if (this.openCat) this.refreshCards();
     if (this.mode.kind === 'build') this.updateHint();
     if (this.selected || this.showStorage) this.renderInfo();
