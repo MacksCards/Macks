@@ -1,4 +1,4 @@
-# Anforderungen – Neue Ufer, Etappe 1 (Insel-Aufbau)
+# Anforderungen – Neue Ufer (Kernspiel)
 
 Quelle: Interview mit dem Nutzer am 30.10.2026.
 
@@ -22,28 +22,34 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - C2 Automatisches Speichern (regelmäßig und beim Verlassen). Beim Öffnen geht es exakt dort weiter.
 - C3 „Neues Spiel“ erzeugt eine neue Insel.
 
-## Wirtschaft
-- D1 Waren werden in einem gemeinsamen Lager gesammelt (Kontor + Marktplätze, mit Kapazitätsgrenze).
-- D2 Warenketten mit mehreren Stufen, mindestens:
-  - Holzfäller → Holz (braucht Wald in der Nähe)
-  - **Nahrung** aus mehreren Quellen: Fischerhütte (am Wasser), Jagdhütte (Wald), Schweinezucht → Schweine → Fleischerei (statt Rinderfarm), Getreidefarm → Getreide → Mühle → Mehl → Bäckerei
-  - Schaffarm → Wolle → Weberei → Stoff
-  - Steinbruch → Stein (am Berg); Erzmine → Erz (am Berg) + Holz → Werkzeugschmiede → Werkzeug
-  - Getreide → Brauerei → Bier
-- D3 Produktionsgebäude müssen per **Weg** mit Kontor oder Marktplatz verbunden sein, sonst arbeiten sie nicht.
-- D4 Bauen nur im Einflussbereich von Kontor/Marktplatz.
-- D5 Gebäude kosten Taler und Baumaterial und haben laufende Unterhaltskosten.
+## Wirtschaft (voller Umfang wie 1602, Details: docs/1602-INHALT.md)
+- D1 Jede Insel hat ihr eigenes Lager (Kontor + Marktplätze, Kontor in 4 Stufen ausbaubar: 30/50/75/100 t).
+- D2 Alle Warenketten:
+  - Holz (Holzfäller, Bäume wachsen nach), Steine (Steinbruch am Berg – statt Ziegel, ohne Steinmetz)
+  - Nahrung: Fischerhütte, Jagdhütte, Schweinezucht → Fleischerei (statt Rinderfarm), Getreidefarm → Mühle → Bäckerei
+  - Stoffe: Schaffarm oder Baumwollplantage → Weberei; Kleidung: Schneiderei
+  - Alkohol: Weingut, Zuckerrohr → Rumbrennerei, (Abwandlung) Getreide → Brauerei
+  - Tabak → Tabakwaren, Gewürze, Kakao (Plantagen nur auf fruchtbaren Inseln, Ertrag × Fruchtbarkeit)
+  - Erz (Mine, Vorkommen erschöpfbar) → Erzschmelze → Eisen → Werkzeug, Schwerter, Musketen, Kanonen
+  - Gold (Goldmine, nur Gold-Inseln) → Goldschmied → Schmuck
+- D3 Produktionsgebäude brauchen einen **Weg** zu Kontor/Marktplatz; Marktkarren holen die Ware ab. Pflasterwege (Steine) machen die Karren schneller.
+- D4 Bauen nur im eigenen Gebiet (Kontor/Marktplatz).
+- D5 Gebäude kosten Taler und Baumaterial (Holz, Werkzeug, Steine, beim Wachturm Kanonen) und haben Unterhalt.
 - D6 Bewohner zahlen Steuern, abhängig von Zufriedenheit.
+- D7 Werften bauen kleine/große Handels- und Kriegsschiffe (Laderaum, Tempo, Kanonen).
+- D8 Militärbauten: Palisade, Steinmauer, Wachturm (mit Kanonen), Burg (Soldaten folgen mit dem Kampf-Update).
+- D9 Freier Händler am Kontor (Kaufen/Verkaufen).
 
 ## Bevölkerung
-- E1 Drei Stufen: **Pioniere → Siedler → Bürger**.
-- E2 Jede Stufe hat Bedürfnisse (Waren + öffentliche Gebäude in Reichweite).
-  - Pioniere: Nahrung, Marktplatz
-  - Siedler: Nahrung, Stoff, Marktplatz, Kapelle
-  - Bürger: Nahrung, Stoff, Bier, Marktplatz, Kapelle, Wirtshaus
-  - Bedürfnisse heißen allgemein „Nahrung“ (nicht „Fisch“), wie bei 1602.
-- E3 Erfüllte Bedürfnisse → Bewohner wachsen, Haus steigt auf (mit Baumaterial). Unerfüllte → Bewohner ziehen weg.
-- E4 Die Info zu einem Haus zeigt klar, was fehlt.
+- E1 Fünf Stufen: **Pioniere → Siedler → Bürger → Kaufleute → Aristokraten** (Bewohner je Haus 3/7/15/25/40).
+- E2 Aufstieg wie im Vorbild:
+  - Pioniere → Siedler: Stoffe im Lager, Kapelle
+  - Siedler → Bürger: Alkohol und (Tabakwaren oder Gewürze), Wirtshaus, Schule
+  - Bürger → Kaufleute: Kakao, Kirche, Badehaus
+  - Kaufleute → Aristokraten: Schmuck und Kleidung, Hochschule, Theater
+  - Jede Stufe verbraucht ihre Waren laufend; Bedürfnisse heißen „Nahrung“ usw. (nicht einzelne Lebensmittel).
+- E3 Gebäude werden nach Einwohnerzahl freigeschaltet (Schwellen des Vorbilds).
+- E4 Die Info zu einem Haus zeigt klar, was für den nächsten Aufstieg fehlt.
 
 ## Führung
 - F1 Aufgaben-Liste führt Einsteiger Schritt für Schritt durch alle Warenketten (mit Belohnung).

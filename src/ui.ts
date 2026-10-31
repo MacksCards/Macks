@@ -1,5 +1,5 @@
 // Bedienoberfläche (HTML über dem 3D-Bild) und Steuerlogik.
-import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, GOOD, GOODS, GoodId, PRICES, TIERS } from './data';
+import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, SHIPS, ShipType, TIERS } from './data';
 import { Building, Game, HUMAN, QUESTS, Ship, newSeed } from './game';
 import { PFLANZEN, Pflanze, depositText } from './world';
 import { Input } from './input';
@@ -8,7 +8,7 @@ import { View } from './render/scene';
 type Mode =
   | { kind: 'none' }
   | { kind: 'build'; type: BuildingId; gx: number; gy: number; has: boolean }
-  | { kind: 'road' }
+  | { kind: 'road'; type: BuildingId }
   | { kind: 'demolish' };
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -26,6 +26,7 @@ export function costText(c: Cost): string {
   if (c.holz) parts.push(`${GOOD.holz.icon}${c.holz}`);
   if (c.werkzeug) parts.push(`${GOOD.werkzeug.icon}${c.werkzeug}`);
   if (c.stein) parts.push(`${GOOD.stein.icon}${c.stein}`);
+  if (c.kanonen) parts.push(`${GOOD.kanonen.icon}${c.kanonen}`);
   return parts.join(' ') || 'kostenlos';
 }
 
@@ -183,7 +184,9 @@ export class UI {
         const eff = this.g.siteEfficiency(m.type, m.gx, m.gy);
         const pct = Math.round(eff * 100);
         const col = eff < 0.4 ? '#e2553f' : eff < 0.75 ? '#e8b93a' : '#7cc95a';
-        const what = { baum: 'Wald', fisch: 'Fischgründe', wild: 'Wild', weide: 'Weideland' }[d.harvest.res];
+        const what = { baum: 'Wald', fisch: 'Fischgründe', wild: 'Wild', weide: 'Weideland', feld: 'Ackerland' }[d.harvest.res];
+        const fert = this.g.fertility(m.type, m.gx, m.gy);
+        if (d.pflanze && fert > 0 && fert < 1) msg = `🌱 Insel nur zu ${Math.round(fert * 100)} % fruchtbar dafür. ` + msg;
         const shared = this.g.buildings.some((o) => o.type === m.type && Math.hypot(this.g.center(o)[0] - m.gx, this.g.center(o)[1] - m.gy) < (d.work ?? 4) * 2);
         if (eff < 0.2) msg = `⚠️ Hier gibt es kaum ${what} – such dir einen besseren Platz. ` + msg;
         scale = `<div class="effbar" title="Ergiebigkeit"><i style="width:${pct}%;background:${col}"></i><span>${what}: ${pct} %${shared ? ' · geteilt mit Nachbarn' : ''}</span></div>`;
@@ -192,7 +195,8 @@ export class UI {
       t.innerHTML = `<b>${d.icon} ${d.name}</b> <span class="cost">${costText(d.cost)}</span>${scale}<small>${msg}</small>`;
       ($('#hintOk') as HTMLButtonElement).disabled = !(m.has && chk.ok);
     } else if (m.kind === 'road') {
-      t.innerHTML = `<b>🟫 Feldweg</b> <span class="cost">💰5 je Feld</span><br><small>Mit dem Finger ziehen, um Wege zu bauen. Zwei Finger bewegen die Karte.</small>`;
+      const d = BUILDINGS[m.type];
+      t.innerHTML = `<b>${d.icon} ${d.name}</b> <span class="cost">${costText(d.cost)} je Feld</span><br><small>Mit dem Finger ziehen, um zu bauen${m.type === 'steinweg' ? ' (Feldwege werden dabei gepflastert)' : ''}. Zwei Finger bewegen die Karte.</small>`;
     } else if (m.kind === 'demolish') {
       t.innerHTML = `<b>💥 Abreißen</b><br><small>Tippe auf ein Gebäude oder einen Weg. Du bekommst die Hälfte des Materials zurück.</small>`;
     }
@@ -200,9 +204,10 @@ export class UI {
 
   private toggleCat(c: Category) {
     if (this.openCat === c) { this.closeCat(); return; }
-    if (c === 'wege') {
+    // Mit nur einem Weg-Typ direkt losziehen, sonst Auswahl zeigen
+    if (c === 'wege' && !this.g.isUnlocked('steinweg')) {
       this.closeCat();
-      this.setMode(this.mode.kind === 'road' ? { kind: 'none' } : { kind: 'road' });
+      this.setMode(this.mode.kind === 'road' ? { kind: 'none' } : { kind: 'road', type: 'weg' });
       return;
     }
     this.openCat = c;
@@ -218,7 +223,7 @@ export class UI {
       card.dataset.type = d.id;
       card.addEventListener('click', () => {
         this.closeCat();
-        this.setMode({ kind: 'build', type: d.id, gx: 0, gy: 0, has: false });
+        this.setMode(d.paint ? { kind: 'road', type: d.id } : { kind: 'build', type: d.id, gx: 0, gy: 0, has: false });
       });
       p.appendChild(card);
     }
@@ -353,13 +358,17 @@ export class UI {
   }
 
   private previewRoad() {
-    const ok = this.roadCells.map(([x, y]) => this.g.canRoad(x, y).ok || this.g.roads[this.g.idx(x, y)] === 1);
+    const type = this.mode.kind === 'road' ? this.mode.type : 'weg';
+    const ok = this.roadCells.map(([x, y]) => (type === 'weg' || type === 'steinweg')
+      ? this.g.canRoad(x, y, HUMAN, type).ok || this.g.roads[this.g.idx(x, y)] === (type === 'steinweg' ? 2 : 1)
+      : this.g.canPlace(type, x, y).ok);
     this.view.setRoadPreview(this.roadCells, ok);
   }
 
   private roadEnd(cancel: boolean) {
     if (!cancel && this.roadCells.length) {
-      const n = this.g.placeRoads(this.roadCells);
+      const type = this.mode.kind === 'road' ? this.mode.type : 'weg';
+      const n = type === 'weg' || type === 'steinweg' ? this.g.placeRoads(this.roadCells, HUMAN, type) : this.g.placeMany(type, this.roadCells);
       if (n > 1) this.toast(`${n} Wegfelder gebaut`, 'info');
     }
     this.roadStart = null;
@@ -408,6 +417,13 @@ export class UI {
       h += `<h3>${b ? '⚓ Kontor' : '📦 Lager & Bilanz'}</h3>
         <p class="sub">Lagerplatz: ${g.capacity} je Ware</p>`;
       if (b && b.owner === HUMAN) {
+        const nl = KONTOR_LEVELS[(b.level ?? 0) + 1];
+        h += `<p class="sub">Kontor ${['I', 'II', 'III', 'IV'][b.level ?? 0]}</p>`;
+        if (nl) {
+          const locked = nl.unlock && g.maxPop(nl.unlock.tier) < nl.unlock.n;
+          h += locked ? `<p class="sub">🔒 Ausbau ab ${nl.unlock!.n} ${TIERS[nl.unlock!.tier].name}</p>`
+            : `<button class="btn wide ok" id="kUp">⬆️ Ausbauen: Lager ${nl.storage} t (${costText(nl.cost)})</button>`;
+        }
         h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
         for (const gd of GOODS) {
           const pr = PRICES[gd.id];
@@ -426,6 +442,11 @@ export class UI {
         <h4>Einwohner</h4>`;
       TIERS.forEach((t, i) => { h += `<div class="row"><span>${t.name}</span><b>${pt[i]}</b></div>`; });
       if (!this.setHtml(box, h)) return;
+      document.getElementById('kUp')?.addEventListener('click', () => {
+        const res = g.kontorUpgrade(b!);
+        this.toast(res.ok ? 'Kontor ausgebaut – mehr Lagerplatz!' : res.reason ?? '', res.ok ? 'good' : 'bad');
+        this.renderInfo();
+      });
       box.querySelectorAll<HTMLElement>('[data-buy],[data-sell]').forEach((bt) => bt.addEventListener('click', () => {
         const gid = (bt.dataset.buy ?? bt.dataset.sell) as GoodId;
         const n = g.trade(HUMAN, b!.island, gid, bt.dataset.buy ? 5 : -5);
@@ -455,8 +476,17 @@ export class UI {
       const block = g.upgradeBlocker(b);
       if (b.tier < TIERS.length - 1) {
         const next = TIERS[b.tier + 1];
-        h += `<h4>Aufstieg zu ${next.name}</h4><p class="sub">${block ? '⏳ ' + block : '⬆️ Steigt gerade auf …'}</p>
-          <p class="sub">Kosten: ${costText(next.upgradeCost)}</p>`;
+        h += `<h4>Aufstieg zu ${next.name}</h4><p class="sub">${block ? '⏳ ' + block : '⬆️ Steigt gerade auf …'}</p>`;
+        const l = g.goods;
+        for (const grp of tier.next?.goods ?? []) {
+          const ok = grp.some((x) => l[x] >= 1);
+          h += `<div class="row"><span>${grp.map((x) => `${GOOD[x].icon} ${GOOD[x].name}`).join(' oder ')} im Lager</span><b>${ok ? '✅' : '❌'}</b></div>`;
+        }
+        for (const sv of tier.next?.services ?? []) {
+          const unl = g.isUnlocked(sv);
+          h += `<div class="row"><span>${BUILDINGS[sv].icon} ${BUILDINGS[sv].name} in der Nähe${unl ? '' : ` <small>(ab ${BUILDINGS[sv].unlock!.n} ${TIERS[BUILDINGS[sv].unlock!.tier].name})</small>`}</span><b>${cov.has(sv) ? '✅' : '❌'}</b></div>`;
+        }
+        h += `<p class="sub">Baumaterial: ${costText(next.upgradeCost)}</p>`;
       } else h += `<p class="sub">🏆 Höchste Stufe erreicht</p>`;
       h += `<p class="sub">Steuern: ${(b.residents * tier.tax * (0.4 + 0.6 * b.happy)).toFixed(1)} Taler/Min</p>`;
     } else {
@@ -465,7 +495,7 @@ export class UI {
         const st: Record<string, string> = {
           ok: '✅ Arbeitet', keinWeg: '🚧 Kein Weg zum Kontor oder Marktplatz', lagerVoll: '📦 Voll – wartet auf den Marktkarren (Weg + Reichweite von Kontor/Marktplatz?)',
           keinWald: '🌲 Kein Wald in der Nähe', keinWasser: '🌊 Kein Wasser in der Nähe',
-          erschoepft: ({ baum: '🌲 Keine erntereifen Bäume – Setzlinge wachsen nach', fisch: '🐟 Fischgründe leergefischt – erholen sich', wild: '🦌 Kein Wild mehr – kommt langsam zurück', weide: '🌿 Weide abgegrast – wächst nach' } as Record<string, string>)[d.harvest?.res ?? 'baum'],
+          erschoepft: d.deposit ? '⛏️ Das Vorkommen ist erschöpft' : ({ baum: '🌲 Keine erntereifen Bäume – Setzlinge wachsen nach', fisch: '🐟 Fischgründe leergefischt – erholen sich', wild: '🦌 Kein Wild mehr – kommt langsam zurück', weide: '🌿 Weide abgegrast – wächst nach', feld: '🌾 Felder erschöpft – wachsen nach' } as Record<string, string>)[d.harvest?.res ?? 'baum'],
           rohstoff: `⚠️ Es fehlt: ${b.missing.map((m) => GOOD[m].name).join(', ')}`,
         };
         const inp = Object.entries(d.prod.input ?? {}).map(([k, n]) => `${n} ${GOOD[k as GoodId].icon}`).join(' + ');
@@ -480,11 +510,29 @@ export class UI {
       if (d.work && d.prod) h += `<div class="row"><span>Arbeitsradius</span><b>${d.work} Felder</b></div>`;
       else if (d.radius) h += `<div class="row"><span>Reichweite</span><b>${d.radius} Felder</b></div>`;
       if (d.storage) h += `<div class="row"><span>Lager</span><b>+${d.storage} je Ware</b></div>`;
+      if (b.type === 'werft' || b.type === 'grosswerft') {
+        if (b.job) {
+          const sd = SHIPS[b.job.ship];
+          h += `<h4>Im Bau: ${sd.name}</h4><div class="bar"><i style="width:${Math.round((b.job.t / sd.time) * 100)}%"></i></div>`;
+        } else {
+          h += `<h4>Schiff bauen</h4>`;
+          for (const [id, sd] of Object.entries(SHIPS) as [ShipType, typeof SHIPS[ShipType]][]) {
+            if (sd.werft === 'grosswerft' && b.type !== 'grosswerft') continue;
+            const chk = g.canOrderShip(b, id);
+            h += `<button class="btn wide ${chk.ok ? 'ok' : ''}" data-ship="${id}">⛵ ${sd.name}<br><small>${sd.slots} Laderäume · Tempo ${Math.round(sd.speed * 100)} %${sd.kanonen ? ` · ${sd.kanonen} Kanonen` : ''} · 💰${sd.cost.taler} 🪵${sd.cost.holz} 🧵${sd.cost.stoff}${sd.cost.kanonen ? ` 💣${sd.cost.kanonen}` : ''}${chk.ok ? '' : ` – ${chk.reason}`}</small></button>`;
+          }
+        }
+      }
     }
     h += `<div class="row"><span>Unterhalt</span><b>${d.upkeep} Taler/Min</b></div>`;
     if (b.type !== 'kontor') h += `<button class="btn danger" id="infoDel">💥 Abreißen</button>`;
     if (!this.setHtml(box, h)) return;
     $('#infoX').addEventListener('click', () => this.select(null));
+    box.querySelectorAll<HTMLElement>('[data-ship]').forEach((bt) => bt.addEventListener('click', () => {
+      const res = g.orderShip(b, bt.dataset.ship as ShipType);
+      this.toast(res.ok ? 'Die Werft beginnt mit dem Bau.' : res.reason ?? '', res.ok ? 'good' : 'bad');
+      this.renderInfo();
+    }));
     document.getElementById('infoDel')?.addEventListener('click', () => {
       this.ask(`${d.icon} ${d.name} abreißen?`, 'Du bekommst die Hälfte des Baumaterials zurück.', '💥 Abreißen', () => {
         g.removeBuilding(b);
@@ -518,7 +566,7 @@ export class UI {
     const dock = g.shipDock(s);
     const near = g.shipNearIsland(s);
     const canFound = near >= 0 && !g.kontor(HUMAN, near) && !s.path.length;
-    let h = head + `<h3>⛵ ${s.name}</h3><p class="sub">${s.path.length ? 'Unterwegs …' : 'Liegt vor Anker'} – tippe aufs Meer, um hinzusegeln.</p>`;
+    let h = head + `<h3>⛵ ${s.name}</h3><p class="sub">${SHIPS[s.type ?? 'handel_klein'].name}</p><p class="sub">${s.path.length ? 'Unterwegs …' : 'Liegt vor Anker'} – tippe aufs Meer, um hinzusegeln.</p>`;
     if (canFound) h += `<button class="btn wide ok" id="shipKontor">⚓ Kontor auf ${g.islands[near].name} bauen (💰100 🪵6 🔧3)</button>`;
     h += `<h4>Laderaum</h4><div class="slots">`;
     for (const sl of s.slots) h += `<div class="slot">${sl.g ? `<span>${GOOD[sl.g].icon}</span><b>${sl.n}</b>` : '<small>leer</small>'}</div>`;
@@ -626,6 +674,13 @@ export class UI {
       relevant.add(d.prod.output);
       for (const k of Object.keys(d.prod.input ?? {})) relevant.add(k as GoodId);
     }
+    // dazu alles, was die eigenen Bewohner verbrauchen oder zum Aufstieg brauchen
+    const hb = g.housesByTier();
+    hb.forEach((n, t) => {
+      if (!n) return;
+      for (const k of Object.keys(TIERS[t].consumes)) relevant.add(k as GoodId);
+      for (const grp of TIERS[t].next?.goods ?? []) for (const k of grp) relevant.add(k);
+    });
     for (const [id, e] of this.goodEls) {
       const v = g.goods[id];
       e.classList.toggle('hidden', focus < 0 || (!relevant.has(id) && v < 1));

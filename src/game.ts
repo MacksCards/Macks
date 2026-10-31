@@ -1,14 +1,15 @@
 // Spiellogik: Inselwelt, Spieler, Schiffe, Bauen, Wirtschaft, Speichern.
 // Wie im Vorbild hat jede Insel ihr eigenes Lager (je Spieler); Geld ist global.
 import {
-  BUILDINGS, BuildingDef, BuildingId, Cost, GOOD, GOODS, GoodId, PRICES, SLOT_CAP, START_CARGO, START_MONEY, TIERS,
+  BUILDINGS, BUILD_GOODS, BuildingDef, BuildingId, Cost, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, Res, SHIPS, SLOT_CAP,
+  START_CARGO, START_MONEY, ShipType, TIERS,
 } from './data';
 import { findSeaPath } from './path';
 import { thinkAI } from './ai';
-import { Island, T, WORLD_SIZE, generateWorld, rng } from './world';
+import { Island, PFLANZEN, T, WORLD_SIZE, generateWorld, rng } from './world';
 
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft';
-export type Res = 'baum' | 'fisch' | 'wild' | 'weide';
+export type { Res } from './data';
 
 export interface Building {
   id: number;
@@ -36,6 +37,10 @@ export interface Building {
   /** Feld, an dem gerade geerntet wird (Baum, Fanggrund, Wild …), -1 = keins */
   target?: number;
   cut?: boolean;
+  /** Kontor-Ausbaustufe (0 = Kontor I) */
+  level?: number;
+  /** Werft: Schiff im Bau */
+  job?: { ship: ShipType; t: number };
 }
 
 /** Marktkarren: holt Waren von Betrieben ab und bringt sie ins Inselllager */
@@ -55,6 +60,7 @@ export interface Slot { g: GoodId | null; n: number }
 
 export interface Ship {
   id: number;
+  type?: ShipType;
   owner: number;
   name: string;
   x: number;
@@ -85,7 +91,9 @@ export interface SaveData {
   time: number;
   quest: number;
   unlocked?: BuildingId[];
-  res?: { trees: string; fish: string; wild: string; weide: string };
+  res?: { trees: string; fish: string; wild: string; weide: string; feld?: string };
+  /** verbleibendes Erz je Insel */
+  ore?: number[];
 }
 
 export interface GameEvents {
@@ -103,12 +111,12 @@ export interface GameEvents {
 export interface Check { ok: boolean; reason?: string }
 
 const LAGER: BuildingId[] = ['kontor', 'markt'];
-const SAVE_KEY = 'neue-ufer-save-v3';
+const SAVE_KEY = 'neue-ufer-save-v4';
 export const HUMAN = 0;
 const SHIP_SPEED = 3.2; // Kacheln pro Spielsekunde
 const SHIP_SIGHT = 9;
 /** Nachwachsen je Sekunde (voller Bestand = 1): Baum ~5 min, Fischgrund ~2,5 min, Wild ~6,5 min, Weide ~1,5 min */
-const REGEN: Record<Res, number> = { baum: 1 / 300, fisch: 1 / 150, wild: 1 / 400, weide: 1 / 90 };
+const REGEN: Record<Res, number> = { baum: 1 / 300, fisch: 1 / 150, wild: 1 / 400, weide: 1 / 90, feld: 1 / 100 };
 const CART_SPEED = 1.8; // Felder pro Spielsekunde
 const CART_CAP = 6; // Tonnen pro Fahrt
 export const DOCK_RANGE = 5; // so nah muss ein Schiff am Kontor/Bauplatz sein
@@ -141,6 +149,7 @@ export class Game {
   fishCap: Float32Array = new Float32Array(0);
   wild: Float32Array = new Float32Array(0);
   weide: Float32Array = new Float32Array(0);
+  feld: Float32Array = new Float32Array(0);
   private regenT = 0;
   /** wie viele Ernte-Betriebe je Rohstoff ein Feld nutzen (für die Ergiebigkeit) */
   private share: Partial<Record<Res, Uint8Array>> = {};
@@ -187,12 +196,13 @@ export class Game {
     this.seen = new Uint8Array(N);
     this.occ = new Int32Array(N);
     this.initResources(seed);
+    this.oreStart = new Map(this.islands.map((i) => [i.id, i.erz]));
   }
 
   /** Startbestände: Wald voll, Fischgründe je nach Lage (Schwärme an Küsten, reiche und arme Stellen) */
   private initResources(seed: number) {
     const N = this.size, NN = N * N;
-    this.trees = new Float32Array(NN); this.wild = new Float32Array(NN); this.weide = new Float32Array(NN);
+    this.trees = new Float32Array(NN); this.wild = new Float32Array(NN); this.weide = new Float32Array(NN); this.feld = new Float32Array(NN);
     this.fish = new Float32Array(NN); this.fishCap = new Float32Array(NN);
     const dist = new Float32Array(NN).fill(99);
     const q: number[] = [];
@@ -214,7 +224,7 @@ export class Game {
     for (let k = 0; k < NN; k++) {
       const t = this.tiles[k];
       if (t === T.Wald) { this.trees[k] = r() < 0.85 ? 1 : 0.3 + r() * 0.6; this.wild[k] = 1; }
-      if (t === T.Gras || t === T.Sand) this.weide[k] = 1;
+      if (t === T.Gras || t === T.Sand) { this.weide[k] = 1; this.feld[k] = 1; }
       if (t === T.Wasser && dist[k] <= 5) {
         const x = k % N + 0.5, y = ((k / N) | 0) + 0.5;
         let sh = 0;
@@ -237,7 +247,7 @@ export class Game {
     const shipNames = ['Morgenstern', 'Seeadler', 'Goldene Gans', 'Nordlicht'];
     for (const p of g.players) {
       const [sx, sy] = g.starts[p.id];
-      const ship: Ship = { id: g.nextId++, owner: p.id, name: shipNames[p.id], x: sx + 0.5, y: sy + 0.5, dir: -Math.PI / 4, path: [], slots: [] };
+      const ship: Ship = { id: g.nextId++, type: 'handel_klein', owner: p.id, name: shipNames[p.id], x: sx + 0.5, y: sy + 0.5, dir: -Math.PI / 4, path: [], slots: [] };
       for (let i = 0; i < 4; i++) ship.slots.push(START_CARGO[i] ? { g: START_CARGO[i][0], n: START_CARGO[i][1] } : { g: null, n: 0 });
       g.ships.push(ship);
     }
@@ -270,9 +280,11 @@ export class Game {
     }
     g.recompute();
     for (const t of d.unlocked ?? []) if (BUILDINGS[t]) g.unlocked.add(t);
+    (d.ore ?? []).forEach((v, i) => { if (g.islands[i]) g.islands[i].erz = v; });
     if (d.res) {
       const dec = (str: string, arr: Float32Array) => { for (let i = 0; i < arr.length && i < str.length; i++) arr[i] = (str.charCodeAt(i) - 48) / 40; };
       dec(d.res.trees, g.trees); dec(d.res.fish, g.fish); dec(d.res.wild, g.wild); dec(d.res.weide, g.weide);
+      if (d.res.feld) dec(d.res.feld, g.feld);
     }
     g.checkUnlocks(true);
     return g;
@@ -283,7 +295,8 @@ export class Game {
       v: 3, seed: this.seed, tiles: enc(this.tiles), roads: enc(this.roads), seen: enc(this.seen),
       buildings: this.buildings, ships: this.ships, players: this.players, lager: this.lager,
       nextId: this.nextId, time: this.time, quest: this.quest, unlocked: [...this.unlocked],
-      res: { trees: encR(this.trees), fish: encR(this.fish), wild: encR(this.wild), weide: encR(this.weide) },
+      res: { trees: encR(this.trees), fish: encR(this.fish), wild: encR(this.wild), weide: encR(this.weide), feld: encR(this.feld) },
+      ore: this.islands.map((i) => i.erz),
     };
   }
 
@@ -429,7 +442,8 @@ export class Game {
     for (const b of claimers) {
       const d = this.def(b);
       const key = `${b.owner}:${b.island}`;
-      this.cap.set(key, (this.cap.get(key) ?? 0) + (d.storage ?? 0));
+      const stor = b.type === 'kontor' ? KONTOR_LEVELS[b.level ?? 0].storage : d.storage ?? 0;
+      this.cap.set(key, (this.cap.get(key) ?? 0) + stor);
       const [cx, cy] = this.center(b);
       const r = d.radius ?? 0;
       for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
@@ -473,7 +487,8 @@ export class Game {
     }
     // Versorgung der Wohnhäuser
     this.coverage.clear();
-    const services = this.buildings.filter((b) => b.type === 'markt' || b.type === 'kapelle' || b.type === 'wirtshaus');
+    const SVC: BuildingId[] = ['markt', 'kapelle', 'kirche', 'wirtshaus', 'schule', 'badehaus', 'hochschule', 'theater'];
+    const services = this.buildings.filter((b) => SVC.includes(b.type));
     for (const h of this.buildings) {
       if (h.type !== 'haus') continue;
       const set = new Set<BuildingId>();
@@ -482,7 +497,7 @@ export class Game {
         if (s.owner !== h.owner) continue;
         const [sx, sy] = this.center(s);
         const r = this.def(s).radius ?? 0;
-        if ((hx - sx) ** 2 + (hy - sy) ** 2 <= r * r) set.add(s.type);
+        if ((hx - sx) ** 2 + (hy - sy) ** 2 <= r * r) { set.add(s.type); if (s.type === 'kirche') set.add('kapelle'); }
       }
       this.coverage.set(h.id, set);
     }
@@ -557,7 +572,8 @@ export class Game {
     for (const c of this.carts) {
       const home = this.byId.get(c.home)!;
       if (c.state === 'idle') { if (think) this.assignCart(c, home); continue; }
-      let step = CART_SPEED * dt;
+      const here = this.roads[this.idx(Math.floor(c.x), Math.floor(c.y))];
+      let step = CART_SPEED * (here === 2 ? 1.5 : 1) * dt;
       while (step > 0 && c.path.length) {
         const [tx, ty] = c.path[0];
         const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy);
@@ -612,19 +628,34 @@ export class Game {
     const t = this.tiles[k];
     if (res === 'fisch') return this.fishCap[k] > 0;
     if (res === 'baum' || res === 'wild') return t === T.Wald;
+    // Weide/Felder: freies Gras oder Sand
     return (t === T.Gras || t === T.Sand) && !this.occ[k] && !this.roads[k];
   }
 
   resStock(res: Res): Float32Array {
-    return res === 'baum' ? this.trees : res === 'fisch' ? this.fish : res === 'wild' ? this.wild : this.weide;
+    return res === 'baum' ? this.trees : res === 'fisch' ? this.fish : res === 'wild' ? this.wild : res === 'feld' ? this.feld : this.weide;
   }
 
   /**
    * Ergiebigkeit 0..1: wie viel im Arbeitsradius dauerhaft nachwächst, geteilt durch alle
    * gleichartigen Betriebe, die dieselben Felder nutzen – verglichen mit dem Bedarf bei voller Arbeit.
    */
+  /** Fruchtbarkeit der Insel für eine Plantage (0..1); 1 für alles andere */
+  fertility(type: BuildingId, x: number, y: number): number {
+    const p = BUILDINGS[type].pflanze;
+    if (!p) return 1;
+    const isl = this.islands[this.islandOf[this.idx(x, y)]];
+    return (isl?.frucht[p] ?? 0) / 100;
+  }
+
   siteEfficiency(type: BuildingId, x: number, y: number, self = -1): number {
     const d = BUILDINGS[type];
+    const fert = this.fertility(type, x, y);
+    if (fert <= 0) return 0;
+    if (d.deposit) {
+      const isl = this.islands[this.islandOf[this.idx(x, y)]];
+      if (!isl || (d.deposit === 'erz' ? isl.erz <= 0 : !isl.gold)) return 0;
+    }
     if (d.needs === 'berg') {
       for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Berg) return 1;
       return 0;
@@ -641,7 +672,7 @@ export class Game {
       const cap = res === 'fisch' ? this.fishCap[k] : 1;
       supply += (REGEN[res] * cap) / (1 + Math.max(0, (sh ? sh[k] : 0) - minus));
     }
-    return Math.min(1, supply / need);
+    return Math.min(1, supply / need) * fert;
   }
 
   // ---------- Schiffe ----------
@@ -729,7 +760,7 @@ export class Game {
   }
 
   private tickShip(s: Ship, dt: number) {
-    let step = SHIP_SPEED * dt;
+    let step = SHIP_SPEED * (SHIPS[s.type ?? 'handel_klein'].speed) * dt;
     while (step > 0 && s.path.length) {
       const [tx, ty] = s.path[0];
       const dx = tx - s.x, dy = ty - s.y;
@@ -767,14 +798,14 @@ export class Game {
   canAfford(c: Cost, owner = HUMAN, island = this.focus): Check {
     if ((c.taler ?? 0) > this.players[owner].money) return { ok: false, reason: 'Zu wenig Taler' };
     const l = this.lagerOf(owner, island) ?? EMPTY;
-    for (const k of ['holz', 'werkzeug', 'stein'] as const) if ((c[k] ?? 0) > l[k]) return { ok: false, reason: `Zu wenig ${GOOD[k].name}` };
+    for (const k of BUILD_GOODS) if ((c[k] ?? 0) > l[k]) return { ok: false, reason: `Zu wenig ${GOOD[k].name}` };
     return { ok: true };
   }
 
   private pay(c: Cost, owner: number, island: number) {
     this.players[owner].money -= c.taler ?? 0;
     const l = this.lagerOf(owner, island);
-    if (l) for (const k of ['holz', 'werkzeug', 'stein'] as const) l[k] -= c[k] ?? 0;
+    if (l) for (const k of BUILD_GOODS) l[k] -= c[k] ?? 0;
   }
 
   /** Schiff des Spielers, das nahe genug an einem Bauplatz liegt */
@@ -822,9 +853,27 @@ export class Game {
       for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Wasser) w++;
       if (w < 2) return { ok: false, reason: 'Muss direkt am Wasser stehen' };
     }
-    if (d.needs === 'berg' && this.siteEfficiency(type, x, y) === 0) return { ok: false, reason: 'Muss direkt am Berg stehen' };
+    if (d.needs === 'kueste') {
+      let w = 0;
+      for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Wasser) w++;
+      if (w < 2) return { ok: false, reason: 'Muss direkt an der Küste stehen' };
+    }
+    if (d.needs === 'berg') {
+      let berg = false;
+      for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Berg) berg = true;
+      if (!berg) return { ok: false, reason: 'Muss direkt am Berg stehen' };
+    }
+    if (d.deposit) {
+      const il = this.islands[isl];
+      if (d.deposit === 'erz' && !(il?.erz > 0)) return { ok: false, reason: il && il.erz === 0 && this.hadOre(isl) ? 'Das Erzvorkommen ist erschöpft' : 'Diese Insel hat kein Erz im Berg' };
+      if (d.deposit === 'gold' && !il?.gold) return { ok: false, reason: 'Diese Insel hat kein Gold im Berg' };
+    }
+    if (d.pflanze && this.fertility(type, x, y) <= 0) return { ok: false, reason: `Auf dieser Insel wächst kein ${PFLANZEN[d.pflanze].name}` };
     return this.canAfford(d.cost, owner, isl);
   }
+
+  private oreStart = new Map<number, number>();
+  hadOre(isl: number) { return (this.oreStart.get(isl) ?? 0) > 0; }
 
   place(type: BuildingId, x: number, y: number, owner = HUMAN): Check {
     const c = this.canPlace(type, x, y, owner);
@@ -860,32 +909,104 @@ export class Game {
     return { ok: true };
   }
 
-  canRoad(x: number, y: number, owner = HUMAN): Check {
+  /** Weg bauen: 'weg' = Feldweg, 'steinweg' = Pflasterweg (kostet 1 Stein, Karren schneller). Feldwege lassen sich pflastern. */
+  canRoad(x: number, y: number, owner = HUMAN, type: 'weg' | 'steinweg' = 'weg'): Check {
     if (!this.inMap(x, y)) return { ok: false, reason: 'Außerhalb der Karte' };
     const k = this.idx(x, y);
     const t = this.tiles[k];
     if (t === T.Wasser || t === T.Berg) return { ok: false, reason: 'Hier geht kein Weg' };
-    if (this.roads[k] || this.occ[k]) return { ok: false, reason: 'Platz ist belegt' };
+    const upgrade = type === 'steinweg' && this.roads[k] === 1;
+    if ((this.roads[k] && !upgrade) || this.occ[k]) return { ok: false, reason: 'Platz ist belegt' };
     if (this.own[k] !== owner) return { ok: false, reason: 'Außerhalb deines Gebiets' };
-    if (this.players[owner].money < (BUILDINGS.weg.cost.taler ?? 0)) return { ok: false, reason: 'Zu wenig Taler' };
+    if (type === 'steinweg' && owner === HUMAN && !this.isUnlocked('steinweg')) return { ok: false, reason: 'Pflasterwege erst ab 15 Siedlern' };
+    const c = BUILDINGS[type].cost;
+    if (this.players[owner].money < (c.taler ?? 0)) return { ok: false, reason: 'Zu wenig Taler' };
+    if (c.stein && (this.lagerOf(owner, this.islandOf[k])?.stein ?? 0) < c.stein) return { ok: false, reason: 'Zu wenig Steine' };
     return { ok: true };
   }
 
-  placeRoads(cells: [number, number][], owner = HUMAN): number {
+  placeRoads(cells: [number, number][], owner = HUMAN, type: 'weg' | 'steinweg' = 'weg'): number {
     let n = 0, trees = false, lastReason = '';
+    const c = BUILDINGS[type].cost;
     for (const [x, y] of cells) {
-      const c = this.canRoad(x, y, owner);
-      if (!c.ok) { lastReason = c.reason ?? ''; continue; }
+      const ch = this.canRoad(x, y, owner, type);
+      if (!ch.ok) { lastReason = ch.reason ?? ''; continue; }
       const k = this.idx(x, y);
       if (this.tiles[k] === T.Wald) { this.tiles[k] = T.Gras; trees = true; }
-      this.roads[k] = 1;
-      this.players[owner].money -= BUILDINGS.weg.cost.taler ?? 0;
+      this.roads[k] = type === 'steinweg' ? 2 : 1;
+      this.players[owner].money -= c.taler ?? 0;
+      if (c.stein) { const l = this.lagerOf(owner, this.islandOf[k]); if (l) l.stein -= c.stein; }
       n++;
     }
     if (n) { this.recompute(); this.ev.roads(); }
     if (trees) this.ev.trees();
     if (!n && lastReason && cells.length === 1 && owner === HUMAN) this.ev.message(lastReason, 'bad');
     return n;
+  }
+
+  /** Mauern/Palisaden: viele 1×1-Bauteile auf einmal setzen */
+  placeMany(type: BuildingId, cells: [number, number][], owner = HUMAN): number {
+    let n = 0, last = '';
+    for (const [x, y] of cells) { const r = this.place(type, x, y, owner); if (r.ok) n++; else last = r.reason ?? ''; }
+    if (!n && last && owner === HUMAN) this.ev.message(last, 'bad');
+    return n;
+  }
+
+  // ---------- Kontor-Ausbau und Werft ----------
+
+  kontorUpgrade(b: Building): Check {
+    const lv = (b.level ?? 0) + 1;
+    const next = KONTOR_LEVELS[lv];
+    if (!next) return { ok: false, reason: 'Höchste Ausbaustufe erreicht' };
+    if (next.unlock && this.maxPop(next.unlock.tier, b.owner) < next.unlock.n) return { ok: false, reason: `Erst ab ${next.unlock.n} ${TIERS[next.unlock.tier].name}` };
+    const c = this.canAfford(next.cost, b.owner, b.island);
+    if (!c.ok) return c;
+    this.pay(next.cost, b.owner, b.island);
+    b.level = lv;
+    this.recompute();
+    return { ok: true };
+  }
+
+  canOrderShip(w: Building, type: ShipType): Check {
+    const sd = SHIPS[type];
+    if (w.job) return { ok: false, reason: 'Die Werft baut gerade' };
+    if (sd.werft === 'grosswerft' && w.type !== 'grosswerft') return { ok: false, reason: 'Nur auf der großen Werft' };
+    if (this.maxPop(sd.unlock.tier, w.owner) < sd.unlock.n) return { ok: false, reason: `Erst ab ${sd.unlock.n} ${TIERS[sd.unlock.tier].name}` };
+    if (this.ships.filter((s) => s.owner === w.owner).length >= 20) return { ok: false, reason: 'Höchstens 20 Schiffe' };
+    const l = this.lagerOf(w.owner, w.island);
+    if (this.players[w.owner].money < sd.cost.taler) return { ok: false, reason: 'Zu wenig Taler' };
+    if (!l || l.holz < sd.cost.holz) return { ok: false, reason: 'Zu wenig Holz' };
+    if (l.stoff < sd.cost.stoff) return { ok: false, reason: 'Zu wenig Stoffe (für die Segel)' };
+    if ((sd.cost.kanonen ?? 0) > l.kanonen) return { ok: false, reason: 'Zu wenig Kanonen' };
+    return { ok: true };
+  }
+
+  orderShip(w: Building, type: ShipType): Check {
+    const c = this.canOrderShip(w, type);
+    if (!c.ok) return c;
+    const sd = SHIPS[type];
+    const l = this.lagerOf(w.owner, w.island)!;
+    this.players[w.owner].money -= sd.cost.taler;
+    l.holz -= sd.cost.holz; l.stoff -= sd.cost.stoff; l.kanonen -= sd.cost.kanonen ?? 0;
+    w.job = { ship: type, t: 0 };
+    return { ok: true };
+  }
+
+  private tickWerft(w: Building, dt: number) {
+    if (!w.job) return;
+    const sd = SHIPS[w.job.ship];
+    w.job.t += dt * (w.type === 'grosswerft' ? 1.6 : 1);
+    if (w.job.t < sd.time) return;
+    // Stapellauf am nächsten Wasserfeld
+    let spot: [number, number] | null = null;
+    for (const [x, y] of this.ring(w)) if (this.inMap(x, y) && this.tiles[this.idx(x, y)] === T.Wasser) { spot = [x, y]; break; }
+    if (!spot) return;
+    const names = ['Möwe', 'Delfin', 'Hoffnung', 'Fortuna', 'Seestern', 'Albatros', 'Zuversicht', 'Stolz von Neue Ufer', 'Brise', 'Kormoran'];
+    const ship: Ship = { id: this.nextId++, type: w.job.ship, owner: w.owner, name: names[this.ships.length % names.length], x: spot[0] + 0.5, y: spot[1] + 0.5, dir: 0, path: [], slots: [] };
+    for (let i = 0; i < sd.slots; i++) ship.slots.push({ g: null, n: 0 });
+    this.ships.push(ship);
+    w.job = undefined;
+    if (w.owner === HUMAN) this.ev.message(`⛵ ${sd.name} „${ship.name}“ ist vom Stapel gelaufen!`, 'good');
   }
 
   demolish(x: number, y: number): boolean {
@@ -904,7 +1025,7 @@ export class Game {
     const d = this.def(b);
     const l = this.lagerOf(b.owner, b.island);
     const cap = this.capOf(b.owner, b.island);
-    if (l) for (const k of ['holz', 'werkzeug', 'stein'] as const) l[k] = Math.min(l[k] + Math.floor((d.cost[k] ?? 0) / 2), Math.max(cap, l[k]));
+    if (l) for (const k of BUILD_GOODS) l[k] = Math.min(l[k] + Math.floor((d.cost[k] ?? 0) / 2), Math.max(cap, l[k]));
     this.stamp(b, 0);
     this.buildings = this.buildings.filter((o) => o !== b);
     this.byId.delete(b.id);
@@ -936,6 +1057,7 @@ export class Game {
     for (const b of this.buildings) {
       if (b.type === 'haus') this.tickHouse(b, dt);
       else if (this.def(b).prod) this.tickProduction(b, dt);
+      else if (b.job) this.tickWerft(b, dt);
     }
     this.regenT += dt;
     if (this.regenT >= 1) { this.regrow(this.regenT); this.regenT = 0; }
@@ -953,7 +1075,7 @@ export class Game {
 
   private regrow(dt: number) {
     const NN = this.trees.length;
-    const rb = REGEN.baum * dt, rf = REGEN.fisch * dt, rw = REGEN.wild * dt, rg = REGEN.weide * dt;
+    const rb = REGEN.baum * dt, rf = REGEN.fisch * dt, rw = REGEN.wild * dt, rg = REGEN.weide * dt, rl = REGEN.feld * dt;
     for (let k = 0; k < NN; k++) {
       const t = this.tiles[k];
       if (t === T.Wald) {
@@ -962,7 +1084,10 @@ export class Game {
       } else if (t === T.Wasser) {
         const c = this.fishCap[k];
         if (c > 0 && this.fish[k] < c) this.fish[k] = Math.min(c, this.fish[k] + rf * c);
-      } else if (this.weide[k] < 1) this.weide[k] = Math.min(1, this.weide[k] + rg);
+      } else {
+        if (this.weide[k] < 1) this.weide[k] = Math.min(1, this.weide[k] + rg);
+        if (this.feld[k] < 1) this.feld[k] = Math.min(1, this.feld[k] + rl);
+      }
     }
   }
 
@@ -1016,7 +1141,7 @@ export class Game {
     b.missing = [];
     const hv = this.def(b).harvest;
     if (!l || !this.linked.has(b.id)) b.status = 'keinWeg';
-    else if (b.eff <= 0 && !hv) b.status = this.def(b).needs === 'wasser' ? 'keinWasser' : 'keinWald';
+    else if (b.eff <= 0 && !hv) b.status = this.def(b).deposit ? 'erschoepft' : this.def(b).needs === 'wasser' ? 'keinWasser' : 'keinWald';
     else if (b.stock >= (this.def(b).stock ?? 4)) b.status = 'lagerVoll';
     else if (hv && !b.loaded && !this.startHarvest(b)) b.status = 'erschoepft';
     else {
@@ -1032,7 +1157,7 @@ export class Game {
       if (b.loaded) {
         working = true;
         b.status = 'ok';
-        b.progress += dt * (hv ? 1 : b.eff);
+        b.progress += dt * (hv ? this.fertility(b.type, b.x, b.y) : b.eff);
         // Baum fällt kurz vor Ende des Arbeitsgangs (Holzfäller hackt erst)
         if (hv?.res === 'baum' && !b.cut && b.progress >= p.time * 0.8 && b.target !== undefined) {
           this.trees[b.target] = 0; this.ev.felled(b.target); b.cut = true;
@@ -1042,6 +1167,12 @@ export class Game {
           b.loaded = false;
           const ok = hv ? this.finishHarvest(b) : true;
           if (ok) b.stock = Math.min(this.def(b).stock ?? 4, b.stock + (p.amount ?? 1));
+          const dep = this.def(b).deposit;
+          if (dep === 'erz') {
+            const il = this.islands[b.island];
+            il.erz = Math.max(0, il.erz - (p.amount ?? 1));
+            if (il.erz === 0) { b.eff = 0; if (b.owner === HUMAN) this.ev.message(`⛏️ Das Erzvorkommen auf ${il.name} ist erschöpft.`, 'bad'); }
+          }
           b.target = undefined;
         }
       } else b.status = 'rohstoff';
@@ -1099,11 +1230,13 @@ export class Game {
     const tier = TIERS[h.tier];
     const next = TIERS[h.tier + 1];
     if (h.residents < tier.maxResidents) return `Haus noch nicht voll (${h.residents}/${tier.maxResidents})`;
-    if (h.happy < 0.9) return 'Bewohner noch nicht zufrieden genug';
+    if (h.happy < 0.85) return 'Bewohner noch nicht zufrieden genug';
     const cov = this.coverage.get(h.id) ?? new Set();
-    for (const s of next.services) if (!cov.has(s)) return `${BUILDINGS[s].name} in der Nähe fehlt`;
+    for (const s of tier.next?.services ?? []) if (!cov.has(s)) return `${BUILDINGS[s].name} in der Nähe fehlt`;
     const l = this.lagerOf(h.owner, h.island) ?? EMPTY;
-    for (const g of Object.keys(next.consumes) as GoodId[]) if (!(g in tier.consumes) && l[g] < 1) return `${GOOD[g].name} fehlt im Lager`;
+    for (const group of tier.next?.goods ?? []) {
+      if (!group.some((g) => l[g] >= 1)) return `${group.map((g) => GOOD[g].name).join(' oder ')} fehlt im Lager`;
+    }
     const c = this.canAfford(next.upgradeCost, h.owner, h.island);
     if (!c.ok) return `${c.reason} zum Ausbau`;
     return null;
@@ -1122,43 +1255,47 @@ export class Game {
 
 export interface Quest { title: string; hint: string; done(g: Game): boolean; progress(g: Game): string; reward: number }
 
-const cnt = (g: Game, t: BuildingId, need: number) => `${Math.min(g.count(t, true), need)}/${need}`;
 const linkedAny = (g: Game, types: BuildingId[]) => types.reduce((n, t) => n + g.count(t, true), 0);
-const done = (g: Game, types: BuildingId[]) => types.filter((t) => g.count(t, true) >= 1).length;
 const stored = (g: Game) => { const k = g.kontor(); const l = k ? g.lagerOf(HUMAN, k.island) : null; return l ? Object.values(l).reduce((a, b) => a + b, 0) : 0; };
 
+const houses = (g: Game, tier: number) => g.housesByTier().slice(tier).reduce((a, b) => a + b, 0);
+const any = (g: Game, types: BuildingId[], linked = true) => types.some((t) => g.count(t, linked) >= 1);
+const step = (title: string, hint: string, done: (g: Game) => boolean, progress: (g: Game) => string, reward: number): Quest => ({ title, hint, done, progress, reward });
+const all = (types: BuildingId[], linked = true) => ({
+  done: (g: Game) => types.every((t) => g.count(t, linked) >= 1),
+  progress: (g: Game) => `${types.filter((t) => g.count(t, linked) >= 1).length}/${types.length}`,
+});
+const tierGoal = (tier: number, n: number) => ({ done: (g: Game) => houses(g, tier) >= n, progress: (g: Game) => `${Math.min(n, houses(g, tier))}/${n}` });
+
+/** Aufgaben führen Schritt für Schritt durch alle Stufen und Warenketten (wie die Lernkurve des Vorbilds) */
 export const QUESTS: Quest[] = [
-  { title: 'Neues Land', hint: 'Tippe dein Schiff an, dann aufs Meer, um loszusegeln. Erkunde die Inseln und gründe an der Küste einer guten Insel ein Kontor (Schiff antippen → „Kontor bauen“).',
-    done: (g) => g.count('kontor') >= 1, progress: (g) => `${Math.min(1, g.count('kontor'))}/1`, reward: 300 },
-  { title: 'Ladung löschen', hint: 'Lade Werkzeug, Holz und Nahrung aus dem Schiff ins Kontor (Schiff antippen → „Alles ausladen“).',
-    done: (g) => stored(g) >= 40, progress: (g) => `${Math.min(40, Math.floor(stored(g)))}/40 t`, reward: 100 },
-  { title: 'Holz für den Aufbau', hint: 'Baue einen Holzfäller nahe am Wald und verbinde ihn mit einem Feldweg mit dem Kontor ⚓.',
-    done: (g) => g.count('holzfaeller', true) >= 1, progress: (g) => cnt(g, 'holzfaeller', 1), reward: 200 },
-  { title: 'Nahrung', hint: 'Baue eine Fischerhütte direkt am Wasser oder eine Jagdhütte am Wald und verbinde sie per Weg.',
-    done: (g) => linkedAny(g, ['fischer', 'jagdhuette']) >= 1, progress: (g) => `${Math.min(1, linkedAny(g, ['fischer', 'jagdhuette']))}/1`, reward: 200 },
-  { title: 'Ein Platz zum Leben', hint: 'Baue einen Marktplatz. Er vergrößert dein Gebiet und versorgt Wohnhäuser.',
-    done: (g) => g.count('markt') >= 1, progress: (g) => `${Math.min(g.count('markt'), 1)}/1`, reward: 300 },
-  { title: 'Erste Siedlung', hint: 'Baue 6 Wohnhäuser in Reichweite des Marktplatzes.',
-    done: (g) => g.count('haus') >= 6, progress: (g) => `${Math.min(g.count('haus'), 6)}/6`, reward: 300 },
-  { title: 'Wachsende Siedlung', hint: 'Halte deine Pioniere mit Nahrung zufrieden, dann ziehen mehr ein. Ziel: 30 Einwohner.',
-    done: (g) => g.population() >= 30, progress: (g) => `${Math.min(g.population(), 30)}/30`, reward: 400 },
-  { title: 'Kleidung', hint: 'Siedler brauchen Stoff: Baue eine Schaffarm und eine Weberei (beide mit Weg).',
-    done: (g) => done(g, ['schaffarm', 'weberei']) === 2, progress: (g) => `${done(g, ['schaffarm', 'weberei'])}/2`, reward: 400 },
-  { title: 'Glaube', hint: 'Baue eine Kapelle in der Nähe deiner Häuser.',
-    done: (g) => g.count('kapelle') >= 1, progress: (g) => `${Math.min(g.count('kapelle'), 1)}/1`, reward: 300 },
-  { title: 'Siedler', hint: 'Volle, zufriedene Pionierhäuser steigen zu Siedlern auf (kostet Holz + Werkzeug). Ziel: 5 Siedlerhäuser.',
-    done: (g) => g.housesByTier()[1] + g.housesByTier()[2] >= 5, progress: (g) => `${Math.min(g.housesByTier()[1] + g.housesByTier()[2], 5)}/5`, reward: 600 },
-  { title: 'Stein und Eisen', hint: 'Baue Steinbruch und Erzmine direkt am Berg, dazu eine Werkzeugschmiede.',
-    done: (g) => done(g, ['steinbruch', 'erzmine', 'schmiede']) === 3, progress: (g) => `${done(g, ['steinbruch', 'erzmine', 'schmiede'])}/3`, reward: 800 },
-  { title: 'Bessere Nahrung', hint: 'Schweinezucht → Fleischerei liefert viel mehr Nahrung als Fischer und Jäger.',
-    done: (g) => done(g, ['schweinezucht', 'fleischerei']) === 2, progress: (g) => `${done(g, ['schweinezucht', 'fleischerei'])}/2`, reward: 600 },
-  { title: 'Brot backen', hint: 'Getreidefarm → Mühle → Bäckerei: Aus 1 Mehl backt die Bäckerei 2 Nahrung.',
-    done: (g) => done(g, ['getreidefarm', 'muehle', 'baeckerei']) === 3, progress: (g) => `${done(g, ['getreidefarm', 'muehle', 'baeckerei'])}/3`, reward: 700 },
-  { title: 'Bier für die Bürger', hint: 'Bürger wollen Bier und ein Wirtshaus: Getreidefarm → Brauerei, dazu ein Wirtshaus.',
-    done: (g) => done(g, ['getreidefarm', 'brauerei']) === 2 && g.count('wirtshaus') >= 1,
-    progress: (g) => `${done(g, ['getreidefarm', 'brauerei']) + Math.min(1, g.count('wirtshaus'))}/3`, reward: 1000 },
-  { title: 'Stolze Bürger', hint: 'Lass deine Stadt wachsen: 100 Bürger.',
-    done: (g) => g.popByTier()[2] >= 100, progress: (g) => `${Math.min(g.popByTier()[2], 100)}/100`, reward: 2000 },
+  step('Neues Land', 'Tippe dein Schiff an, dann aufs Meer, um loszusegeln. Erkunde die Inseln und gründe an der Küste einer guten Insel ein Kontor (Schiff antippen → „Kontor bauen“).',
+    (g) => g.count('kontor') >= 1, (g) => `${Math.min(1, g.count('kontor'))}/1`, 300),
+  step('Ladung löschen', 'Lade Werkzeug, Holz und Nahrung aus dem Schiff ins Kontor (Schiff antippen → „Alles ausladen“).',
+    (g) => stored(g) >= 40, (g) => `${Math.min(40, Math.floor(stored(g)))}/40 t`, 100),
+  step('Holz für den Aufbau', 'Baue einen Holzfäller nahe am Wald und verbinde ihn mit einem Feldweg mit dem Kontor ⚓.', ...Object.values(all(['holzfaeller'])) as [Quest['done'], Quest['progress']], 200),
+  step('Nahrung', 'Baue eine Fischerhütte an guten Fischgründen (Kräuselringe!) oder eine Jagdhütte am Wald und verbinde sie per Weg.',
+    (g) => linkedAny(g, ['fischer', 'jagdhuette']) >= 1, (g) => `${Math.min(1, linkedAny(g, ['fischer', 'jagdhuette']))}/1`, 200),
+  step('Ein Platz zum Leben', 'Baue einen Marktplatz. Er vergrößert dein Gebiet und versorgt Wohnhäuser.', ...Object.values(all(['markt'], false)) as [Quest['done'], Quest['progress']], 300),
+  step('Erste Siedlung', 'Baue 8 Wohnhäuser in Reichweite des Marktplatzes.', (g) => g.count('haus') >= 8, (g) => `${Math.min(g.count('haus'), 8)}/8`, 300),
+  step('Stoffe', 'Pioniere brauchen Stoffe, um aufzusteigen: Schaffarm (Wolle) und Weberei, beide mit Weg.', ...Object.values(all(['schaffarm', 'weberei'])) as [Quest['done'], Quest['progress']], 400),
+  step('Glaube', 'Baue eine Kapelle in der Nähe deiner Häuser.', ...Object.values(all(['kapelle'], false)) as [Quest['done'], Quest['progress']], 300),
+  step('Siedler', 'Volle, zufriedene Pionierhäuser mit Kapelle und Stoffen im Lager werden zu Siedlern. Ziel: 6 Siedlerhäuser.', ...Object.values(tierGoal(1, 6)) as [Quest['done'], Quest['progress']], 600),
+  step('Steine', 'Ab 15 Siedlern: Steinbruch direkt am Berg. Steine brauchst du für Pflasterwege, Plantagen, Wirtshaus, Schule und mehr.', ...Object.values(all(['steinbruch'])) as [Quest['done'], Quest['progress']], 500),
+  step('Alkohol', 'Siedler wollen Alkohol: Weingut oder Zuckerrohrplantage + Rumbrennerei (auf fruchtbarer Insel) – oder später die Brauerei.',
+    (g) => any(g, ['weingut', 'rumbrennerei', 'brauerei']), (g) => (any(g, ['weingut', 'rumbrennerei', 'brauerei']) ? '1/1' : '0/1'), 700),
+  step('Tabak oder Gewürze', 'Für Bürger: Tabakplantage + Tabakwarenmanufaktur oder eine Gewürzplantage. Schau mit dem Schiff, welche Insel dafür fruchtbar ist.',
+    (g) => any(g, ['tabakwaren', 'gewuerzplantage']), (g) => (any(g, ['tabakwaren', 'gewuerzplantage']) ? '1/1' : '0/1'), 700),
+  step('Wirtshaus und Schule', 'Siedler brauchen Wirtshaus (ab 50 Siedlern) und Schule (ab 100 Siedlern), um Bürger zu werden.', ...Object.values(all(['wirtshaus', 'schule'], false)) as [Quest['done'], Quest['progress']], 800),
+  step('Bürger', 'Siedlerhäuser mit Alkohol, Tabakwaren oder Gewürzen, Wirtshaus und Schule werden zu Bürgern. Ziel: 6 Bürgerhäuser.', ...Object.values(tierGoal(2, 6)) as [Quest['done'], Quest['progress']], 1000),
+  step('Eisen und Werkzeug', 'Erzmine am Berg einer Erz-Insel, Erzschmelze und Werkzeugschmiede: nie wieder Werkzeug kaufen!', ...Object.values(all(['erzmine', 'erzschmelze', 'schmiede'])) as [Quest['done'], Quest['progress']], 1200),
+  step('Kakao', 'Bürger werden zu Kaufleuten, wenn es Kakao gibt. Kakao wächst auf südlichen Inseln.', ...Object.values(all(['kakaoplantage'])) as [Quest['done'], Quest['progress']], 1000),
+  step('Kirche und Badehaus', 'Kaufleute wollen Kirche (ab 150 Bürgern) und Badehaus (ab 210 Bürgern).', ...Object.values(all(['kirche', 'badehaus'], false)) as [Quest['done'], Quest['progress']], 1500),
+  step('Kaufleute', 'Ziel: 6 Häuser der Kaufleute.', ...Object.values(tierGoal(3, 6)) as [Quest['done'], Quest['progress']], 2000),
+  step('Kleidung und Schmuck', 'Aristokraten wollen Kleidung (Schneiderei) und Schmuck (Goldmine + Goldschmied).', ...Object.values(all(['schneiderei', 'goldschmied'])) as [Quest['done'], Quest['progress']], 2500),
+  step('Hochschule und Theater', 'Kaufleute brauchen Hochschule und Theater, um Aristokraten zu werden.', ...Object.values(all(['hochschule', 'theater'], false)) as [Quest['done'], Quest['progress']], 2500),
+  step('Aristokraten', 'Die höchste Stufe: 6 Häuser der Aristokraten.', ...Object.values(tierGoal(4, 6)) as [Quest['done'], Quest['progress']], 5000),
+  step('Eigene Flotte', 'Baue eine Werft an der Küste und lass ein zweites Schiff vom Stapel laufen.', (g) => g.myShips().length >= 2, (g) => `${Math.min(2, g.myShips().length)}/2`, 1000),
 ];
 
 export function newSeed(): number {

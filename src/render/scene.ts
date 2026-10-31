@@ -31,6 +31,7 @@ export class View {
   private seenTex!: THREE.DataTexture;
   private seenCount: number[] = [];
   private border: THREE.Mesh | null = null;
+  private roadCol = new THREE.Color();
   private veg!: Vegetation;
   private water!: THREE.Mesh;
   private waterUniforms: Record<string, THREE.IUniform> = { uTime: { value: 0 } };
@@ -108,8 +109,8 @@ export class View {
     u.turbidity.value = 3.5;
     u.rayleigh.value = 1.2;
     u.mieCoefficient.value = 0.004;
-    u.mieDirectionalG.value = 0.82;
-    const elevation = 38, azimuth = 215;
+    u.mieDirectionalG.value = 0.72;
+    const elevation = 56, azimuth = 215;
     this.sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - elevation), THREE.MathUtils.degToRad(azimuth));
     u.sunPosition.value.copy(this.sunDir);
     const pm = new THREE.PMREMGenerator(this.renderer);
@@ -370,7 +371,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     const N = this.g.size;
     const geo = new THREE.BoxGeometry(1, 0.05, 1);
     if (!this.roadMesh) {
-      this.roadMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0x8a7151, roughness: 1 }), N * N);
+      this.roadMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), N * N);
       this.roadMesh.receiveShadow = true;
       this.previewRoads = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }), 400);
       this.previewRoads.count = 0;
@@ -392,10 +393,12 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       if (!g.roads[i] || !g.seen[i]) continue;
       const x = i % g.size, y = (i / g.size) | 0;
       m.makeTranslation(x + 0.5, this.groundY(x, y, 1) + 0.005, y + 0.5);
+      this.roadMesh.setColorAt(n, this.roadCol.setHex(g.roads[i] === 2 ? 0xa9a39a : 0x8a7151));
       this.roadMesh.setMatrixAt(n++, m);
     }
     this.roadMesh.count = n;
     this.roadMesh.instanceMatrix.needsUpdate = true;
+    if (this.roadMesh.instanceColor) this.roadMesh.instanceColor.needsUpdate = true;
     this.veg?.refresh();
   }
 
@@ -520,7 +523,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
         case 'lagerVoll': key = '📦'; break;
         case 'keinWald': key = '🌲'; break;
         case 'keinWasser': key = '🌊'; break;
-        case 'erschoepft': key = ({ baum: '🌲', fisch: '🐟', wild: '🦌', weide: '🌿' } as Record<string, string>)[BUILDINGS[b.type].harvest?.res ?? 'baum']; break;
+        case 'erschoepft': key = BUILDINGS[b.type].deposit ? '⛏️' : ({ baum: '🌲', fisch: '🐟', wild: '🦌', weide: '🌿', feld: '🌾' } as Record<string, string>)[BUILDINGS[b.type].harvest?.res ?? 'baum']; break;
         case 'wohnen': key = b.happy < 0.45 ? '😠' : ''; break;
       }
       if (key !== v.iconKey) {

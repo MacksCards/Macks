@@ -77,6 +77,7 @@ export class ShipLayer {
       v.mesh.visible = visible;
       const bob = Math.sin(t * 1.6 + s.id) * 0.03;
       v.mesh.position.set(s.x, 0.08 + bob, s.y);
+      v.mesh.scale.setScalar(s.type === 'handel_gross' || s.type === 'krieg_gross' ? 1.75 : 1.3);
       v.mesh.rotation.set(Math.sin(t * 1.3 + s.id) * 0.04, s.dir, Math.cos(t * 1.1 + s.id) * 0.05);
       v.ring.visible = this.selected === s.id;
       v.ring.position.set(s.x, 0.06, s.y);
