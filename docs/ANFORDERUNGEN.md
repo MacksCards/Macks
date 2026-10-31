@@ -46,8 +46,8 @@ Quelle: Interview mit dem Nutzer am 30.10.2026.
 - K3 Mauern und Tore halten Feinde auf (eigene Leute gehen durch Tore); Wachtürme schießen auf Soldaten und Schiffe (Reichweite 8).
 - K4 Schiffe: Kanonen am Kontor laden (bis 6/8/10/14 je Schiffstyp), Seeschlachten, Versenken, Ausbessern an der Werft, Soldaten übersetzen und an Land setzen.
 - K5 Eroberung: Fällt Kontor oder Marktplatz, während eigene Soldaten danebenstehen, wechseln es und alle Gebäude im Gebiet den Besitzer; sonst wird es zerstört. Gegner ohne Gebäude und Schiffe ist besiegt → Triumphbogen.
-- K6 Krieg & Frieden mit jedem Konkurrenten (Krieg erklären, Frieden gegen Entschädigung); Angriff im Frieden nur nach Rückfrage. Die KI wirbt Soldaten an, erklärt Krieg, wenn sie deutlich stärker ist, schickt Kriegsschiffe und landet Truppen.
-- K7 Piraten: tauchen nach ca. 15 Minuten auf, jagen Schiffe, beschießen ungeschützte Küsten; Schutz kaufen möglich; drei versenkte Piratenschiffe → Triumphbogen.
+- K6 Krieg & Frieden mit jedem Konkurrenten (Krieg erklären, Frieden gegen Entschädigung); Angriff im Frieden nur nach Rückfrage. Die KI wirbt Soldaten an, erklärt Krieg, wenn sie deutlich stärker ist (frühestens nach 40 Minuten und erst, wenn der Spieler Burg/Türme bauen kann), schickt Kriegsschiffe und landet Truppen.
+- K7 Piraten: tauchen nach ca. 30 Minuten auf, jagen Schiffe, beschießen später (ab ca. 50 Minuten) ungeschützte Küsten; Schutz kaufen möglich; drei versenkte Piratenschiffe → Triumphbogen.
 - K8 Sichtbar und hörbar: Lebensbalken, Mündungsfeuer, Kanonenkugeln, Rauch, brennende Gebäude, sinkende Schiffe; Klänge für Schwerter, Musketen, Kanonen, Sturmglocke.
 
 ## Bevölkerung

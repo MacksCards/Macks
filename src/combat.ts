@@ -7,7 +7,8 @@ import { T } from './world';
 
 type Target = { kind: 'unit'; u: Unit; owner: number } | { kind: 'ship'; s: Ship; owner: number } | { kind: 'bau'; b: Building; owner: number };
 
-const PIRATE_START = 900; // Spielsekunden bis zum ersten Piraten
+const PIRATE_START = 1800; // Spielsekunden bis zum ersten Piraten (ca. 30 Minuten)
+const PIRATE_COAST = 3000; // ab dann beschießen sie auch Küsten
 const PIRATE_RESPAWN = 480;
 const AGGRO = 6; // so nah bemerken Soldaten Feinde von selbst
 
@@ -640,7 +641,7 @@ function tickPirates(g: Game, dt: number) {
     const prey = acquire(g, pir.id, s.x, s.y, 16, { ships: true, units: false });
     if (prey && prey.kind === 'ship') { shipAttack(g, s, prey.s.id); continue; }
     // ab und zu eine schlecht bewachte Küste beschießen
-    if (s.target === undefined && Math.random() < 0.08) {
+    if (s.target === undefined && g.time > PIRATE_COAST && Math.random() < 0.08) {
       const b = acquire(g, pir.id, s.x, s.y, 30, { buildings: true, units: false });
       if (b && b.kind === 'bau' && !g.buildings.some((o) => o.owner === b.owner && BUILDINGS[o.type].tower && Math.hypot(o.x - b.b.x, o.y - b.b.y) < 9)) { shipAttack(g, s, b.b.id); continue; }
     }
@@ -685,7 +686,8 @@ function tickAIMilitary(g: Game) {
       }
     }
     // Krieg erklären: erst nach einer Weile, wenn deutlich stärker
-    if (!war && g.time > 2400 && g.time - (st(g).peaceT.get(p.id * 16 + HUMAN) ?? -9999) > 900 && strength(g, p.id) > strength(g, HUMAN) * 1.4 + 6 && Math.random() < 0.04) {
+    // erst, wenn sich der Spieler wehren kann (Burg/Türme ab 200 Siedlern) oder sehr spät
+    if (!war && g.time > 2400 && (g.reached({ tier: 1, n: 200 }) || g.time > 5400) && g.time - (st(g).peaceT.get(p.id * 16 + HUMAN) ?? -9999) > 900 && strength(g, p.id) > strength(g, HUMAN) * 1.4 + 6 && Math.random() < 0.04) {
       declareWar(g, p.id, HUMAN);
     }
     if (!war) continue;
