@@ -316,7 +316,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) if (g.seen[y * N + x]) n++;
       if (n !== this.seenCount[id]) { this.seenCount[id] = n; changed.push(id); }
     });
-    if (changed.length) { this.veg.refresh(changed); this.onTerritory(); }
+    if (changed.length) { this.veg.refresh(changed); this.onTerritory(); this.onRoadsChanged(); }
     // fremde Gebäude erst zeigen, wenn ihr Platz entdeckt ist
     for (const [id, v] of this.views) {
       const b = g.byId.get(id);
@@ -351,7 +351,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     const m = new THREE.Matrix4();
     let n = 0;
     for (let i = 0; i < g.roads.length; i++) {
-      if (!g.roads[i]) continue;
+      if (!g.roads[i] || !g.seen[i]) continue;
       const x = i % g.size, y = (i / g.size) | 0;
       m.makeTranslation(x + 0.5, this.groundY(x, y, 1) + 0.005, y + 0.5);
       this.roadMesh.setMatrixAt(n++, m);
@@ -476,7 +476,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       const v = this.views.get(b.id);
       if (!v) continue;
       let key = '';
-      switch (b.status) {
+      if (b.owner === 0) switch (b.status) {
         case 'keinWeg': key = '🚧'; break;
         case 'rohstoff': key = b.missing[0] ? GOOD[b.missing[0]].icon : '📦'; break;
         case 'lagerVoll': key = '📦'; break;

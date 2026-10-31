@@ -61,7 +61,7 @@ export interface Ship {
 }
 
 /** Gedächtnis eines Computergegners */
-export interface AIState { phase: 'suchen' | 'fahren' | 'gruenden' | 'aufbau'; island: number; t: number; tries: number; grid: boolean }
+export interface AIState { phase: 'suchen' | 'fahren' | 'gruenden' | 'aufbau'; island: number; t: number; tries: number; grid: boolean; site?: [number, number]; bad?: number[] }
 
 export interface Player { id: number; name: string; color: number; ai: boolean; money: number; brain?: AIState }
 
@@ -684,7 +684,7 @@ export class Game {
       .find((s) => Math.hypot(s.x - cx, s.y - cy) <= DOCK_RANGE + 2);
   }
 
-  canPlace(type: BuildingId, x: number, y: number, owner = HUMAN): Check {
+  canPlace(type: BuildingId, x: number, y: number, owner = HUMAN, ignoreShip = false): Check {
     const d = BUILDINGS[type];
     const s = d.size;
     let isl = -2;
@@ -711,6 +711,7 @@ export class Game {
       let w = 0;
       for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Wasser) w++;
       if (w < 2) return { ok: false, reason: 'Das Kontor muss direkt an der Küste stehen' };
+      if (ignoreShip) return { ok: true };
       const ship = this.shipNear(owner, x + s / 2, y + s / 2);
       if (!ship) return { ok: false, reason: 'Ein Schiff muss in der Nähe liegen' };
       if ((d.cost.taler ?? 0) > this.players[owner].money) return { ok: false, reason: 'Zu wenig Taler' };

@@ -17,9 +17,11 @@ export function thinkAI(g: Game, p: Player, dt: number) {
       if (!ship) return;
       const target = chooseIsland(g, p, ship.x, ship.y);
       if (target < 0) return;
-      const spot = coastWater(g, target, ship.x, ship.y);
-      if (!spot || !g.moveShip(ship, spot[0] + 0.5, spot[1] + 0.5)) { b.tries++; return; }
+      // erst einen gültigen Kontor-Platz planen, dann gezielt daneben ankern
+      const site = planKontor(g, p, target, ship.x, ship.y);
+      if (!site || !g.moveShip(ship, site[2] + 0.5, site[3] + 0.5)) { (b.bad ??= []).push(target); return; }
       b.island = target;
+      b.site = [site[0], site[1]];
       b.phase = 'fahren';
       return;
     }
@@ -28,23 +30,17 @@ export function thinkAI(g: Game, p: Player, dt: number) {
       return;
     case 'gruenden': {
       if (!ship) return;
-      const r = 8;
-      const cands: [number, number, number][] = [];
-      for (let y = Math.floor(ship.y) - r; y <= Math.floor(ship.y) + r; y++) for (let x = Math.floor(ship.x) - r; x <= Math.floor(ship.x) + r; x++) {
-        if (!g.inMap(x, y) || g.islandOf[g.idx(x, y)] !== b.island) continue;
-        if (!g.canPlace('kontor', x, y, p.id).ok) continue;
-        cands.push([x, y, landAround(g, x + 1.5, y + 1.5, 10)]);
-      }
-      cands.sort((a, c) => c[2] - a[2]);
-      if (cands.length) {
-        const [x, y] = cands[0];
-        g.place('kontor', x, y, p.id);
+      const [sx, sy] = b.site ?? [-1, -1];
+      if (sx >= 0 && g.canPlace('kontor', sx, sy, p.id).ok) {
+        g.place('kontor', sx, sy, p.id);
         g.unloadAll(ship);
         b.phase = 'aufbau';
-        g.ev.message(`${p.name} hat ein Kontor auf ${g.islands[b.island].name} gegründet.`, 'info');
+        const known = g.islandSeen(b.island);
+        g.ev.message(`${p.name} hat ein Kontor auf ${known ? g.islands[b.island].name : 'einer noch unentdeckten Insel'} gegründet.`, 'info');
       } else {
-        // Insel inzwischen belegt oder keine Küste gefunden → neu suchen
+        // Platz inzwischen belegt o. Ä. → nach 2 Fehlversuchen andere Insel
         b.tries++;
+        if (b.tries % 2 === 0) (b.bad ??= []).push(b.island);
         b.phase = 'suchen';
       }
       return;
@@ -68,6 +64,7 @@ function landAround(g: Game, cx: number, cy: number, r: number) {
 function chooseIsland(g: Game, p: Player, sx: number, sy: number): number {
   const taken = new Set(g.buildings.filter((b) => b.type === 'kontor').map((b) => b.island));
   for (const o of g.players) if (o.brain && o.id !== p.id && o.brain.island >= 0) taken.add(o.brain.island);
+  for (const id of p.brain?.bad ?? []) taken.add(id);
   let best = -1, bs = -1e9;
   for (const isl of g.islands) {
     if (taken.has(isl.id) || isl.land < 120) continue;
@@ -78,17 +75,18 @@ function chooseIsland(g: Game, p: Player, sx: number, sy: number): number {
   return best;
 }
 
-/** Wasserfeld direkt an der Küste der Insel, möglichst nahe am Schiff */
-function coastWater(g: Game, island: number, sx: number, sy: number): [number, number] | null {
+/** Gültiger Kontor-Platz an der Küste (viel Land ringsum, nahe am Schiff) + Wasserfeld daneben */
+function planKontor(g: Game, p: Player, island: number, sx: number, sy: number): [number, number, number, number] | null {
   const isl = g.islands[island];
-  let best: [number, number] | null = null, bd = 1e9;
-  for (let y = isl.y0 - 1; y <= isl.y1 + 1; y++) for (let x = isl.x0 - 1; x <= isl.x1 + 1; x++) {
-    if (!g.inMap(x, y) || g.tiles[g.idx(x, y)] !== T.Wasser) continue;
-    let coast = false;
-    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) if (g.inMap(x + dx, y + dy) && g.islandOf[g.idx(x + dx, y + dy)] === island) coast = true;
-    if (!coast) continue;
-    const d = Math.hypot(x - sx, y - sy);
-    if (d < bd) { bd = d; best = [x, y]; }
+  let best: [number, number, number, number] | null = null, bs = -1e9;
+  for (let y = isl.y0; y <= isl.y1; y++) for (let x = isl.x0; x <= isl.x1; x++) {
+    if (!g.canPlace('kontor', x, y, p.id, true).ok) continue;
+    // Wasserfeld direkt am Kontor
+    let water: [number, number] | null = null;
+    for (const [rx, ry] of g.ring({ type: 'kontor', x, y })) if (g.inMap(rx, ry) && g.tiles[g.idx(rx, ry)] === T.Wasser) { water = [rx, ry]; break; }
+    if (!water) continue;
+    const score = landAround(g, x + 1.5, y + 1.5, 12) - Math.hypot(x - sx, y - sy) * 0.3;
+    if (score > bs) { bs = score; best = [x, y, water[0], water[1]]; }
   }
   return best;
 }

@@ -48,6 +48,8 @@ export interface BuildingDef {
   /** Standortbedingung */
   needs?: 'wald' | 'wasser' | 'berg';
   storage?: number; // zusätzliche Lagerkapazität je Ware
+  /** Rohstoff aus der Umgebung: Art und Menge je Arbeitsgang (Bäume/Fisch/Wild/Weide verbrauchen sich und wachsen nach) */
+  harvest?: { res: 'baum' | 'fisch' | 'wild' | 'weide'; per: number };
   /** Arbeitsradius (Felder), in dem der Betrieb Rohstoffe findet (Wald, Wild, Fischgründe …) */
   work?: number;
   /** Eigenes kleines Lager des Betriebs (Tonnen), bevor ein Marktkarren abholt */
@@ -69,21 +71,21 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
     desc: 'Siedler und Bürger wollen eine Kapelle in der Nähe.' },
   wirtshaus: { id: 'wirtshaus', name: 'Wirtshaus', icon: '🍻', category: 'oeffentlich', size: 2, cost: { taler: 400, holz: 4, werkzeug: 3, stein: 6 }, upkeep: 15, unlock: { tier: 1, n: 50 }, radius: 9,
     desc: 'Bürger wollen ein Wirtshaus in der Nähe, um ihr Bier zu trinken.' },
-  holzfaeller: { id: 'holzfaeller', name: 'Holzfäller', icon: '🪓', category: 'rohstoffe', size: 2, cost: { taler: 50, holz: 2 }, upkeep: 4, stock: 10, work: 4,
+  holzfaeller: { id: 'holzfaeller', name: 'Holzfäller', icon: '🪓', category: 'rohstoffe', size: 2, cost: { taler: 50, holz: 2 }, upkeep: 4, harvest: { res: 'baum', per: 1 }, stock: 10, work: 4,
     prod: { time: 12, output: 'holz' }, needs: 'wald',
     desc: 'Fällt Bäume. Je mehr Wald in der Nähe, desto schneller.' },
-  fischer: { id: 'fischer', name: 'Fischerhütte', icon: '🎣', category: 'nahrung', size: 2, cost: { taler: 100, holz: 3, werkzeug: 1 }, upkeep: 5, stock: 4, work: 4,
+  fischer: { id: 'fischer', name: 'Fischerhütte', icon: '🎣', category: 'nahrung', size: 2, cost: { taler: 100, holz: 3, werkzeug: 1 }, upkeep: 5, harvest: { res: 'fisch', per: 1 }, stock: 4, work: 4,
     prod: { time: 10, output: 'nahrung' }, needs: 'wasser',
     desc: 'Fängt Fisch als Nahrung. Muss direkt am Wasser stehen.' },
-  jagdhuette: { id: 'jagdhuette', name: 'Jagdhütte', icon: '🏹', category: 'nahrung', size: 2, cost: { taler: 60, holz: 3 }, upkeep: 3, stock: 3, work: 6,
+  jagdhuette: { id: 'jagdhuette', name: 'Jagdhütte', icon: '🏹', category: 'nahrung', size: 2, cost: { taler: 60, holz: 3 }, upkeep: 3, harvest: { res: 'wild', per: 1 }, stock: 3, work: 6,
     prod: { time: 16, output: 'nahrung' }, needs: 'wald',
     desc: 'Jäger erlegen Wild im Wald. Günstig, aber langsamer als der Fischer.' },
-  schweinezucht: { id: 'schweinezucht', name: 'Schweinezucht', icon: '🐖', category: 'nahrung', size: 3, cost: { taler: 200, holz: 5, werkzeug: 2 }, upkeep: 7, stock: 4, work: 3, unlock: { tier: 0, n: 30 },
+  schweinezucht: { id: 'schweinezucht', name: 'Schweinezucht', icon: '🐖', category: 'nahrung', size: 3, cost: { taler: 200, holz: 5, werkzeug: 2 }, upkeep: 7, harvest: { res: 'weide', per: 3 }, stock: 4, work: 4, unlock: { tier: 0, n: 30 },
     prod: { time: 14, output: 'schweine' }, desc: 'Züchtet Schweine für die Fleischerei.' },
   fleischerei: { id: 'fleischerei', name: 'Fleischerei', icon: '🔪', category: 'nahrung', size: 2, cost: { taler: 250, holz: 3, werkzeug: 2, stein: 3 }, upkeep: 8, stock: 4, unlock: { tier: 0, n: 30 },
     prod: { time: 10, input: { schweine: 1 }, output: 'nahrung', amount: 2 },
     desc: 'Macht aus einem Schwein zwei Ladungen Nahrung. Sehr ergiebig.' },
-  schaffarm: { id: 'schaffarm', name: 'Schaffarm', icon: '🐑', category: 'rohstoffe', size: 3, cost: { taler: 200, holz: 4, werkzeug: 1 }, upkeep: 8, stock: 8, work: 3,
+  schaffarm: { id: 'schaffarm', name: 'Schaffarm', icon: '🐑', category: 'rohstoffe', size: 3, cost: { taler: 200, holz: 4, werkzeug: 1 }, upkeep: 8, harvest: { res: 'weide', per: 4 }, stock: 8, work: 4,
     prod: { time: 16, output: 'wolle' },
     desc: 'Liefert Wolle für die Weberei.' },
   getreidefarm: { id: 'getreidefarm', name: 'Getreidefarm', icon: '🌱', category: 'rohstoffe', size: 3, cost: { taler: 150, holz: 3, werkzeug: 1 }, upkeep: 5, stock: 6, work: 2, unlock: { tier: 1, n: 75 },

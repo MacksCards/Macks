@@ -388,11 +388,27 @@ export class UI {
     let h = `<button class="close btn sq" id="infoX">✕</button>`;
     if (this.selShip) { this.renderShip(box, h); return; }
     if (this.islandInfo !== null) { if (!this.setHtml(box, h + this.islandHtml(this.islandInfo))) return; $('#infoX').addEventListener('click', () => this.select(null)); return; }
+    if (b && b.owner !== HUMAN) {
+      const pl = g.players[b.owner];
+      h += `<h3>${BUILDINGS[b.type].icon} ${BUILDINGS[b.type].name}</h3><p class="sub">Gehört ${pl?.name ?? 'jemand anderem'}.</p>`;
+      if (b.type === 'haus') h += `<div class="row"><span>Bewohner</span><b>${b.residents}</b></div>`;
+      if (this.setHtml(box, h)) $('#infoX').addEventListener('click', () => this.select(null));
+      return;
+    }
     if (this.showStorage || (b && b.type === 'kontor')) {
       const inc = g.incomePerMinute();
       const pt = g.popByTier();
       h += `<h3>${b ? '⚓ Kontor' : '📦 Lager & Bilanz'}</h3>
-        <p class="sub">Lagerplatz: ${g.capacity} je Ware</p><div class="grid">`;
+        <p class="sub">Lagerplatz: ${g.capacity} je Ware</p>`;
+      if (b && b.owner === HUMAN) {
+        h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
+        for (const gd of GOODS) {
+          const pr = PRICES[gd.id];
+          if (!pr || (!this.relevant.has(gd.id) && g.goods[gd.id] < 1)) continue;
+          h += `<div class="trade"><span>${gd.icon} ${gd.name}</span><button class="btn" data-buy="${gd.id}">+5 · ${pr.kaufen}</button><button class="btn" data-sell="${gd.id}">−5 · ${pr.verkaufen}</button></div>`;
+        }
+      }
+      h += `<h4>Lager</h4><div class="grid">`;
       for (const gd of GOODS) {
         const v = g.goods[gd.id];
         h += `<div class="row ${v >= g.capacity ? 'warn' : ''}"><span>${gd.icon} ${gd.name}</span><b>${fmt(v)}</b></div>`;
@@ -402,14 +418,6 @@ export class UI {
         <div class="row"><span>Unterhalt</span><b class="neg">−${fmt(inc.upkeep)}</b></div>
         <h4>Einwohner</h4>`;
       TIERS.forEach((t, i) => { h += `<div class="row"><span>${t.name}</span><b>${pt[i]}</b></div>`; });
-      if (b && b.owner === HUMAN) {
-        h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
-        for (const gd of GOODS) {
-          const pr = PRICES[gd.id];
-          if (!pr || (!this.relevant.has(gd.id) && g.goods[gd.id] < 1)) continue;
-          h += `<div class="trade"><span>${gd.icon} ${gd.name}</span><button class="btn" data-buy="${gd.id}">+5 · ${pr.kaufen}</button><button class="btn" data-sell="${gd.id}">−5 · ${pr.verkaufen}</button></div>`;
-        }
-      }
       if (!this.setHtml(box, h)) return;
       box.querySelectorAll<HTMLElement>('[data-buy],[data-sell]').forEach((bt) => bt.addEventListener('click', () => {
         const gid = (bt.dataset.buy ?? bt.dataset.sell) as GoodId;
@@ -551,7 +559,7 @@ export class UI {
       if (!g.seen[k]) return [52, 60, 70];
       const t = g.tiles[k];
       if (g.own[k] === HUMAN && t !== 0) return [70, 120, 220];
-      if (g.own[k] > 0 && t !== 0) return [200, 70, 60];
+      if (g.own[k] > 0 && t !== 0) { const c = g.players[g.own[k]]?.color ?? 0xc8463b; return [(c >> 16) & 255, (c >> 8) & 255, c & 255]; }
       return t === 0 ? [40, 110, 160] : t === 1 ? [220, 200, 140] : t === 3 ? [50, 110, 50] : t === 4 ? [130, 125, 115] : [110, 170, 80];
     };
     for (let y = 0; y < N * 2; y++) for (let x = 0; x < N * 2; x++) {
