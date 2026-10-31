@@ -1,4 +1,5 @@
-// Baukasten für detailreiche Low-Poly-Gebäude.
+// Baukasten für detailreiche Gebäude aus Code (Ersatz, bis Meshy-Modelle da sind).
+// Quader und Dachflächen behalten harte Kanten, runde Teile werden weich schattiert.
 //
 // Maßstab: 1 Einheit = 1 Kachel. Ein Gebäude mit Größe s steht mittig auf (0,0,0),
 // seine Fläche reicht von -s/2 bis +s/2 in x und z. Boden = y 0. Vorderseite = +z.
@@ -8,7 +9,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 /** Oberflächenmuster (werden im Shader gezeichnet, siehe materials.ts) */
 export const P = {
-  glatt: 0, ziegel: 1, stroh: 2, bretter: 3, mauer: 4, schiefer: 5, pflaster: 6, latten: 7, putz: 8, acker: 9, laub: 10,
+  glatt: 0, ziegel: 1, stroh: 2, bretter: 3, mauer: 4, schiefer: 5, pflaster: 6, latten: 7, putz: 8, acker: 9, laub: 10, glas: 11,
 } as const;
 
 export interface Mat { c: number; p: number }
@@ -39,7 +40,18 @@ export const M = {
   holz: { c: 0x9a6b3c, p: P.glatt },
   dunkelholz: { c: 0x4e3523, p: P.glatt },
   rahmen: { c: 0xe8dcc0, p: P.glatt },
-  glas: { c: 0x2c3e55, p: P.glatt },
+  rahmenWeiss: { c: 0xf6f4ee, p: P.glatt },
+  glas: { c: 0x30455e, p: P.glas },
+  sandstein: { c: 0xd9c49a, p: P.mauer },
+  sandsteinGlatt: { c: 0xe4d3ad, p: P.glatt },
+  backsteinRot: { c: 0x9b4a32, p: P.mauer },
+  sockel: { c: 0x8a8274, p: P.mauer },
+  ziegelFirst: { c: 0x7e3424, p: P.glatt },
+  schieferFirst: { c: 0x3c4556, p: P.glatt },
+  blumeRot: { c: 0xc8413a, p: P.glatt },
+  blumeGelb: { c: 0xe8c84a, p: P.glatt },
+  blumeWeiss: { c: 0xf2efe4, p: P.glatt },
+  hecke: { c: 0x3f7a35, p: P.laub },
   eisen: { c: 0x3a3a3e, p: P.glatt },
   gold: { c: 0xe0b23a, p: P.glatt },
   weiss: { c: 0xf4f1ea, p: P.glatt },
@@ -61,11 +73,23 @@ export interface ModelDef {
 
 const tmpColor = new THREE.Color();
 
+/** Kegel/Zylinder/Kugeln mit höchstens 4 Ecken sind eckige Körper (Pyramiden-Dach, Pfosten): harte Kanten behalten */
+function isFaceted(g: THREE.BufferGeometry): boolean {
+  const p = (g as THREE.BufferGeometry & { parameters?: { radialSegments?: number; widthSegments?: number } }).parameters;
+  if (!p) return false;
+  if (g.type === 'ConeGeometry' || g.type === 'CylinderGeometry') return (p.radialSegments ?? 8) <= 4;
+  if (g.type === 'SphereGeometry') return (p.widthSegments ?? 8) <= 4;
+  return false;
+}
+
 function prepare(g: THREE.BufferGeometry, paint: Paint): THREE.BufferGeometry {
+  const faceted = isFaceted(g);
   const geo = g.index ? g.toNonIndexed() : g;
   if (geo.attributes.uv) geo.deleteAttribute('uv');
   if (geo.attributes.uv1) geo.deleteAttribute('uv1');
-  if (!geo.attributes.normal) geo.computeVertexNormals();
+  // ohne Index ergibt computeVertexNormals je Fläche eine eigene Richtung (harte Kanten);
+  // runde Grundformen bringen ihre weichen Normalen von three.js schon mit.
+  if (faceted || !geo.attributes.normal) geo.computeVertexNormals();
   const m = typeof paint === 'number' ? { c: paint, p: 0 } : paint;
   tmpColor.setHex(m.c);
   const n = geo.attributes.position.count;
@@ -91,6 +115,24 @@ function prismGeo(w: number, h: number, d: number, ridgeShift = 0): THREE.Buffer
     ...P4, ...P0, ...P2, ...P4, ...P2, ...P5,
     ...P0, ...P4, ...P3, ...P0, ...P3, ...P1,
   ];
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Kegelstumpf mit Rechteck unten (wb x db) und oben (wt x dt), harte Flächen */
+function frustumGeo(wb: number, db: number, wt: number, dt: number, h: number): THREE.BufferGeometry {
+  const B = [[-wb / 2, 0, db / 2], [wb / 2, 0, db / 2], [wb / 2, 0, -db / 2], [-wb / 2, 0, -db / 2]];
+  const T = [[-wt / 2, h, dt / 2], [wt / 2, h, dt / 2], [wt / 2, h, -dt / 2], [-wt / 2, h, -dt / 2]];
+  const pos: number[] = [];
+  const quad = (a: number[], b: number[], c: number[], d: number[]) => pos.push(...a, ...b, ...c, ...a, ...c, ...d);
+  quad(B[0], B[1], T[1], T[0]);
+  quad(B[1], B[2], T[2], T[1]);
+  quad(B[2], B[3], T[3], T[2]);
+  quad(B[3], B[0], T[0], T[3]);
+  if (wt > 0 && dt > 0) quad(T[0], T[1], T[2], T[3]);
+  quad(B[3], B[2], B[1], B[0]);
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.computeVertexNormals();
@@ -186,13 +228,13 @@ export class Builder {
    * Fenster flach an einer Wand. (x,y,z) = Mitte des Fensters auf der Wandfläche,
    * ry = Blickrichtung (0 = nach +z, PI/2 = nach +x, PI = nach -z, -PI/2 = nach -x).
    */
-  window(x: number, y: number, z: number, ry = 0, w = 0.18, h = 0.22, shutters: Paint | null = null): this {
+  window(x: number, y: number, z: number, ry = 0, w = 0.18, h = 0.22, shutters: Paint | null = null, frame: Paint = M.rahmen): this {
     return this.group(x, y, z, ry, (b) => {
-      b.box(w + 0.05, 0.03, 0.05, M.rahmen, 0, -h / 2 - 0.03, 0.01); // Fensterbank
-      b.box(w + 0.03, h + 0.03, 0.03, M.rahmen, 0, -h / 2 - 0.015, 0.0);
+      b.box(w + 0.05, 0.03, 0.05, frame, 0, -h / 2 - 0.03, 0.01); // Fensterbank
+      b.box(w + 0.03, h + 0.03, 0.03, frame, 0, -h / 2 - 0.015, 0.0);
       b.box(w, h, 0.035, M.glas, 0, -h / 2, 0.005);
-      b.box(0.015, h, 0.04, M.rahmen, 0, -h / 2, 0.01);
-      b.box(w, 0.015, 0.04, M.rahmen, 0, -0.0075, 0.01);
+      b.box(0.015, h, 0.04, frame, 0, -h / 2, 0.01);
+      b.box(w, 0.015, 0.04, frame, 0, -0.0075, 0.01);
       if (shutters !== null) {
         b.box(w * 0.5, h + 0.02, 0.02, shutters, -w * 0.78, -h / 2 - 0.01, 0.01);
         b.box(w * 0.5, h + 0.02, 0.02, shutters, w * 0.78, -h / 2 - 0.01, 0.01);
@@ -278,7 +320,8 @@ export class Builder {
     const n = Math.max(1, Math.round(len / 0.25));
     for (let i = 0; i <= n; i++) {
       const t = i / n;
-      this.box(0.035, h, 0.035, M.balken, x1 + (x2 - x1) * t, 0, z1 + (z2 - z1) * t);
+      // Pfosten reichen in den Boden (am Hang schweben sie nicht)
+      this.box(0.035, h + 0.3, 0.035, M.balken, x1 + (x2 - x1) * t, -0.3, z1 + (z2 - z1) * t);
     }
     const mx = (x1 + x2) / 2, mz = (z1 + z2) / 2;
     this.add(new THREE.BoxGeometry(len, 0.025, 0.02), paint, mx, h * 0.45, mz, ang);
@@ -293,10 +336,81 @@ export class Builder {
     });
   }
 
-  /** Bodenplatte: Fläche s x s auf y=0 (Wiese, Pflaster, Erde …) + Fundament nach unten */
+  /**
+   * Hof: eine sichtbare Fläche gibt es nur noch für echte Höfe (Pflaster, Acker, Bretterboden);
+   * sie liegt fast bündig im Gelände. Bei Wiese, Erde oder Stein bleibt das Gelände selbst sichtbar,
+   * darunter liegt nur ein Fundament. Fundamente liegen ganz unter y=0 und sind daher nur am Hang zu sehen.
+   */
   ground(sx: number, sz: number, paint: Paint, foundation = true): this {
-    if (foundation) this.box(sx * 0.96, 0.5, sz * 0.96, 0x7d6a55, 0, -0.5, 0);
-    return this.box(sx * 0.98, 0.04, sz * 0.98, paint, 0, -0.02, 0);
+    const p = typeof paint === 'number' ? -1 : paint.p;
+    const yard = p === P.pflaster || p === P.acker || p === P.bretter || p === P.latten;
+    // Oberkante knapp unter dem Boden: auf ebenem Grund unsichtbar, am Hang trägt es das Gebäude
+    if (foundation) this.box(sx * 0.96, 0.7, sz * 0.96, M.sockel, 0, -0.72, 0);
+    else if (!yard) this.box(sx * 0.6, 0.45, sz * 0.6, paint, 0, -0.465, 0); // Fuß unter Mauern/Türmen
+    if (!yard) return this;
+    return this.box(sx * 0.97, 0.04, sz * 0.97, paint, 0, -0.025, 0);
+  }
+
+  /** Steinsockel unter einem Baukörper: h sichtbar über dem Boden, depth darunter (nur am Hang sichtbar) */
+  plinth(w: number, d: number, x = 0, z = 0, h = 0.07, paint: Paint = M.sockel, depth = 0.7, ry = 0): this {
+    this.box(w, h + depth, d, paint, x, -depth, z, ry);
+    return this;
+  }
+
+  /**
+   * Satteldach aus zwei Dachflächen mit Dicke, First entlang z (wie roof()), y = Traufhöhe.
+   * Die Giebel bleiben offen (Giebelwand mit gable() in Wandfarbe schließen).
+   */
+  saddle(w: number, h: number, d: number, paint: Paint, x = 0, y = 0, z = 0, ry = 0, overhang = 0.09, ridge: Paint | null = M.ziegelFirst, t = 0.045): this {
+    const a = Math.atan2(h, w / 2);
+    const run = w / 2 + overhang;
+    const L = run / Math.cos(a);
+    const D = d + overhang * 2;
+    return this.group(x, y, z, ry, (b) => {
+      for (const s of [-1, 1]) {
+        // Mitte der Dachfläche; sie liegt mit der Unterseite auf der Dachlinie
+        const cx = (s * run) / 2, cy = h - (run / 2) * Math.tan(a);
+        const nx = s * Math.sin(a) * (t / 2), ny = Math.cos(a) * (t / 2);
+        b.add(new THREE.BoxGeometry(L, t, D), paint, cx + nx, cy + ny, 0, 0, 0, -s * a);
+        // Traufbrett
+        b.add(new THREE.BoxGeometry(0.03, 0.05, D), M.dunkelholz, s * (w / 2 + overhang - 0.01), -overhang * Math.tan(a) - 0.01, 0);
+      }
+      if (ridge !== null) b.add(new THREE.BoxGeometry(0.075, 0.075, D + 0.02), ridge, 0, h + t * 0.9, 0, 0, 0, Math.PI / 4);
+    });
+  }
+
+  /** Giebelwand (Dreieck) w breit, h hoch, an (x,y,z) mit Blickrichtung ry (0 = nach +z) */
+  gable(w: number, h: number, paint: Paint, x = 0, y = 0, z = 0, ry = 0, t = 0.04): this {
+    return this.add(prismGeo(w, h, t), paint, x, y, z, ry);
+  }
+
+  /** Treppengiebel (Backsteinhäuser): n Stufen, w breit, h hoch, Blickrichtung ry */
+  stepGable(w: number, h: number, n: number, paint: Paint, cap: Paint, x = 0, y = 0, z = 0, ry = 0, t = 0.08): this {
+    return this.group(x, y, z, ry, (b) => {
+      const sh = h / n;
+      for (let i = 0; i < n; i++) {
+        const wi = w * (1 - i / n);
+        b.box(wi, sh, t, paint, 0, i * sh, 0);
+        // Abdeckstein auf den Stufen
+        if (i < n - 1) for (const s of [-1, 1]) b.box(w / n / 2 + 0.03, 0.025, t + 0.03, cap, s * (wi / 2 - w / n / 4), (i + 1) * sh, 0);
+      }
+      b.box(w / n + 0.04, 0.03, t + 0.03, cap, 0, h, 0);
+      b.cone(0.035, 0.08, 6, cap, 0, h + 0.03, 0);
+    });
+  }
+
+  /** Kegelstumpf mit rechteckiger Grund- und Deckfläche (Mansard-, Walmdach); dt = 0 ergibt einen First */
+  frustum(wb: number, db: number, wt: number, dt: number, h: number, paint: Paint, x = 0, y = 0, z = 0, ry = 0): this {
+    return this.add(frustumGeo(wb, db, wt, dt, h), paint, x, y, z, ry);
+  }
+
+  /** Mansarddach: steiles Unterdach (h1) und flaches Oberdach (h2) über w x d, y = Traufhöhe */
+  mansard(w: number, d: number, h1: number, h2: number, inset: number, paint: Paint, x = 0, y = 0, z = 0, ry = 0, overhang = 0.06): this {
+    const wb = w + overhang * 2, db = d + overhang * 2;
+    const wt = w - inset * 2, dt = d - inset * 2;
+    this.frustum(wb, db, wt, dt, h1, paint, x, y, z, ry);
+    this.frustum(wt + 0.04, dt + 0.04, Math.max(0, wt - dt), 0, h2, paint, x, y + h1 - 0.01, z, ry);
+    return this;
   }
 
   /** Kleine Person (stehend), Farbe der Kleidung wählbar */

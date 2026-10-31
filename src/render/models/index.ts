@@ -2,7 +2,8 @@
 // (public/models/*.glb, siehe glb.ts) geladen sind.
 import { BuildingId, BUILDINGS } from '../../data';
 import { Builder, M, ModelDef } from '../kit';
-import { buildingGeometry, makeMillBlades } from '../models_old';
+import { buildingGeometry, makeMillBlades, oldSmoke } from '../models_old';
+import { houseModel } from './haeuser';
 import { burg, festung, grosseBurg, holztor, holzturm, palisade, steinmauer, steinturm, steintor, steintorKlein, triumphbogen } from './militaer';
 
 /** Militärbauten; bei Mauern/Palisaden ist variant die Nachbarmaske */
@@ -14,7 +15,10 @@ export const WALLS = new Set<BuildingId>(['palisade', 'steinmauer']);
 /** Teile, an die Mauern anschließen */
 export const WALL_LINKS = new Set<BuildingId>(['palisade', 'steinmauer', 'holztor', 'steintor_klein', 'steintor', 'holzturm', 'wachturm']);
 
-const KNOWN: BuildingId[] = ['haus', 'kontor', 'markt', 'kapelle', 'wirtshaus', 'holzfaeller', 'fischer', 'schaffarm',
+/** Zusatzangaben für spätere Ausbaustufen (G2/G3): Kontorstufe und Variante. Noch ohne Wirkung. */
+export interface ModelOpts { level?: number; variant?: number }
+
+const KNOWN: BuildingId[] = ['kontor', 'markt', 'kapelle', 'wirtshaus', 'holzfaeller', 'fischer', 'schaffarm',
   'getreidefarm', 'weberei', 'steinbruch', 'erzmine', 'schmiede', 'muehle', 'baeckerei'];
 
 const cache = new Map<string, ModelDef>();
@@ -50,8 +54,10 @@ function placeholder(id: BuildingId): ModelDef {
     b.door(-0.95, 0, -0.37, 0);
     return b.build();
   }
-  b.ground(s, s, d.category === 'oeffentlich' ? M.pflaster : M.wiese);
+  // Hof nur bei öffentlichen Gebäuden (Pflaster); sonst steht das Haus auf einem Steinsockel im Gelände
   const w = s * 0.62, dd = s * 0.48, h = d.category === 'oeffentlich' ? 0.9 : 0.65;
+  if (d.category === 'oeffentlich') b.ground(s, s, M.pflaster);
+  else b.plinth(w + 0.04, dd + 0.04, 0, -0.1, 0.04);
   b.box(w, h, dd, d.stock ? M.putz : M.mauer, 0, 0, -0.1).roof(w, 0.45, dd, d.category === 'oeffentlich' ? M.schiefer : M.ziegelRot, 0, h, -0.1);
   b.timber(w, h, 0, 0, dd / 2 - 0.1 + 0.01, 0, 3);
   b.door(0, 0, dd / 2 - 0.1, 0);
@@ -66,14 +72,21 @@ function placeholder(id: BuildingId): ModelDef {
   return b.build();
 }
 
-export function buildingModel(type: BuildingId, tier = 0): ModelDef {
+/**
+ * Modell eines Gebäudes. tier = Hausstufe 0–4 (bei Mauern die Nachbarmaske).
+ * opts.level (Kontorstufe) und opts.variant (Aussehens-Variante) werden vorbereitet und von
+ * G2/G3 genutzt; heute haben sie noch keine Wirkung.
+ */
+export function buildingModel(type: BuildingId, tier = 0, opts: ModelOpts = {}): ModelDef {
+  void opts;
   const key = `${type}:${tier}`;
   let m = cache.get(key);
   if (m) return m;
   if (WALLS.has(type)) { m = MILITAER[type]!(tier); cache.set(key, m); return m; }
-  if (KNOWN.includes(type)) {
-    m = { geo: buildingGeometry(type, Math.min(tier, 2)), smoke: [], spinners: [] };
-    if (type === 'muehle') m.spinners.push({ geo: makeMillBlades(), pos: [0, 1.4, 0.62], axis: 'z', speed: 1.2 });
+  if (type === 'haus') m = houseModel(tier);
+  else if (KNOWN.includes(type)) {
+    m = { geo: buildingGeometry(type), smoke: oldSmoke(type), spinners: [] };
+    if (type === 'muehle') m.spinners.push({ geo: makeMillBlades(), pos: [0, 1.35, 0.62], axis: 'z', speed: 1.2 });
   } else m = placeholder(type);
   cache.set(key, m);
   return m;
