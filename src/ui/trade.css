@@ -1,2 +1,26 @@
-/* Handel im Kontor und Routen im Schiffsfenster (Gerüst, füllt das Paket U5).
-   Beide erscheinen im Infofenster (.info), die Reiter-Leiste gestaltet info.css. */
+/* Handel im Kontor und Routen im Schiffsfenster (einfache Bedienung aus S2; die große Oberfläche kommt mit U5).
+   Beide erscheinen im Infofenster (.info), die Reiter-Leiste gestaltet info.css. Knöpfe mindestens 44 px. */
+.info .tsel {
+  width: 100%; min-height: var(--tap); margin: 4px 0; padding: 0 8px; font: inherit; font-size: 14px;
+  color: var(--pergament); background: rgba(0, 0, 0, .3); border: 1px solid var(--rand); border-radius: 8px;
+}
+.info .tsel option { color: #222; }
+.info .tpair { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 2px 0 4px; }
+.info .tpair .btn { min-height: var(--tap); padding: 2px 4px; font-size: 13px; }
+/* ein Auftrag: Kopf mit Löschen, Zeilen, vier Stufenknöpfe */
+.info .tord, .info .tstop { border: 1px solid var(--rand); border-radius: 8px; padding: 4px 3px 5px; margin: 6px 0; background: rgba(0, 0, 0, .15); }
+.info .tord-h { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 14px; }
+.info .tord-h > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info .tord-h .tsel { flex: 1; min-width: 0; margin: 0; }
+.info .tord-h small { color: var(--pergament-2); }
+.info .btn.tx { flex: none; width: var(--tap); min-height: var(--tap); padding: 0; font-size: 15px; }
+.info .tsteps { display: grid; grid-template-columns: repeat(4, minmax(var(--tap), 1fr)); gap: 3px; margin-top: 4px; }
+.info .tsteps .btn { min-height: var(--tap); padding: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
+/* Ware einer Route: Text, weniger, mehr */
+.info .trow { display: grid; grid-template-columns: minmax(0, 1fr) var(--tap) var(--tap); gap: 4px; align-items: center; margin: 3px 0; font-size: 13px; }
+.info .trow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info .trow .btn { min-height: var(--tap); padding: 0; font-size: 16px; }
+.info .btn.tw { width: 100%; margin-top: 6px; min-height: var(--tap); }
+.info .btn.tw small { display: block; font-size: 12px; font-weight: 400; color: var(--pergament-2); }
+.info .btn[aria-disabled="true"] { opacity: .6; }
+.info .tscrap { margin-top: 10px; }

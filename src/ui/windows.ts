@@ -13,7 +13,7 @@ export class Windows {
 
   openMenu() {
     const ui = this.ui, g = ui.g;
-    const dipl = g.players.some((p) => p.id !== HUMAN && (p.pirate ? g.pirateSeen : ui.met(p.id)));
+    const dipl = g.players.some((p) => p.id !== HUMAN && !p.trader && (p.pirate ? g.pirateSeen : ui.met(p.id)));
     ui.dialog({
       title: '⚓ Neue Ufer', cls: 'menu',
       body: `<div class="mgrid">
@@ -50,7 +50,7 @@ export class Windows {
       title: 'Weltkarte', cls: 'map',
       body: `<canvas id="mapCv" width="${N * 2}" height="${N * 2}"></canvas>
         <div class="mside"><p class="sub">Tippe auf einen Ort, um dorthin zu schauen.</p>
-          <p class="legend"><span><i style="background:#4678dc"></i>Dein Land</span> <span><i style="background:#ffe066"></i>Deine Schiffe</span> <span><i style="background:#ff6b5b"></i>Fremde Schiffe</span> <span><i style="background:#343c46"></i>Unentdeckt</span></p></div>`,
+          <p class="legend"><span><i style="background:#4678dc"></i>Dein Land</span> <span><i style="background:#ffe066"></i>Deine Schiffe</span> <span><i style="background:#ff6b5b"></i>Fremde Schiffe</span>${ui.trade.ready ? ' <span><i style="background:#f4f1e8"></i>Händler</span>' : ''} <span><i style="background:#343c46"></i>Unentdeckt</span></p></div>`,
       foot: `<button class="btn wide" id="mapX">Schließen</button>`,
     });
     const cv = $('#mapCv') as HTMLCanvasElement;
@@ -71,7 +71,7 @@ export class Windows {
     ctx.putImageData(img, 0, 0);
     for (const sh of g.ships) {
       if (sh.owner !== HUMAN && !g.seen[g.idx(Math.floor(sh.x), Math.floor(sh.y))]) continue;
-      ctx.fillStyle = sh.owner === HUMAN ? '#ffe066' : '#ff6b5b';
+      ctx.fillStyle = sh.owner === HUMAN ? '#ffe066' : g.players[sh.owner]?.trader ? '#f4f1e8' : '#ff6b5b';
       ctx.beginPath(); ctx.arc(sh.x * 2, sh.y * 2, 4, 0, Math.PI * 2); ctx.fill();
     }
     const r = ui.view.rig;
@@ -110,6 +110,7 @@ export class Windows {
           <li><b>Eroberung:</b> Fällt das Kontor oder ein Marktplatz des Gegners, während deine Soldaten daneben stehen, gehört es dir – samt Land und Häusern ringsum.</li>
           <li><b>Seeschlacht:</b> Kanonen am Kontor aufs Schiff laden („Bewaffnen“), dann ein feindliches Schiff antippen. Beschädigte Schiffe werden an deiner Werft ausgebessert.</li>
           <li><b>Krieg &amp; Frieden:</b> im Menü ☰.</li>` : ''}
+          ${ui.trade.ready ? `<li><b>Handel ⚖️:</b> Im Kontor unter „Handel“ stellst du ein, was der freie Händler dir verkaufen oder abkaufen soll (Ware, Menge, Preis). Er kommt alle paar Minuten mit seinem Schiff (weiße Flagge). Ab zwei Kontoren fährt ein Schiff auf einer Handelsroute allein hin und her.</li>` : ''}
           ${g.pirateSeen ? `<li><b>Piraten 🏴‍☠️</b> überfallen Schiffe – ${pirateAdvice(g)}</li>` : ''}
           <li>🔇 Kein Ton? Den Stummschalter am iPhone prüfen.</li></ul></div>`,
       foot: `<div class="row2"><button class="btn" id="hMore" aria-expanded="false">❓ Mehr Hilfe</button><button class="btn ok" id="hClose">Los geht's!</button></div>`,

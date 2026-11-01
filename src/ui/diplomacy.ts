@@ -14,7 +14,7 @@ export class Diplomacy {
     const me = strength(g, HUMAN);
     let h = `<p class="sub">Deine Streitmacht: ${me}</p>`;
     for (const p of g.players) {
-      if (p.id === HUMAN || p.pirate || !ui.met(p.id)) continue;
+      if (p.id === HUMAN || p.pirate || p.trader || !ui.met(p.id)) continue;
       const war = atWar(g, HUMAN, p.id);
       const col = '#' + p.color.toString(16).padStart(6, '0');
       h += `<div class="row"><span><i class="dot" style="background:${col}"></i> ${p.name}${p.defeated ? ' – besiegt' : ''}</span><b>${p.defeated ? '🏳️' : war ? '⚔️ Krieg' : '🕊️ Frieden'}</b></div>`;

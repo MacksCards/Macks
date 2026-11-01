@@ -90,12 +90,15 @@ export class InfoPanel {
           <button class="btn ${b.matLock ? 'danger' : ''}" id="kLock" aria-pressed="${!!b.matLock}">${b.matLock ? '🔒 Gesperrt' : '✅ Frei'}</button></div>`;
       }
       if (g.canDemolishKontor(b).ok) foot += `<button class="btn danger" id="kDel">💥 Kontor abreißen</button>`;
-      h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
-      for (const gd of GOODS) {
-        const pr = PRICES[gd.id];
-        if (!pr || (!ui.relevant.has(gd.id) && g.goods[gd.id] < 1)) continue;
-        h += `<div class="trade"><span>${gd.icon} ${gd.name}</span><button class="btn" data-buy="${gd.id}">+5 · ${pr.kaufen}</button><button class="btn" data-sell="${gd.id}">−5 · ${pr.verkaufen}</button></div>`;
-      }
+      // Handel (Aufträge, Sofort-Handel) steht im Reiter „Handel“ (ui/trade.ts); ohne ihn hier der Sofort-Handel
+      if (!ui.trade.ready) {
+        h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
+        for (const gd of GOODS) {
+          const pr = PRICES[gd.id];
+          if (!pr || (!ui.relevant.has(gd.id) && g.goods[gd.id] < 1)) continue;
+          h += `<div class="trade"><span>${gd.icon} ${gd.name}</span><button class="btn" data-buy="${gd.id}">+5 · ${pr.kaufen}</button><button class="btn" data-sell="${gd.id}">−5 · ${pr.verkaufen}</button></div>`;
+        }
+      } else h += `<p class="sub">⚖️ Kaufen und verkaufen: Reiter „Handel“.</p>`;
     }
     h += `<h4>Einwohner</h4>`;
     TIERS.forEach((t, i) => { h += `<div class="row"><span>${t.name}</span><b>${pt[i]}</b></div>`; });
