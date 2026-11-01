@@ -17,6 +17,8 @@ Arbeitstitel: **Neue Ufer** – ein Aufbau-Strategiespiel, inhaltlich so nah wie
 12. **Schöne, „befriedigende“ Klänge:** passende Soundeffekte als Rückmeldung für die Bedienung (Tippen, Bauen, Fehler, Münzen, Freischaltung, Aufstieg) und für das Spielgeschehen (Axt, fallende Bäume, Schiffe, Kanonen …) plus Atmosphäre (Meer, Wind, Möwen, Vögel, ruhige Musik). Ton/Musik abschaltbar. Nur rechtlich nutzbare Quellen (selbst erzeugt oder geprüfte Lizenz). *(Wunsch vom 31.10.2026)*
 13. **Bedienung auf dem Handy muss sauber und flüssig sein:** Gesten zum Verschieben und Zoomen dürfen nie aus Versehen etwas bauen (Wege: Start antippen, Ziel antippen, ✓). Alles bewegt sich flüssig: Schiffe fahren gleichmäßig statt zu springen, Figuren und Tiere stehen fest auf dem Boden und bewegen beim Laufen die Beine statt zu rutschen oder zu schweben. Nichts darf „clumsy“ oder „buggy“ wirken. *(Korrektur vom 31.10.2026)*
 
+14. **Klar sehen, was man tut:** Angewählte Schiffe und Einheiten tragen ein deutliches Auswahl-Zeichen (z. B. Pfeil/Dreieck darüber); keine unverständlichen Zeichen über Schiffen oder Gebäuden. Beim Platzieren eines Gebäudes muss man genau sehen, wo es steht – auch im Wald (Bäume an der Stelle ausblenden oder durchsichtig). Wege, Gras und Wasser sollen hochwertig aussehen, nicht flach oder künstlich. *(Korrektur vom 01.11.2026)*
+
 ## Feste Projektentscheidungen
 - Ziel: zuerst ein Spiel für den Nutzer selbst, Launch später möglich.
 - Rechtlich sauber: **kein** Code, keine Grafiken, Sounds, Texte oder Namen aus Anno 1602 oder Reverse-Engineering-Projekten. Nur allgemeine Spielmechaniken (nicht geschützt) als Inspiration. Das Wort „Anno“ kommt im Spiel nicht vor.
