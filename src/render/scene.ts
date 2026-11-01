@@ -25,6 +25,7 @@ import { Smoke } from './smoke';
 import { SignLayer, paintCluster, paintIsland, paintUnit, paintWarn } from './signs';
 import { BuildAnims } from './buildanim';
 import type { RenderLayer } from './layers';
+import { SelectionMarks } from './selmark';
 import {
   CLUSTER_DIST, ISLAND_DIST, IslandSymbol, Pin, SMOKE_DIST, SMOKE_STYLE, Sign, UNIT_MARK_DIST, UNIT_MARK_PX,
   buildingSign, clusterPins, effColor, islandSymbols, smokeStrength, tapRadius, working,
@@ -106,6 +107,9 @@ export class View {
   readonly smoke = new Smoke();
   /** Warnsymbole, Sammelmarken, Insel-Symbole, Soldaten-Marken (ein Zeichenaufruf) */
   readonly signs = new SignLayer();
+  /** goldener Pfeil über Angewähltem (Gebäude, Schiff, Soldaten) */
+  readonly selMarks = new SelectionMarks();
+  private selB: Building | null = null;
   /** Bau-Animationen: Wachsen, Gerüst, Einsinken */
   private anims!: BuildAnims;
   /** weitere Bild-Ebenen (Andockstelle, z. B. Bewohner und Felder aus G3b) */
@@ -232,7 +236,7 @@ export class View {
     this.marks = new OwnerMarks(this.mat);
     this.scene.add(this.marks.group);
     this.anims = new BuildAnims(this.scene, this.mat);
-    this.scene.add(this.smoke.points, this.signs.mesh);
+    this.scene.add(this.smoke.points, this.signs.mesh, this.selMarks.group);
 
     this.buildWorld();
   }
@@ -380,7 +384,7 @@ export class View {
       inst.castShadow = true; inst.frustumCulled = false;
       grp.add(inst);
     }
-    grp.add(...this.marks.warm());
+    grp.add(...this.marks.warm(), ...this.selMarks.warm());
     // (Rauch und Symbole hängen immer in der Szene – auch leer –, ihre Programme werden also mit vorbereitet)
     // unter dem Meeresboden: wird gezeichnet (und damit vorbereitet), ist aber nie zu sehen
     grp.position.set(this.rig.tx, -6, this.rig.tz);
@@ -987,6 +991,23 @@ export class View {
     sl.end();
   }
 
+  /** goldener Pfeil über dem angewählten Gebäude, Schiff bzw. den angewählten Soldaten */
+  private updateSelMarks(t: number) {
+    const sm = this.selMarks;
+    sm.begin();
+    const b = this.selB, v = b && this.views.get(b.id);
+    if (v && v.mesh.visible) {
+      // steht ein Warnsymbol über dem Gebäude, schwebt der Pfeil darüber (nicht davor)
+      const sign = !!v.sign && this.rig.dist < CLUSTER_DIST && !this.anims.rising(b!.id);
+      sm.add(v.mesh.position.x, v.mesh.position.y + v.top + (sign ? 0.4 : 0), v.mesh.position.z, false, sign ? 17 : 0);
+    }
+    const sel = this.ships.selected;
+    if (sel !== null) for (const s of this.ships.shown) if (s.s.id === sel) { sm.add(s.x, s.top, s.z); break; }
+    const us = this.units.selected;
+    if (us.size) for (const s of this.units.shown) if (us.has(s.u.id)) sm.add(s.x, s.top + 0.1, s.z, true);
+    sm.end(t, this.camera, this.renderer.domElement.clientHeight || 400);
+  }
+
   /** Rauch aus arbeitenden Betrieben und bewohnten Häusern nahe der Kamera (dt = 0 in der Pause) */
   private emitSmoke(dt: number) {
     const r = this.rig;
@@ -1067,6 +1088,7 @@ export class View {
 
   setSelected(b: Building | null) {
     this.effDisc.visible = false;
+    this.selB = b;
     if (!b) { this.selectRing.visible = false; this.showRadius(0); return; }
     const d = BUILDINGS[b.type];
     this.selectRing.visible = true;
@@ -1262,6 +1284,7 @@ export class View {
     this.spinParts(gameDt);
     this.updateCamera();
     this.updateSigns();
+    this.updateSelMarks(t);
     if (this.preparing) return; // Grafik-Programme werden noch vorbereitet: altes Bild bleibt stehen
     // Pflanzen: je nach Entfernung volle Dichte, halbe Dichte oder einfache Formen; Schatten nur nah
     this.veg.update(this.camera.position, this.rig.tx, this.rig.tz, this.rig.dist);
