@@ -1,4 +1,4 @@
-# Offene Punkte gegenüber dem Vorbild (Stand 31.10.2026, nach Welle 1)
+# Offene Punkte gegenüber dem Vorbild (Stand 01.11.2026, nach Welle 1 und den Meshy-Modellen)
 
 Was noch fehlt, damit „Neue Ufer“ den ganzen Umfang von 1602 hat (Regel 4/11). Grundlage: der 1:1-Abgleich (`docs/ABGLEICH-1602.md`, Einzelbefunde in `docs/recherche/abgleich-befunde.json`). Die Kürzel sind Arbeitspakete (Plan: `docs/recherche/abgleich-plan.json`): L = Spielregeln und Spielwelt, U = Oberfläche und Bedienung, KI = Computergegner, M = Kampf, S = neue Spielteile, G = Grafik, R = Leistung der Grafik, P = Spielstart und Spielstände, A = Klänge, F = Feinschliff, D = Unterlagen. Die prüfbaren Anforderungen stehen in `docs/ANFORDERUNGEN.md`.
 
@@ -6,6 +6,10 @@ Was noch fehlt, damit „Neue Ufer“ den ganzen Umfang von 1602 hat (Regel 4/11
 - **L1:** Lager-voll-Fehler (Ware ging verloren), Tore im Wegenetz (kleines Tor neu, Stadttor 4 Steine), Schiffskurs bei Tipp auf Land, beschädigte Schiffe langsamer, Heimatinsel mit sicherem Erz und Pflanze auf 100 %, Gold-Garantie, tiefe Erzmine endet, Kanonengießerei ab 400 Bürgern, Spielstand Version 4, Andockstellen für die nächsten Spielteile.
 - **U1:** Oberfläche in Bausteine geteilt, Handy-Sofortfixes (Knöpfe unten erreichbar, Knöpfe mindestens 44 px, Zoom-Knöpfe und Kompass, Gesten, eingebettete Schriften, Hinweisleiste oben).
 - **KI1:** Wirtschaft der Computergegner repariert (Wege, Nahrung, Kasse, Rechenzeit).
+- **G1:** Fünf verschiedene Hausstufen, Rauchpunkte an den Schornsteinen, weicherer Look, keine Bodenplatten mehr.
+- **R1/R2:** Speicherleck der Schiffsroute behoben, „Neues Spiel“ räumt auf, Qualität passt sich dem Gerät an, in Pause und Menü weniger Zeichnen, Pflanzen und Boden zeichnen nur Sichtbares und bauen nur Geändertes neu. (Der Test auf dem iPhone des Nutzers steht noch aus.)
+- **G5a/G5b (Meshy):** Probe vom Nutzer am 31.10.2026 freigegeben, Entscheidung „Wichtigste ~50 jetzt“. 48 Modelle erzeugt, 14 davon waren nur Bruchstücke und wurden wieder entfernt; im Spiel sind 34 Gebäudearten (alle fünf Hausstufen, öffentliche Gebäude, Betriebe, Plantagen, Werkstätten, Werften, Türme, Burgen, Festung, Triumphbogen) und 2 Schiffe (Handels- und Kriegsschiff, Piraten dunkel).
+- **Nacharbeit an den Meshy-Modellen (01.11.2026):** Oberflächenbilder fürs iPhone verkleinert (Grafikspeicher aller Modelle ≈ 227 statt ≈ 640 MB), Modelle werden erst geladen, wenn sie gebraucht werden (jede Datei nur einmal), unvollständige Modelle werden automatisch erkannt, Fahne bzw. Wimpel in der Besitzerfarbe auf allen Meshy-Gebäuden (auch die Fahnen der Code-Modelle zeigen jetzt die richtige Farbe statt Schwarz), Mühle dreht wieder ihre Flügel, Werften zeigen zum Wasser.
 - **Davor:** Tiere und Arbeiter mit Beinen, Grasen, flüssige Schiffe und Fischerboote, Wege und Mauern per Tippen.
 
 ## Kampf (Regel 1 – Kernbestandteil)
@@ -41,15 +45,16 @@ Was noch fehlt, damit „Neue Ufer“ den ganzen Umfang von 1602 hat (Regel 4/11
 - **F1:** Bilder der Gebäude im Baumenü, Warensymbole, Symbol auf dem Home-Bildschirm.
 
 ## Grafik
-- **G1/G2:** Alle Gebäudearten sichtbar unterscheidbar (heute haben 27 von 52 nur ein einfaches Platzhalter-Modell), fünf Haustypen statt drei, Kontor I–IV sichtbar verschieden.
-- **G3:** Rauch aus Schornsteinen (fertig programmiert, nicht angeschlossen), Fahnen in der Spielerfarbe, kurze Bau-Animation, bessere Warnsymbole.
+- **G2:** Kontor I–IV sichtbar verschieden; die übrigen Gebäudearten ohne Meshy-Modell (siehe G5c) bis dahin als gut unterscheidbare Code-Modelle.
+- **G3:** Rauch aus Schornsteinen (fertig programmiert, nicht angeschlossen), kurze Bau-Animation, bessere Warnsymbole. (Fahnen in der Spielerfarbe: erledigt.)
 - **G3b:** Bewohner in der Stadt, sichtbare Arbeiter an allen Betrieben, sichtbare Felder und Weiden.
 - **G4a/G4b:** Landschaft (Berge schärfer, Nord- und Südinseln verschieden), Wasser, Licht, Schiffe (Segel bewegen sich), Wale und Delfine (nur in der Erweiterung des Originals), Ruinen.
-- **G5a/G5b:** Realistische Modelle von Meshy für alle Gebäude, Figuren, Tiere, Schiffe, Bäume. Die Probe mit Wohnhaus, Kontor und Schaf liegt im Projekt (Wohnhaus etwa 15 600 und Kontor etwa 29 500 Dreiecke, das ist über dem Richtwert von 12 000 in `docs/GRAFIK.md`); Freigabe durch den Nutzer und der Schlüssel `MESHY_API_KEY` in den Umgebungs-Einstellungen stehen aus.
-- **R1/R2:** Speicherleck der Schiffsroute, Anpassung ans Gerät (Qualität, Akku, Pause), nur Sichtbares zeichnen, nur Geändertes neu bauen. Danach ein Test auf dem iPhone des Nutzers (bisher nur am PC gemessen).
+- **G5c – 14 Modelle neu erzeugen, wenn wieder Meshy-Guthaben da ist:** Marktplatz, Badehaus, Jagdhütte, Fleischerei, Schneiderei, Goldschmied, Kakaoplantage, Baumwollplantage, Gewürzplantage, Weberei, Werkzeugschmiede, Schwertschmiede, Büchsenmacher, Steinbruch. Auftrag an Meshy jeweils: *ein vollständiges, geschlossenes Gebäude als ein Objekt* (keine einzelnen Teile, kein Boden, keine Umgebung). Jedes Modell vor dem Einbau ansehen; danach `node scripts/modell-texturen.mjs` (Bildgrößen fürs iPhone, siehe `docs/GRAFIK.md`). Bis dahin gelten die Code-Modelle.
+- **G5d:** Figuren (Bewohner, Arbeiter, Soldaten), Tiere und Bäume von Meshy; große Handels- und Kriegsschiffe mit eigenem Modell (heute dasselbe Modell wie das kleine).
+- **iPhone-Test:** Bildrate, Grafikspeicher und Akku auf dem iPhone des Nutzers messen (bisher nur am PC; Messanzeige mit `?debug` in der Adresse).
 
 ## Klänge
 - **A1:** Klänge für Gebäude und Schiffe, Musikstücke; Ton und Musik abschaltbar (Regel 12).
 
 ## Antworten des Nutzers
-- Die sechs Fragen aus dem Abgleich sind beantwortet (31.10.2026, siehe `CLAUDE.md` und `docs/ABGLEICH-1602.md`, Abschnitt 6). Offen sind: Freigabe der Meshy-Probe, der Schlüssel `MESHY_API_KEY` und der erste Test auf dem iPhone.
+- Die sechs Fragen aus dem Abgleich sind beantwortet (31.10.2026, siehe `CLAUDE.md` und `docs/ABGLEICH-1602.md`, Abschnitt 6). Die Meshy-Probe ist freigegeben (31.10.2026, „Wichtigste ~50 jetzt“). Offen ist der erste Test auf dem iPhone.

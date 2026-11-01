@@ -197,6 +197,7 @@ export class ShipLayer {
   /** Liefert ein geladenes Meshy-Schiffsmodell (Kopie) oder null */
   models: ((id: string) => THREE.Object3D | null) | null = null;
   private hidden = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+  private darkMats = new Map<THREE.Material, THREE.MeshStandardMaterial>();
 
   /** Nach dem Laden der Modelle alle Schiffe neu aufbauen */
   resetViews() {
@@ -221,9 +222,10 @@ export class ShipLayer {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
       mesh.castShadow = true;
-      if (pirate) { // Piraten: dunkle Segel und Rumpf
-        const mat = (mesh.material as THREE.MeshStandardMaterial).clone();
-        mat.color.multiplyScalar(0.3);
+      if (pirate) { // Piraten: dunkle Segel und Rumpf (dunkle Kopie nur einmal je Material anlegen)
+        const src = mesh.material as THREE.MeshStandardMaterial;
+        let mat = this.darkMats.get(src);
+        if (!mat) { mat = src.clone(); mat.color.multiplyScalar(0.3); this.darkMats.set(src, mat); }
         mesh.material = mat;
       }
     });

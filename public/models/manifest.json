@@ -116,7 +116,13 @@
   "art": "gebaeude",
   "building": "muehle",
   "tier": 0,
-  "size": 2
+  "size": 2,
+  "nabe": [
+   0.01,
+   0.229,
+   0.375
+  ],
+  "fluegel": 0.926
  },
  "baeckerei": {
   "file": "baeckerei.glb",
@@ -200,7 +206,8 @@
   "art": "gebaeude",
   "building": "werft",
   "tier": 0,
-  "size": 3
+  "size": 3,
+  "yaw": 90
  },
  "holzturm": {
   "file": "holzturm.glb",
@@ -250,7 +257,8 @@
   "art": "gebaeude",
   "building": "grosswerft",
   "tier": 0,
-  "size": 3
+  "size": 3,
+  "yaw": 90
  },
  "tiefeErzmine": {
   "file": "erzmine.glb",

@@ -22,11 +22,11 @@
 |---|---|---|
 | Spielumfang & Inhalt | ≈ 65 % | Stufen, Waren, Ketten, Gebäudezahlen, Schiffe und Militär sind 1:1 da. Es fehlen Ureinwohner, Katastrophen, Prachtbauten, Handelsrouten, Endwertung und Szenarien. |
 | Wirtschaft | ≈ 55 % | Der Steuersatz ist fest (kein Regler), es gibt keinen Bankrott, und Häuser steigen nie ab. Bei Luxuswaren, Stoffen und Kleidung versorgt ein Betrieb nur ¼ bis ⅓ so viele Bewohner wie in 1602. Handel nur per Sofort-Knopf. (Der Fehler bei vollem Lager ist seit L1 behoben.) |
-| Krieg | ≈ 65 % | Kampfwerte und Eroberung sind 1:1. Aber die Gegner sind kaum eine Bedrohung, es gibt kein Feuer, kein Piratennest und nur eine einfache Mehrfachauswahl per Knopf (kein Rahmen aufziehen), und Tore trennen das Wegenetz. |
+| Krieg | ≈ 65 % | Kampfwerte und Eroberung sind 1:1. Aber die Gegner sind kaum eine Bedrohung, es gibt kein Feuer, kein Piratennest und nur eine einfache Mehrfachauswahl per Knopf (kein Rahmen aufziehen). (Dass Tore das Wegenetz trennten, ist seit L1 behoben.) |
 | Bedienoberfläche | ≈ 55 % | Die Infos sind klarer als in 1602. Steuerfenster, Statistik, Meldungsverlauf, eine dauernd sichtbare Übersichtskarte und die Schiffsliste fehlen (es gibt nur die Weltkarte als eigenes Fenster); das Baumenü passt nicht auf den Bildschirm. |
 | Bedienung auf dem Handy (gemessen am Ziel) | ≈ 55 % | Gute Grundlage. Beim Abgleich lagen mehrere wichtige Knöpfe unter dem Bildrand, die Hinweisleiste fing Fingertipps ab, und Schiff-auf-Land war nur halb gelöst (alles seit U1/L1 behoben). Es gibt noch kein Rückgängig. |
-| Grafik & Details (Ziel: schöner als 1602) | ≈ 45 % | Landschaft, Wasser und Kampf ⭐. Die Gebäude sind noch einfache Formen, es gibt keinen Rauch, keine Felder und keine Bewohner. |
-| Geschwindigkeit des Spiels (Performance, gemessen am Ziel) | ≈ 60 % | Die Spielrechnung ist sehr sparsam. Die Grafik zeichnet zu viel, es gibt ein Speicherleck (das Spiel belegt nach und nach immer mehr Speicher) und keine Anpassung ans Gerät. Noch nie auf einem echten iPhone gemessen. |
+| Grafik & Details (Ziel: schöner als 1602) | ≈ 45 % | Landschaft, Wasser und Kampf ⭐. Beim Abgleich waren die Gebäude noch einfache Formen; seit 31.10.2026 stehen 34 Gebäudearten (alle fünf Hausstufen) und 2 Schiffe als realistische Meshy-Modelle im Spiel, 14 Gebäudearten haben noch Code-Modelle. Es gibt noch keinen Rauch, keine Felder und keine Bewohner. |
+| Geschwindigkeit des Spiels (Performance, gemessen am Ziel) | ≈ 60 % | Die Spielrechnung ist sehr sparsam. Beim Abgleich zeichnete die Grafik zu viel, es gab ein Speicherleck und keine Anpassung ans Gerät – das ist seit R1/R2 behoben (nur Sichtbares zeichnen, automatische Qualität). Noch nie auf einem echten iPhone gemessen. |
 | Übersicht & Spielfluss | ≈ 50 % | Die Infos zu einzelnen Gebäuden sind ⭐. Das Gesamtbild fehlt: Statistik, Warnungen, Ziele, mehrere Spielstände. |
 | Inselwelt, Computergegner, Ereignisse | ≈ 35 % | Die zufällige Inselwelt wird sehr verlässlich erzeugt. Die Wirtschaft der Gegner kam anfangs nicht in Gang (Schulden, Betriebe ohne Wegeanschluss); das ist seit Paket KI1 behoben, sie bleiben aber noch klein; Ureinwohner und alle Katastrophen fehlen. |
 | **Gesamt** | **≈ 55 %** | Durchschnitt der neun Werte, gerundet. „Handy“, „Grafik“ und „Leistung“ messen am Ziel des Projekts, nicht an 1602. |
@@ -183,9 +183,9 @@ Statistik, Meldungen, Übersichtskarte, Schiffsliste und Spielstände stehen in 
 
 | Punkt aus 1602 | 1602 | Neue Ufer | Status |
 |---|---|---|---|
-| Details der Gebäude | handgezeichnet, sehr detailreich | noch einfache Formen aus Code: die 15 ersten Modelle haben im Schnitt etwa 150 Dreiecke, alle Stadtgebäude zusammen etwa 260; nur die Militärbauten haben mehr (Burg etwa 4 000, Große Burg etwa 6 000); als Obergrenze vorgesehen sind 12 000 | 🟡 unter 1602 |
-| Jedes Gebäude erkennbar | ja | 27 von 52 Gebäudearten haben nur ein einfaches Platzhalter-Modell (Kirche, Badehaus, Hochschule und Theater sehen zum Beispiel völlig gleich aus: ein Haus mit Eckturm) | ❌ |
-| Fünf Haustypen | 5 | **Fehler:** nur 3 sichtbar; Kaufleute und Aristokraten wohnen in Bürgerhäusern | 🟡 Fehler |
+| Details der Gebäude | handgezeichnet, sehr detailreich | beim Abgleich einfache Formen aus Code (etwa 150 Dreiecke je Gebäude). **Seit 31.10.2026:** 34 Gebäudearten als realistische Meshy-Modelle mit echten Oberflächen (Wohnhäuser etwa 7 000 Dreiecke, Einzelgebäude bis etwa 30 000); 14 weitere Modelle waren unbrauchbar und kommen später neu (Liste in `docs/OFFEN.md`), dort gelten bis dahin die Code-Modelle | 🟡 besser, noch nicht vollständig |
+| Jedes Gebäude erkennbar | ja | Kirche, Hochschule, Theater, Schule, Wirtshaus, Kapelle, Betriebe, Plantagen, Werkstätten, Werft, Türme und Burgen haben jetzt eigene Meshy-Modelle; Badehaus, Marktplatz und 12 weitere noch ein Code-Modell | 🟡 |
+| Fünf Haustypen | 5 | fünf verschiedene Häuser (seit G1 im Code, seit 31.10.2026 als Meshy-Modelle) | ✅ |
 | Kontor I–IV | sichtbar größer | sehen gleich aus | ❌ |
 | Stil (deine Regeln 2 und 6) | – | kantig („Low Poly“, also stark vereinfachte, kantige Formen); Bäume aus wenigen Kegeln und Kugeln | 🟡 |
 | Rauchende Schornsteine | ja | der Rauch ist fertig programmiert, aber nicht angeschlossen | ❌ |
@@ -193,7 +193,7 @@ Statistik, Meldungen, Übersichtskarte, Schiffsliste und Spielstände stehen in 
 | Man sieht, wer arbeitet | an vielen Betrieben | nur an Mühle (dreht sich immer), Holzfäller, Jäger und Fischer | 🟡 |
 | Felder und Weiden | sichtbar, wachsen und werden geerntet | unsichtbar (nur farbige Streifen am Hof) | ❌ |
 | Bauen | das Gebäude steht sofort (soweit bekannt) | genauso | ✅ (Idee: kurze Bau-Animation) |
-| Farbe des Besitzers | Fahnen in der Spielerfarbe | nur bei Militär, Schiffen und am Rand des Gebiets; jedes Kontor trägt eine blaue Fahne, auch das der Gegner | 🟡 |
+| Farbe des Besitzers | Fahnen in der Spielerfarbe | Fahne in der Besitzerfarbe auf Kontor, Marktplatz, Werften, Burgen, Festung, Türmen, Triumphbogen und Schiffen; alle anderen Gebäude tragen einen kleinen Wimpel in der Besitzerfarbe (01.11.2026; vorher waren die Fahnen der Gebäude durch einen Fehler schwarz) | ✅ |
 | Landschaft | gezeichnete Kacheln | echte Höhen, Wind in Bäumen und Gras, Nebel über Unentdecktem | ⭐ |
 | Berge | klar gezeichnet | verschwommen; verdecken Gebäude am Fuß des Berges | 🟡 |
 | Nord- und Südinseln | im Süden Palmen und eigene Farben | sehen gleich aus | ❌ |
@@ -207,16 +207,16 @@ Statistik, Meldungen, Übersichtskarte, Schiffsliste und Spielstände stehen in 
 | Rohstoffe sichtbar | nur Dekoration | Fischschwärme, Wild und fallende Bäume zeigen den echten Bestand | ⭐ |
 | Katastrophen | Brände, Sensenmann über dem Haus, vertrocknete Felder | fehlen (es gibt die Ereignisse noch nicht) | ❌ |
 | Wale, Delfine, Ruinen | ja (Wale und Delfine erst in der Erweiterung) | fehlen | ❌ |
-| Modelle von Meshy | – | Anschluss nur für Gebäude (getestet); Menschen, Tiere, Schiffe, Bäume und Bewegungen fehlen noch; die Liste der Modelle hat Lücken | 🟡 |
+| Modelle von Meshy | – | 34 Gebäudearten und 2 Schiffe (Handels- und Kriegsschiff, Piraten dunkel) im Spiel; die Mühle dreht ihre Flügel; Menschen, Tiere, Bäume und Bewegungen fehlen noch | 🟡 |
 
 ### 2.7 Geschwindigkeit und Flüssigkeit (Performance)
 
 | Punkt | 1602 / Ziel | Neue Ufer | Status |
 |---|---|---|---|
 | Spielrechnung | flüssig auch bei 4-fachem Tempo | unter 1 ms je Schritt bei 570 Gebäuden; im großen Gefecht mit 115 Soldaten etwa 5 ms | ✅ |
-| Speicher | stundenlang stabil | **Fehler:** Solange ein Schiff mit Kurs ausgewählt ist, belegt jedes Bild neuen Speicher der Grafikkarte und gibt ihn nie frei (Speicherleck). „Neues Spiel“ räumt nicht alles auf | 🟡 Fehler |
+| Speicher | stundenlang stabil | Speicherleck der Schiffsroute und Aufräumen bei „Neues Spiel“ behoben (R1). Meshy-Modelle werden erst geladen, wenn sie gebraucht werden, jede Datei nur einmal; Oberflächenbilder verkleinert (alle Modelle zusammen ≈ 227 statt ≈ 640 MB Grafikspeicher) | ✅ (iPhone-Test fehlt) |
 | Bäume und Gras | nur zeichnen, was man sieht | die Pflanzen ganzer Inseln werden immer gezeichnet, 5- bis 8-mal mehr als nötig | 🟡 |
-| Anpassung ans Gerät | – | keine: immer volle Auflösung und Schatten. Auch in Pause und Menü wird voll weitergezeichnet (kostet Akku, macht warm) | ❌ |
+| Anpassung ans Gerät | – | automatische Qualität (Auflösung und Schatten passen sich der Bildzeit an), in Pause und Menü wird nur bei Änderung gezeichnet (R1) | ✅ (iPhone-Test fehlt) |
 | Bauen im Wald, Erkunden, Wege bauen | nur die betroffene Stelle neu zeichnen | jedes Mal werden alle Pflanzen und Bodenfarben neu aufgebaut (20–45 ms, ein spürbarer Ruckler), auch wenn die Gegner bauen | 🟡 |
 | Daten zur Grafikkarte | – | etwa 1,3 MB je Bild, auch wenn nichts passiert | 🟡 |
 | Gefechte hinter Mauern | – | Soldaten suchen immer wieder Wege, die es nicht gibt | 🟡 |
@@ -224,7 +224,7 @@ Statistik, Meldungen, Übersichtskarte, Schiffsliste und Spielstände stehen in 
 | Computergegner | – | alle denken im selben Augenblick (kleine Ruckler, am Anfang ein Stoß bis 89 ms) | 🟡 |
 | Erster Gebrauch | – | Teile der Grafik werden erst beim ersten Bauen oder Kampf vorbereitet (kurzer Ruckler) | 🟡 |
 | Automatisches Speichern | – | 1,2 MB alle 20 s, auch ohne Änderung; Fehler bleiben unbemerkt | 🟡 |
-| Größe der App | klein | 887 KB, davon etwa 65 KB ungenutzt | ✅ |
+| Größe der App | klein | Spiel ≈ 1,2 MB (mit dem Modell-Lader) plus Meshy-Modelle ≈ 18 MB, die nur bei Bedarf nachgeladen werden | ✅ |
 | Test auf dem iPhone | nötig | fehlt noch; bisher nur am PC gemessen | – |
 
 ### 2.8 Übersicht und Spielfluss
@@ -282,12 +282,12 @@ Statistik, Meldungen, Übersichtskarte, Schiffsliste und Spielstände stehen in 
 - ⭐ **Fairer Ablauf:** 3 Minuten Vorwarnung vor Kriegen mit Rat, nach einem Totalverlust ein Rettungsschiff und 40 Minuten Ruhe; Piraten rauben, statt zu versenken.
 - **Verlässliche Inselwelt:** in 300 Testwelten immer alle Pflanzen und Erz, Gold in rund 96 %, keine Mini-Inseln, Inselinfo per Antippen (⭐).
 - **Schöne Teile der Grafik:** Berge und Täler, Wind in Bäumen und Gras, Schaum an der Küste, Nebel über Unentdecktem, echter Himmel und weiche Schatten. Burgen, Soldaten und Kampfeffekte sind sehr detailreich. Schiffe schaukeln, bekommen Schlagseite und sinken.
-- **Schlanke Technik:** Die ganze App hat 887 KB und startet in etwa 2,5 s. Die Spielrechnung ist sparsam, und der Speicher bleibt bis auf einen Fehler stabil. Nach einem simulierten Grafikausfall kam das Bild im PC-Test wieder zurück (auf dem iPhone noch ungetestet). Der Anschluss für Meshy-Gebäude funktioniert.
+- **Schlanke Technik:** Das Spiel selbst hat etwa 1,2 MB (beim Abgleich 887 KB, dazu kam der Lader für die Meshy-Modelle; die Modelle, zusammen etwa 18 MB, werden erst bei Bedarf geladen) und startet in etwa 2,5 s. Die Spielrechnung ist sparsam, und der Speicher bleibt bis auf einen Fehler stabil. Nach einem simulierten Grafikausfall kam das Bild im PC-Test wieder zurück (auf dem iPhone noch ungetestet). Der Anschluss für Meshy-Gebäude funktioniert.
 
 ## 4. Größte Schwächen: was zuerst angehen
 
 1. **Fehler und Stolpersteine im Spielgefühl:**
-   - Ein volles Lager vernichtete Ware, Tore trennten das Wegenetz (beides behoben in L1); die Schiffsroute füllt den Speicher der Grafikkarte (Paket R1), und die Hausstufen 4 und 5 sehen aus wie Stufe 3 (Paket G1).
+   - Ein volles Lager vernichtete Ware, Tore trennten das Wegenetz (beides behoben in L1); die Schiffsroute füllte den Speicher der Grafikkarte, und die Hausstufen 4 und 5 sahen aus wie Stufe 3 (behoben in R1 und G1).
    - Militär, Abreißen, „Alles ausladen“ und „Los geht's“ lagen unter dem Bildrand, und die Hinweisleiste fing Fingertipps ab (behoben in U1).
    - Schiff-auf-Land war nur halb gelöst (behoben in L1/U1).
 
