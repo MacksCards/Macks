@@ -4,7 +4,7 @@
 // Handelsrouten kommen aus dem Gerüst ui/trade.ts und erscheinen erst, wenn es sie gibt.
 import './ship.css';
 import { GOOD, GOODS, GoodId, SHIPS, UNITS } from '../data';
-import { armShip, atWar, disarmShip, unloadTroops } from '../combat';
+import { armShip, atWar, disarmShip, setWhiteFlag, unloadTroops, whiteFlag } from '../combat';
 import { HUMAN, Ship } from '../game';
 import { sound } from '../audio';
 import type { UI } from '../ui';
@@ -64,6 +64,12 @@ export class ShipPanel {
     if ((s.hp ?? sd.hp) < sd.hp) {
       const atWerft = g.buildings.some((b) => (b.type === 'werft' || b.type === 'grosswerft') && b.owner === HUMAN && Math.hypot(g.center(b)[0] - s.x, g.center(b)[1] - s.y) < 7);
       h += `<p class="sub">🔧 ${atWerft ? 'Wird an deiner Werft ausgebessert (braucht Holz im Lager).' : 'Fahre zu deiner Werft, um das Schiff auszubessern.'}</p>`;
+    }
+    // Weiße Flagge (erst, wenn Piraten gesichtet wurden oder Krieg herrscht): friedliche Fahrt
+    if (g.pirateSeen || war) {
+      const wf = whiteFlag(g, s);
+      h += `<button class="btn wide" id="shipFlag" aria-pressed="${wf}">🏳️ ${wf ? 'Weiße Flagge einholen' : 'Weiße Flagge hissen'}</button>`;
+      h += `<p class="sub">${wf ? 'Piraten und Gegner lassen das Schiff in Ruhe (nicht mit Soldaten an Bord). Deine Kanonen schießen nicht von selbst.' : 'Mit weißer Flagge lassen Piraten und Gegner das Schiff in Ruhe.'}</p>`;
     }
     // Kanonen (einklappbar; ohne eigene Wahl offen bei Krieg, wenn Kanonen an Bord sind
     // oder wenn das Kontor hier Kanonen zum Bewaffnen hat)
@@ -133,6 +139,13 @@ export class ShipPanel {
       ui.renderInfo();
     }));
     document.getElementById('shipArm')?.addEventListener('click', () => { const n = armShip(g, s); if (n) { sound.play('kisten'); ui.toast(n === 1 ? '💣 Eine Kanone geladen' : `💣 ${n} Kanonen geladen`, 'good'); } ui.renderInfo(); });
+    document.getElementById('shipFlag')?.addEventListener('click', () => {
+      const on = !whiteFlag(g, s);
+      setWhiteFlag(g, s, on);
+      sound.play('klick');
+      ui.toast(on ? '🏳️ Weiße Flagge gehisst' : 'Weiße Flagge eingeholt', 'info');
+      ui.renderInfo();
+    });
     document.getElementById('shipDisarm')?.addEventListener('click', () => { disarmShip(g, s); sound.play('kisten'); ui.renderInfo(); });
     document.getElementById('shipLand')?.addEventListener('click', () => {
       const n = unloadTroops(g, s);

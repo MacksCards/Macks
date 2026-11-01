@@ -82,6 +82,9 @@ export interface Unit {
   repath?: number;
   /** Laufziel, dessen Weg noch gesucht wird (gestaffelt) */
   dest?: [number, number];
+  /** Bäume fällen: Waldfeld (Index), an dem der Soldat hackt, und wie lange schon (Sekunden) */
+  fell?: number;
+  chop?: number;
 }
 
 /** Marktkarren: holt Waren von Betrieben ab und bringt sie ins Inselllager */
@@ -124,6 +127,8 @@ export interface Ship {
   safeUntil?: number;
   /** angetipptes Ziel der laufenden Fahrt (für die Neuplanung, wenn im Nebel Land auftaucht) */
   goal?: [number, number];
+  /** Patrouille zwischen zwei Punkten (x1, y1, x2, y2), siehe combat.ts patrol() */
+  patrol?: [number, number, number, number];
 }
 
 /** Gedächtnis eines Computergegners */
@@ -234,6 +239,8 @@ export interface GameEvents {
   sunk(s: Ship): void;
   /** Einheit gefallen */
   died(u: Unit): void;
+  /** Soldat hackt an einem Baum (ein Axthieb; für den Klang) */
+  chop?(u: Unit): void;
   /** Meldung; at = Ort im Spiel (für „Hinschauen“), fehlt bei allgemeinen Meldungen */
   message(text: string, kind?: MsgKind, at?: MsgAt): void;
 }

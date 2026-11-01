@@ -211,6 +211,8 @@ Alles kostet einmalig Waffen und Taler und dann Unterhalt je Minute.
 2. Auf ein Ziel tippen: Gehen, Angreifen oder Verteidigen (Knopfleiste am Rand).
 3. Die Gefechte laufen automatisch. Der Spieler lenkt Aufstellung, Ziel und Rückzug.
 
+**Regeln wie im Vorbild (Stand 01.11.2026):** Schützen treffen nicht immer, der Schaden gleicht das aus. Soldaten laufen in Reihe oder Block (Nahkämpfer vorn, Kanonen hinten), fällen Bäume (der Wald wird zu Gras), lassen sich ausmustern (dann kein Sold mehr). Beim eigenen Arzt heilen Soldaten schnell und kosten keinen Sold. Gebäude bessern sich von selbst nur bis drei Viertel aus. Kanonentreffer können Holzgebäude in Brand setzen. Schiffe können zwischen zwei Punkten patrouillieren; die weiße Flagge verspricht friedliche Fahrt (Piraten und Gegner lassen das Schiff in Ruhe, solange keine Soldaten an Bord sind). Schwer beschädigte Piraten drehen ab. Händler und Ureinwohner werden nie von Piraten oder Gegnern angegriffen.
+
 **Seeschlacht:** Schiff antippen, Gegner antippen. Kanonen feuern automatisch bei richtiger Lage (Breitseite), Wind und Position entscheiden. Beschädigte Schiffe lassen sich im Hafen reparieren.
 
 **Eroberung:** Truppen werden per Schiff an Land gesetzt. Ziel ist das **gegnerische Kontor**: Fällt es, geht die Insel samt Gebäuden an den Sieger über. Die Bevölkerung ist zunächst unzufrieden. Wer sein eigenes Kontor verliert, verliert die Insel. Verteidigen heißt: Türme, Mauern, Truppen und Schiffe vor der Küste.

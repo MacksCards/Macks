@@ -1,7 +1,12 @@
 // Kampf wie im Vorbild: Soldaten aus der Burg, Wachtürme, bewaffnete Schiffe, Seeschlachten,
 // Truppen übersetzen, Eroberung über Kontor/Marktplatz, Krieg und Frieden, Piraten.
+// Dazu die Regeln aus dem Abgleich (Paket M1): weiße Flagge, Piraten fliehen bei Schaden, Bäume fällen,
+// Aufstellung in Reihe oder Block, Ausmustern, Patrouille, Arzt pflegt Soldaten, Gebäude bessern sich nur
+// bis 75 % selbst aus, Kanonen setzen Holzgebäude in Brand, Fehlschüsse mit ausgeglichenem Schaden,
+// sparsame Wegsuche im Gefecht. Zufall nur über g.rng() (gleicher Ablauf nach dem Laden).
 import { BUILDINGS, GOODS, MAX_UNITS, SHIP_GUN, SHIPS, START_CARGO, ShipType, UNITS, UnitType } from './data';
-import { Building, Check, Game, HUMAN, Ship, ShotKind, Unit } from './game';
+import { ignite } from './events';
+import { Building, Check, Game, HUMAN, MsgAt, Ship, ShotKind, Unit } from './game';
 import { findLandPath } from './path';
 import { T } from './world';
 
@@ -11,6 +16,29 @@ const PIRATE_START = 1800; // Spielsekunden bis zum ersten Piraten (ca. 30 Minut
 const PIRATE_COAST = 3000; // ab dann beschießen sie auch Küsten
 const PIRATE_RESPAWN = 480;
 const AGGRO = 6; // so nah bemerken Soldaten Feinde von selbst
+
+/** Trefferchance je Schütze. Der Schaden je Treffer wird durch sie geteilt, damit im Mittel so viel
+ *  Schaden ankommt wie im Vorbild (dort trifft jeder Schuss). */
+export const HIT = { feld: 0.85, turm: 0.8, schiff: 0.75 } as const;
+/** Piraten drehen ab, wenn ihr Schiff weniger als so viele Trefferpunkte hat (Anteil) … */
+export const PIRATE_FLEE = 0.3;
+/** … und kommen wieder, wenn es sich so weit erholt hat */
+const PIRATE_BACK = 0.7;
+/** Sekunden, die ein Soldat an einem Baum hackt */
+export const FELL_TIME = 4;
+/** Arzt: Heilung je Sekunde im Umkreis, sonst (auf eigenem Land, ohne Kampf) */
+export const HEAL_DOCTOR = 1.0;
+export const HEAL_FIELD = 0.03;
+/** Gebäude bessern sich von selbst nur bis zu diesem Anteil aus */
+export const SELF_REPAIR = 0.75;
+/** Kanonentreffer an einem Holzgebäude: so wahrscheinlich fängt es Feuer */
+export const IGNITE_CHANCE = 0.25;
+/** nach einer vergeblichen Wegsuche zum selben Ziel so lange nicht neu suchen (Sekunden) */
+const NO_PATH_WAIT = 6;
+/** höchstens so viele Felder durchsucht die Wegsuche für selbst gewählte Ziele */
+const SELF_NODES = 2000;
+/** so viele Wegsuchen im Gefecht je Rechenschritt (der Rest kommt im nächsten dran) */
+const PATH_BUDGET = 8;
 
 /** Laufzeit-Zustand je Spiel (wird nicht gespeichert) */
 interface State {
@@ -25,13 +53,40 @@ interface State {
   /** KI: nächster Zeitpunkt zum Anwerben bzw. für ein Kriegsschiff */
   recruitT: Map<number, number>;
   shipT: Map<number, number>;
+  /** Schiffe mit gehisster weißer Flagge (wie im Vorbild nicht im Spielstand) */
+  white: Set<number>;
+  /** fliehende Piratenschiffe */
+  flee: Set<number>;
+  /** Patrouille: Richtung (0 = zum Startpunkt, 1 = zum Zielpunkt) und ob gerade ein Feind verfolgt wird */
+  patrol: Map<number, { leg: 0 | 1; chase: boolean; repath: number }>;
+  /** vergebliche Wegsuche je Soldat: bis dahin nicht erneut zum selben Ziel suchen */
+  noPath: Map<number, { until: number; x: number; y: number }>;
+  /** begehbare Gebiete (Nummer je Feld, -1 = Wasser/Berg), neu bei geändertem g.buildVersion */
+  region: { ver: number; size: number; id: Int32Array } | null;
+  /** Ärzte je Besitzer (Mittelpunkt), neu bei geändertem g.buildVersion */
+  doctors: { ver: number; n: number; by: Map<number, [number, number][]> } | null;
+  /** Wegsuchen, die in diesem Rechenschritt noch erlaubt sind */
+  budget: number;
+  /** letzte Meldung „kommen nicht zu den Bäumen“ (nicht für jeden Soldaten einzeln) */
+  fellMsgT: number;
 }
 const states = new WeakMap<Game, State>();
 function st(g: Game): State {
   let s = states.get(g);
-  if (!s) { s = { lastHit: new Map(), shipChase: new Map(), raids: new Map(), rescueT: 0, recruitT: new Map(), shipT: new Map(), sepT: 0, aiT: 0, alarmT: -99, pirateThinkT: 0 }; states.set(g, s); }
+  if (!s) {
+    s = {
+      lastHit: new Map(), shipChase: new Map(), raids: new Map(), rescueT: 0, recruitT: new Map(), shipT: new Map(), sepT: 0, aiT: 0, alarmT: -99, pirateThinkT: 0,
+      white: new Set(), flee: new Set(), patrol: new Map(), noPath: new Map(), region: null, doctors: null, budget: PATH_BUDGET, fellMsgT: -99,
+    };
+    states.set(g, s);
+  }
   return s;
 }
+
+/** Ort für eine Meldung (Feldkoordinaten) */
+const at = (x: number, y: number): MsgAt => ({ x, y });
+/** Ort eines Gebäudes für eine Meldung */
+const atB = (g: Game, b: Building): MsgAt => { const [x, y] = g.center(b); return at(x, y); };
 
 // ---------- Beziehungen ----------
 
@@ -46,6 +101,8 @@ export function atWar(g: Game, a: number, b: number): boolean {
   if (a === b || a < 0 || b < 0) return false;
   const pa = g.players[a], pb = g.players[b];
   if (!pa || !pb) return false;
+  // freier Händler und Ureinwohner: nie Ziel von Piraten oder Computergegnern, nie im Krieg
+  if (pa.trader || pb.trader || pa.natives || pb.natives) return false;
   if (pa.pirate || pb.pirate) {
     const other = pa.pirate ? pb : pa;
     return !((other.protectedUntil ?? 0) > g.time);
@@ -56,11 +113,52 @@ export function atWar(g: Game, a: number, b: number): boolean {
 export function declareWar(g: Game, a: number, b: number) {
   const pa = g.players[a], pb = g.players[b];
   if (!pa || !pb || pa.pirate || pb.pirate || atWar(g, a, b)) return;
+  if (pa.trader || pb.trader || pa.natives || pb.natives) return;
   if (pa.defeated || pb.defeated) return;
   pa.war = [...new Set([...(pa.war ?? []), b])];
   pb.war = [...new Set([...(pb.war ?? []), a])];
-  if (a === HUMAN) g.ev.message(`⚔️ Du hast ${pb.name} den Krieg erklärt`, 'bad');
-  else if (b === HUMAN) { pb.lastWarAt = g.time; g.ev.message(`⚔️ ${pa.name} erklärt dir den Krieg! Frieden kannst du im Menü ☰ anbieten.`, 'bad'); }
+  // Ort: Kontor des Gegners
+  const k = g.kontor(a === HUMAN ? b : a);
+  const where = k ? atB(g, k) : undefined;
+  if (a === HUMAN) g.ev.message(`⚔️ Du hast ${pb.name} den Krieg erklärt`, 'bad', where);
+  else if (b === HUMAN) { pb.lastWarAt = g.time; g.ev.message(`⚔️ ${pa.name} erklärt dir den Krieg! Frieden kannst du im Menü ☰ anbieten.`, 'bad', where); }
+}
+
+/**
+ * Darf a das Ziel von b angreifen? Wie atWar – dazu Ureinwohner, aber nur auf ausdrücklichen Befehl des
+ * Spielers (nie von selbst, nie durch Computergegner oder Piraten).
+ */
+export function hostile(g: Game, a: number, b: number, ordered = false): boolean {
+  if (atWar(g, a, b)) return true;
+  return ordered && a === HUMAN && !!g.players[b]?.natives;
+}
+
+// ---------- Weiße Flagge ----------
+
+/** Weiße Flagge hissen (on = true) oder einholen. Gilt nur, solange das Spiel läuft (wie im Vorbild nicht gespeichert). */
+export function setWhiteFlag(g: Game, s: Ship, on: boolean) {
+  const S = st(g);
+  if (on) {
+    S.white.add(s.id);
+    // eigene Kanonen schweigen: laufender Angriff endet
+    s.target = undefined; S.shipChase.delete(s.id);
+    // Verfolger lassen ab (Piraten und Computergegner)
+    for (const o of g.ships) if (o.target === s.id && respectsFlag(g, o.owner)) { o.target = undefined; S.shipChase.delete(o.id); if (g.players[o.owner]?.pirate) sailAway(g, o); }
+  } else S.white.delete(s.id);
+}
+
+/** Weht auf dem Schiff die weiße Flagge? */
+export function whiteFlag(g: Game, s: Ship): boolean { return st(g).white.has(s.id); }
+
+/** Diese Besitzer lassen Schiffe mit weißer Flagge in Ruhe (Piraten und Computergegner) */
+function respectsFlag(g: Game, owner: number): boolean {
+  const p = g.players[owner];
+  return !!p && (!!p.pirate || p.ai);
+}
+
+/** Schützt die weiße Flagge dieses Schiff vor owner? (nicht mit Soldaten an Bord) */
+function flagProtects(g: Game, s: Ship, owner: number): boolean {
+  return st(g).white.has(s.id) && !s.troops?.length && respectsFlag(g, owner);
 }
 
 
@@ -70,7 +168,7 @@ export function makePeace(g: Game, a: number, b: number) {
   pa.war = (pa.war ?? []).filter((x) => x !== b);
   pb.war = (pb.war ?? []).filter((x) => x !== a);
   pa.peaceAt = { ...(pa.peaceAt ?? {}), [b]: g.time }; pb.peaceAt = { ...(pb.peaceAt ?? {}), [a]: g.time };
-  for (const u of g.units) if (u.target !== undefined) { const t = resolve(g, u.target); if (t && !atWar(g, u.owner, t.owner)) { u.target = undefined; u.ordered = false; } }
+  for (const u of g.units) if (u.target !== undefined) { const t = resolve(g, u.target); if (t && !hostile(g, u.owner, t.owner, u.ordered)) { u.target = undefined; u.ordered = false; } }
   for (const s of g.ships) if (s.target !== undefined) { const t = resolve(g, s.target); if (t && !atWar(g, s.owner, t.owner)) s.target = undefined; }
 }
 
@@ -162,14 +260,23 @@ function lineClear(g: Game, x0: number, y0: number, x1: number, y1: number, igno
 
 // ---------- Schaden ----------
 
-function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: number) {
+/** Holzgebäude (kann brennen): ohne Stein gebaut; Wohnhäuser bis zu den Siedlern */
+export function wooden(b: Building): boolean {
+  const d = BUILDINGS[b.type];
+  if (b.type === 'haus') return b.tier < 2;
+  return !(d.cost.stein ?? 0);
+}
+
+/** cannon = Kanonenkugel (Turm, Schiff, Kanonier): kann Holzgebäude in Brand setzen */
+function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: number, cannon = false) {
   const S = st(g);
   if (t.owner === HUMAN && from !== HUMAN && g.time - S.alarmT > 30) {
     S.alarmT = g.time;
-    const [px, py] = t.kind === 'unit' ? [t.u.x, t.u.y] : t.kind === 'bau' ? g.center(t.b) : [fx, fy];
+    const [px, py] = t.kind === 'unit' ? [t.u.x, t.u.y] : t.kind === 'bau' ? g.center(t.b) : [t.s.x, t.s.y];
     const isl = t.kind === 'ship' ? null : g.islands[g.islandOf[g.idx(Math.floor(px), Math.floor(py))]];
-    g.ev.message(t.kind === 'ship' ? `⚔️ Dein Schiff ${t.s.name} wird angegriffen!` : `⚔️ Angriff${isl ? ` auf ${isl.name}` : ''}!`, 'bad');
+    g.ev.message(t.kind === 'ship' ? `⚔️ Dein Schiff ${t.s.name} wird angegriffen!` : `⚔️ Angriff${isl ? ` auf ${isl.name}` : ''}!`, 'bad', at(px, py));
   }
+  void fx; void fy;
   if (t.kind === 'unit') {
     t.u.hp -= dmg;
     if (t.u.hp <= 0) killUnit(g, t.u);
@@ -184,7 +291,7 @@ function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: n
       for (const sl of s.slots) { sl.g = null; sl.n = 0; }
       s.safeUntil = g.time + (loot ? 600 : 1800);
       for (const p of g.ships) if (p.owner === from && p.target === s.id) { p.target = undefined; S.shipChase.delete(p.id); sailAway(g, p); }
-      if (s.owner === HUMAN && loot) g.ev.message(`🏴‍☠️ Piraten haben die ${s.name} überfallen und ${loot} t Ladung geraubt! ${pirateAdvice(g)}`, 'bad');
+      if (s.owner === HUMAN && loot) g.ev.message(`🏴‍☠️ Piraten haben die ${s.name} überfallen und ${loot} t Ladung geraubt! ${pirateAdvice(g)}`, 'bad', at(s.x, s.y));
       return;
     }
     if (s.hp <= 0) sinkShip(g, s, from);
@@ -192,13 +299,15 @@ function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: n
     const b = t.b;
     b.hp = (b.hp ?? g.maxHp(b)) - dmg;
     S.lastHit.set(b.id, g.time);
+    // Kanonenkugel in ein Holzgebäude: kann Feuer fangen (wirkt, sobald es die Ereignisse gibt)
+    if (cannon && b.hp > 0 && wooden(b) && g.rng() < IGNITE_CHANCE) ignite(g, b);
     if (b.hp <= 0 && g.players[from]?.pirate && (b.type === 'kontor' || b.type === 'markt')) {
       // Piraten plündern das Lager, zerstören Kontor und Marktplatz aber nicht
       b.hp = Math.round(g.maxHp(b) * 0.3);
       const l = g.lagerOf(b.owner, b.island);
       if (l) for (const k of Object.keys(l) as (keyof typeof l)[]) l[k] = Math.floor(l[k] / 2);
       restIsland(g, b.owner, b.island, from);
-      if (b.owner === HUMAN) g.ev.message(`🏴‍☠️ Piraten haben dein Lager auf ${g.islands[b.island]?.name ?? 'der Insel'} geplündert! ${pirateAdvice(g)}`, 'bad');
+      if (b.owner === HUMAN) g.ev.message(`🏴‍☠️ Piraten haben dein Lager auf ${g.islands[b.island]?.name ?? 'der Insel'} geplündert! ${pirateAdvice(g)}`, 'bad', atB(g, b));
       return;
     }
     if (b.hp <= 0) {
@@ -214,6 +323,7 @@ function damage(g: Game, t: Target, dmg: number, from: number, fx: number, fy: n
 
 export function killUnit(g: Game, u: Unit) {
   g.units = g.units.filter((o) => o !== u);
+  st(g).noPath.delete(u.id);
   if (u.ship !== undefined) { const s = g.ships.find((x) => x.id === u.ship); if (s?.troops) s.troops = s.troops.filter((i) => i !== u.id); }
   g.ev.died(u);
 }
@@ -222,20 +332,27 @@ function sinkShip(g: Game, s: Ship, by: number) {
   g.ev.sunk(s);
   const lost = (s.troops ?? []).length;
   for (const id of s.troops ?? []) { const u = g.unitById(id); if (u) { g.units = g.units.filter((o) => o !== u); } }
-  if (lost && s.owner === HUMAN) g.ev.message(lost === 1 ? `🌊 Ein Soldat ist mit der ${s.name} untergegangen` : `🌊 ${lost} Soldaten sind mit der ${s.name} untergegangen`, 'bad');
+  const where = at(s.x, s.y);
+  if (lost && s.owner === HUMAN) g.ev.message(lost === 1 ? `🌊 Ein Soldat ist mit der ${s.name} untergegangen` : `🌊 ${lost} Soldaten sind mit der ${s.name} untergegangen`, 'bad', where);
   g.ships = g.ships.filter((o) => o !== s);
-  st(g).shipChase.delete(s.id);
+  forgetShip(g, s.id);
   const pir = pirates(g);
-  if (s.owner === HUMAN) g.ev.message(`🌊 ${s.name} wurde versenkt`, 'bad');
-  else if (by === HUMAN) g.ev.message(s.type === 'pirat' ? '🏴‍☠️ Piratenschiff versenkt!' : `💥 Schiff von ${g.players[s.owner].name} versenkt`, 'good');
+  if (s.owner === HUMAN) g.ev.message(`🌊 ${s.name} wurde versenkt`, 'bad', where);
+  else if (by === HUMAN) g.ev.message(s.type === 'pirat' ? '🏴‍☠️ Piratenschiff versenkt!' : `💥 Schiff von ${g.players[s.owner].name} versenkt`, 'good', where);
   if (pir && s.owner === pir.id) {
     g.pirateT = PIRATE_RESPAWN;
     if (by === HUMAN) {
       g.pirateSunk++;
-      if (g.pirateSunk === 3) { g.victories++; g.unlocked.add('triumphbogen'); g.ev.message('🏛️ Sieg über die Piraten! Du darfst einen Triumphbogen bauen', 'good'); }
+      if (g.pirateSunk === 3) { g.victories++; g.unlocked.add('triumphbogen'); g.ev.message('🏛️ Sieg über die Piraten! Du darfst einen Triumphbogen bauen', 'good', where); }
     }
   }
   checkDefeat(g, s.owner, by);
+}
+
+/** Laufzeit-Zustand eines verschwundenen Schiffs vergessen */
+function forgetShip(g: Game, id: number) {
+  const S = st(g);
+  S.shipChase.delete(id); S.white.delete(id); S.flee.delete(id); S.patrol.delete(id); S.lastHit.delete(id);
 }
 
 /** nach einem Küstenüberfall der Piraten: 10 Minuten Ruhe für die ganze Insel, Piraten segeln davon */
@@ -257,9 +374,11 @@ function destroy(g: Game, b: Building, by: number) {
     const l = g.lagerOf(owner, b.island);
     if (l && !rest) for (const k of Object.keys(l) as (keyof typeof l)[]) l[k] = 0;
   }
+  const where = atB(g, b);
   g.forceRemove(b);
+  st(g).lastHit.delete(b.id);
   if (byPirate) restIsland(g, owner, b.island, by);
-  if (owner === HUMAN) g.ev.message(byPirate ? `🏴‍☠️ Piraten haben ein Gebäude zerstört: ${BUILDINGS[b.type].name}! ${pirateAdvice(g)}` : `🔥 ${BUILDINGS[b.type].name} zerstört`, 'bad');
+  if (owner === HUMAN) g.ev.message(byPirate ? `🏴‍☠️ Piraten haben ein Gebäude zerstört: ${BUILDINGS[b.type].name}! ${pirateAdvice(g)}` : `🔥 ${BUILDINGS[b.type].name} zerstört`, 'bad', where);
   checkDefeat(g, owner, by);
 }
 
@@ -291,14 +410,15 @@ function conquer(g: Game, b: Building, by: number) {
   g.ev.changed(b);
   g.ev.roads();
   const name = BUILDINGS[b.type].name;
-  if (by === HUMAN) g.ev.message(`🚩 ${name} von ${g.players[old].name} erobert!`, 'good');
-  else if (old === HUMAN) g.ev.message(`🚩 ${g.players[by].name} hat ${b.type === 'kontor' ? 'dein Kontor' : 'deinen Marktplatz'} erobert!`, 'bad');
+  if (by === HUMAN) g.ev.message(`🚩 ${name} von ${g.players[old].name} erobert!`, 'good', atB(g, b));
+  else if (old === HUMAN) g.ev.message(`🚩 ${g.players[by].name} hat ${b.type === 'kontor' ? 'dein Kontor' : 'deinen Marktplatz'} erobert!`, 'bad', atB(g, b));
   checkDefeat(g, old, by);
 }
 
 function checkDefeat(g: Game, owner: number, by: number) {
   const p = g.players[owner];
-  if (!p || p.pirate || p.defeated) return;
+  // Piraten, Händler und Ureinwohner werden nicht „besiegt“ (kein Triumphbogen)
+  if (!p || p.pirate || p.trader || p.natives || p.defeated) return;
   if (g.buildings.some((b) => b.owner === owner) || g.ships.some((s) => s.owner === owner)) return;
   p.defeated = true;
   p.warnAt = undefined;
@@ -373,7 +493,7 @@ function tickTraining(g: Game, b: Building, dt: number) {
     const p = freeSpot(g, cx, cy, Math.ceil(BUILDINGS[b.type].size / 2) + 1);
     if (!p) { b.train.push({ type: j.type, t: 3 }); continue; }
     spawnUnit(g, j.type, b.owner, p[0], p[1]);
-    if (b.owner === HUMAN) g.ev.message(`${UNITS[j.type].icon} ${UNITS[j.type].name} ausgebildet`, 'good');
+    if (b.owner === HUMAN) g.ev.message(`${UNITS[j.type].icon} ${UNITS[j.type].name} ausgebildet`, 'good', at(p[0] + 0.5, p[1] + 0.5));
   }
 }
 
@@ -396,42 +516,200 @@ function costFn(g: Game, owner: number) {
   };
 }
 
-function pathTo(g: Game, u: Unit, tx: number, ty: number): boolean {
-  const gx = Math.floor(tx), gy = Math.floor(ty);
-  if (!g.inMap(gx, gy)) return false;
-  const p = findLandPath(g.size, costFn(g, u.owner), Math.floor(u.x), Math.floor(u.y), gx, gy);
-  u.goal = [tx, ty];
-  if (!p) { u.path = []; return false; }
-  u.path = p;
-  return true;
+/**
+ * Begehbare Gebiete: zusammenhängendes Land ohne Berge bekommt eine Nummer (-1 = Wasser oder Berg).
+ * Gebäude zählen nicht mit (feindliche lassen sich einreißen, eigene haben Tore). Liegen Start und Ziel in
+ * verschiedenen Gebieten (z. B. auf zwei Inseln), braucht es gar keine Wegsuche. Neu bei geändertem g.buildVersion.
+ */
+function regions(g: Game): Int32Array {
+  const S = st(g);
+  if (S.region && S.region.ver === g.buildVersion && S.region.size === g.size) return S.region.id;
+  const N = g.size, NN = N * N;
+  const id = S.region && S.region.size === N ? S.region.id : new Int32Array(NN);
+  id.fill(-1);
+  const q = new Int32Array(NN);
+  const land = (k: number) => { const t = g.tiles[k]; return t !== T.Wasser && t !== T.Berg; };
+  let n = 0;
+  for (let k = 0; k < NN; k++) {
+    if (id[k] !== -1 || !land(k)) continue;
+    let h = 0, e = 0;
+    q[e++] = k; id[k] = n;
+    while (h < e) {
+      const c = q[h++], x = c % N;
+      if (x > 0 && id[c - 1] === -1 && land(c - 1)) { id[c - 1] = n; q[e++] = c - 1; }
+      if (x < N - 1 && id[c + 1] === -1 && land(c + 1)) { id[c + 1] = n; q[e++] = c + 1; }
+      if (c >= N && id[c - N] === -1 && land(c - N)) { id[c - N] = n; q[e++] = c - N; }
+      if (c + N < NN && id[c + N] === -1 && land(c + N)) { id[c + N] = n; q[e++] = c + N; }
+    }
+    n++;
+  }
+  S.region = { ver: g.buildVersion, size: N, id };
+  return id;
 }
 
-/** Soldaten in Formation an einen Ort schicken */
-export function orderMove(g: Game, units: Unit[], x: number, y: number): number {
+/** Liegen beide Felder sicher in verschiedenen begehbaren Gebieten? */
+function apart(g: Game, k0: number, k1: number): boolean {
+  const r = regions(g);
+  return r[k0] >= 0 && r[k1] >= 0 && r[k0] !== r[k1];
+}
+
+/**
+ * Weg für einen Soldaten suchen. self = selbst gewähltes Ziel (kleinere Suche).
+ * Ergebnis: 'ok' = Weg (oder ein Stück davon) gefunden, 'none' = kein Weg, 'wait' = dieses Ziel wurde eben
+ * vergeblich oder nur zum Teil gesucht – erst nach einigen Sekunden erneut (spart Rechenzeit im Gefecht).
+ */
+function pathTo(g: Game, u: Unit, tx: number, ty: number, self = false): 'ok' | 'none' | 'wait' {
+  const gx = Math.floor(tx), gy = Math.floor(ty);
+  if (!g.inMap(gx, gy)) return 'none';
+  const S = st(g);
+  u.goal = [tx, ty];
+  const sx = Math.floor(u.x), sy = Math.floor(u.y);
+  // andere Insel (oder hinter Bergen): sofort aufgeben, ganz ohne Suche
+  if (apart(g, g.idx(sx, sy), g.idx(gx, gy))) { u.path = []; return 'none'; }
+  const np = S.noPath.get(u.id);
+  if (np && np.until > g.time && Math.hypot(np.x - tx, np.y - ty) < 1.5) return 'wait';
+  S.budget--;
+  const p = findLandPath(g.size, costFn(g, u.owner), sx, sy, gx, gy, self ? SELF_NODES : 8000);
+  if (!p) { u.path = []; S.noPath.set(u.id, { until: g.time + NO_PATH_WAIT, x: tx, y: ty }); return 'none'; }
+  u.path = p;
+  // nur ein Stück des Wegs gefunden (Ziel zu weit oder versperrt): erst nach einer Weile wieder ganz suchen
+  const end = p.length ? p[p.length - 1] : [sx + 0.5, sy + 0.5];
+  if (Math.hypot(end[0] - (gx + 0.5), end[1] - (gy + 0.5)) > 1.5) S.noPath.set(u.id, { until: g.time + NO_PATH_WAIT, x: tx, y: ty });
+  else S.noPath.delete(u.id);
+  return 'ok';
+}
+
+/** darf in diesem Rechenschritt noch ein Weg gesucht werden? */
+const mayPlan = (g: Game) => st(g).budget > 0;
+
+/** Aufstellung beim Laufbefehl: Reihe (quer zur Laufrichtung) oder Block */
+export type Aufstellung = 'reihe' | 'block';
+
+/** Reihenfolge in der Aufstellung: Nahkämpfer vorn, dann Musketiere, Kanoniere hinten */
+const RANK: Record<UnitType, number> = { infanterie: 0, reiter: 0, musketier: 1, kanonier: 2 };
+
+/**
+ * Plätze der Aufstellung um den Zielpunkt: erste Reihe am Ziel, weitere Reihen dahinter (vom Ziel aus
+ * gesehen Richtung Gruppe). Reihe = eine breite Linie (ab 12 Soldaten zwei Linien), Block = fast quadratisch.
+ */
+export function formationSlots(n: number, cx: number, cy: number, x: number, y: number, form: Aufstellung): [number, number][] {
+  let dx = x - cx, dy = y - cy;
+  const d = Math.hypot(dx, dy);
+  if (d < 0.5) { dx = 0; dy = 1; } else { dx /= d; dy /= d; }
+  const px = -dy, py = dx; // quer zur Laufrichtung
+  const cols = form === 'reihe' ? Math.min(n, 12) : Math.ceil(Math.sqrt(n));
+  const out: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const row = Math.floor(i / cols), col = i % cols;
+    const inRow = Math.min(cols, n - row * cols);
+    const lat = col - (inRow - 1) / 2;
+    out.push([x + px * lat - dx * row, y + py * lat - dy * row]);
+  }
+  return out;
+}
+
+/**
+ * Soldaten an einen Ort schicken, in Aufstellung: 'block' (Standard) oder 'reihe' quer zur Laufrichtung.
+ * Nahkämpfer stehen vorn, Kanoniere hinten. Rückgabe: wie viele losgehen.
+ */
+export function orderMove(g: Game, units: Unit[], x: number, y: number, form: Aufstellung = 'block'): number {
+  const land = units.filter((u) => u.ship === undefined);
+  if (!land.length) return 0;
+  let cx = 0, cy = 0;
+  for (const u of land) { cx += u.x; cy += u.y; }
+  cx /= land.length; cy /= land.length;
+  const sorted = [...land].sort((a, b) => RANK[a.type] - RANK[b.type]);
+  const slots = land.length === 1 ? [[x, y] as [number, number]] : formationSlots(land.length, cx, cy, x, y, form);
   let ok = 0;
   const taken = new Set<number>();
-  for (const u of units) {
-    if (u.ship !== undefined) continue;
-    u.target = undefined; u.ordered = false; u.board = undefined;
-    const p = units.length === 1 ? [Math.floor(x), Math.floor(y)] as [number, number] : freeSpot(g, x, y, 0, taken) ?? [Math.floor(x), Math.floor(y)];
+  sorted.forEach((u, i) => {
+    u.target = undefined; u.ordered = false; u.board = undefined; u.then = undefined; u.fell = undefined; u.chop = undefined;
+    const [sx, sy] = slots[i];
+    const p = land.length === 1 ? [Math.floor(x), Math.floor(y)] as [number, number] : freeSpot(g, sx, sy, 0, taken) ?? [Math.floor(x), Math.floor(y)];
+    st(g).noPath.delete(u.id);
     // der erste sucht sofort (für die Rückmeldung), die anderen nacheinander – kein Stocken bei großen Gruppen
-    if (ok === 0) { if (pathTo(g, u, p[0] + 0.5, p[1] + 0.5)) ok++; }
+    if (ok === 0) { if (pathTo(g, u, p[0] + 0.5, p[1] + 0.5) === 'ok') ok++; }
     else { u.path = []; u.dest = [p[0] + 0.5, p[1] + 0.5]; u.repath = ok * 0.03; ok++; }
-  }
+  });
   return ok;
 }
 
 export function orderAttack(g: Game, units: Unit[], targetId: number) {
-  for (const u of units) { if (u.ship !== undefined) continue; u.dest = undefined; u.target = targetId; u.ordered = true; u.board = undefined; u.path = []; u.goal = undefined; u.repath = 0; }
+  let i = 0;
+  for (const u of units) {
+    if (u.ship !== undefined) continue;
+    u.dest = undefined; u.target = targetId; u.ordered = true; u.board = undefined; u.path = []; u.goal = undefined; u.fell = undefined; u.chop = undefined;
+    // Wegsuche zeitlich versetzt (große Gruppen stocken nicht)
+    u.repath = (i++ % 10) * 0.05;
+    st(g).noPath.delete(u.id);
+  }
 }
 
 export function orderBoard(g: Game, units: Unit[], s: Ship) {
-  for (const u of units) { if (u.ship !== undefined) continue; u.dest = undefined; u.board = s.id; u.target = undefined; u.ordered = false; u.path = []; u.repath = 0; }
+  for (const u of units) { if (u.ship !== undefined) continue; u.dest = undefined; u.board = s.id; u.target = undefined; u.ordered = false; u.path = []; u.repath = 0; u.fell = undefined; u.chop = undefined; st(g).noPath.delete(u.id); }
+}
+
+/** Bäume fällen: die Soldaten laufen zum Waldfeld k (und zu Waldfeldern daneben), hacken ≈ 4 s, danach ist dort Gras. */
+export function orderFell(g: Game, units: Unit[], k: number): number {
+  if (k < 0 || k >= g.tiles.length || g.tiles[k] !== T.Wald) return 0;
+  const N = g.size, kx = k % N, ky = Math.floor(k / N);
+  // Waldfelder um k, die nächsten zuerst (jeder Soldat bekommt möglichst sein eigenes)
+  const woods: number[] = [];
+  for (let r = 0; r <= 3; r++) for (let y = ky - r; y <= ky + r; y++) for (let x = kx - r; x <= kx + r; x++) {
+    if (Math.max(Math.abs(x - kx), Math.abs(y - ky)) !== r || !g.inMap(x, y)) continue;
+    const j = g.idx(x, y);
+    if (g.tiles[j] === T.Wald && !g.occ[j]) woods.push(j);
+  }
+  let n = 0;
+  for (const u of units) {
+    // Kanoniere haben keine Axt dabei
+    if (u.ship !== undefined || u.type === 'kanonier') continue;
+    u.target = undefined; u.ordered = false; u.board = undefined; u.dest = undefined; u.then = undefined; u.path = []; u.goal = undefined;
+    u.fell = woods[n % woods.length] ?? k; u.chop = 0; u.repath = (n % 10) * 0.05;
+    st(g).noPath.delete(u.id);
+    n++;
+  }
+  return n;
+}
+
+/** Ausmustern: Soldaten verlassen still das Heer (kein Kampf, kein Sterben) – ihr Sold endet. */
+export function dismiss(g: Game, units: Unit[]): number {
+  const S = st(g);
+  let n = 0;
+  for (const u of units) {
+    if (!g.units.includes(u)) continue;
+    g.units = g.units.filter((o) => o !== u);
+    if (u.ship !== undefined) { const s = g.ships.find((x) => x.id === u.ship); if (s?.troops) s.troops = s.troops.filter((i) => i !== u.id); }
+    S.noPath.delete(u.id);
+    n++;
+  }
+  return n;
 }
 
 export function shipAttack(g: Game, s: Ship, targetId: number) {
   s.target = targetId;
-  st(g).shipChase.set(s.id, { ordered: true, repath: 0 });
+  const S = st(g);
+  // wer angreift, holt die weiße Flagge ein
+  S.white.delete(s.id);
+  S.shipChase.set(s.id, { ordered: true, repath: 0 });
+}
+
+/**
+ * Patrouille: das Schiff pendelt zwischen seinem jetzigen Ort und (x, y) und greift unterwegs Feinde in
+ * Reichweite an. Ein anderer Fahrbefehl beendet sie. Rückgabe: false, wenn es dorthin keinen Weg gibt.
+ */
+export function patrol(g: Game, s: Ship, x: number, y: number): boolean {
+  const from: [number, number] = [s.x, s.y];
+  if (!g.moveShip(s, x, y)) return false;
+  s.patrol = [from[0], from[1], x, y];
+  st(g).patrol.set(s.id, { leg: 1, chase: false, repath: 0 });
+  return true;
+}
+
+/** Patrouille beenden (das Schiff fährt die laufende Strecke zu Ende) */
+export function stopPatrol(g: Game, s: Ship) {
+  s.patrol = undefined;
+  st(g).patrol.delete(s.id);
 }
 
 /** Truppen an der nahen Küste absetzen */
@@ -489,7 +767,7 @@ function acquire(g: Game, owner: number, x: number, y: number, r: number, opts: 
     if (d < bd) { bd = d; best = { kind: 'unit', u, owner: u.owner }; }
   }
   if (opts.ships) for (const s of g.ships) {
-    if (!atWar(g, owner, s.owner) || safe(s)) continue;
+    if (!atWar(g, owner, s.owner) || safe(s) || flagProtects(g, s, owner)) continue;
     const d = Math.hypot(s.x - x, s.y - y);
     if (d < bd) { bd = d; best = { kind: 'ship', s, owner: s.owner }; }
   }
@@ -506,6 +784,47 @@ function acquire(g: Game, owner: number, x: number, y: number, r: number, opts: 
 
 function shotKind(type: UnitType): ShotKind {
   return type === 'musketier' ? 'muskete' : type === 'kanonier' ? 'kanone' : 'schwert';
+}
+
+/**
+ * Bäume fällen: hinlaufen, dann ≈ 4 s hacken (ein Hieb pro Sekunde), danach wird das Feld Gras.
+ * true = der Soldat hackt gerade (nicht weiterlaufen).
+ */
+function tickFell(g: Game, u: Unit, dt: number): boolean {
+  const k = u.fell!;
+  if (g.tiles[k] !== T.Wald || g.occ[k]) { u.fell = undefined; u.chop = undefined; return false; }
+  const N = g.size, fx = (k % N) + 0.5, fy = Math.floor(k / N) + 0.5;
+  const d = Math.hypot(fx - u.x, fy - u.y);
+  if (d <= 1.25) {
+    u.path = []; u.goal = undefined;
+    u.dir = Math.atan2(fx - u.x, fy - u.y);
+    const before = u.chop ?? 0;
+    u.chop = before + dt;
+    // ein Axthieb je Sekunde: Ausholbewegung und Klang
+    if ((Math.floor(u.chop) !== Math.floor(before) || before === 0) && u.chop < FELL_TIME) { u.atk = g.time; g.ev.chop?.(u); }
+    if (u.chop >= FELL_TIME) {
+      u.fell = undefined; u.chop = undefined;
+      g.ev.felled(k);
+      g.tiles[k] = T.Gras;
+      g.trees[k] = 0; g.wild[k] = 0; g.weide[k] = 0;
+      g.buildVersion++;
+      g.ev.trees();
+    }
+    return true;
+  }
+  if (!u.path.length) {
+    u.repath = (u.repath ?? 0) - dt;
+    if (u.repath <= 0 && mayPlan(g)) {
+      u.repath = 1.5;
+      const r = pathTo(g, u, fx, fy);
+      if (r === 'none' || (r === 'ok' && !u.path.length)) {
+        u.fell = undefined; u.chop = undefined;
+        const S = st(g);
+        if (u.owner === HUMAN && g.time - S.fellMsgT > 5) { S.fellMsgT = g.time; g.ev.message('Die Soldaten kommen nicht zu den Bäumen', 'bad', at(fx, fy)); }
+      }
+    }
+  }
+  return false;
 }
 
 function tickUnit(g: Game, u: Unit, dt: number) {
@@ -528,15 +847,15 @@ function tickUnit(g: Game, u: Unit, dt: number) {
       return;
     }
     u.repath = (u.repath ?? 0) - dt;
-    if (!u.path.length && u.repath <= 0) {
+    if (!u.path.length && u.repath <= 0 && mayPlan(g)) {
       u.repath = 2;
       const p = freeSpot(g, s.x, s.y, 1);
-      if (!p || !pathTo(g, u, p[0] + 0.5, p[1] + 0.5)) { u.board = undefined; if (u.owner === HUMAN) g.ev.message('Die Soldaten kommen nicht zum Schiff', 'bad'); return; }
+      if (!p || pathTo(g, u, p[0] + 0.5, p[1] + 0.5) === 'none') { u.board = undefined; if (u.owner === HUMAN) g.ev.message('Die Soldaten kommen nicht zum Schiff', 'bad', at(s.x, s.y)); return; }
     }
   } else {
     // Ziel prüfen
     let t = u.target !== undefined ? resolve(g, u.target) : undefined;
-    if (t && (!atWar(g, u.owner, t.owner) || (t.kind === 'ship' && u.type !== 'kanonier'))) t = undefined;
+    if (t && (!hostile(g, u.owner, t.owner, u.ordered) || (t.kind === 'ship' && u.type !== 'kanonier'))) t = undefined;
     if (!t) {
       u.target = undefined; u.ordered = false;
       // nach dem Abwehrkampf zum befohlenen Ziel zurück
@@ -547,6 +866,8 @@ function tickUnit(g: Game, u: Unit, dt: number) {
       const foe = acquire(g, u.owner, u.x, u.y, Math.max(d.range, 1.5) + 1.5, { units: true, island: g.islandOf[g.idx(Math.floor(u.x), Math.floor(u.y))] });
       if (foe && foe.kind === 'unit') { if (u.ordered) u.then = t.b.id; u.target = foe.u.id; u.ordered = false; t = foe; }
     }
+    // Bäume fällen (nur ohne Kampf)
+    if (!t && u.fell !== undefined) { if (tickFell(g, u, dt)) return; }
     // selbst Feinde suchen, wenn untätig
     if (!t && !u.path.length) {
       t = acquire(g, u.owner, u.x, u.y, AGGRO + (d.range > 2 ? d.range - 2 : 0), { buildings: true, ships: u.type === 'kanonier', island: g.islandOf[g.idx(Math.floor(u.x), Math.floor(u.y))] });
@@ -563,18 +884,20 @@ function tickUnit(g: Game, u: Unit, dt: number) {
         if (u.cd <= 0) {
           u.cd = d.interval;
           u.atk = g.time;
-          const hit = ranged ? Math.random() < 0.85 : true;
+          // Fehlschüsse: Schaden je Treffer durch die Trefferchance geteilt (im Mittel wie im Vorbild)
+          const hit = ranged ? g.rng() < HIT.feld : true;
           g.ev.shot(shotKind(u.type), u.x, u.y, tx, ty, hit);
-          if (hit) damage(g, t, d.str, u.owner, u.x, u.y);
+          if (hit) damage(g, t, ranged ? d.str / HIT.feld : d.str, u.owner, u.x, u.y, u.type === 'kanonier');
         }
         return;
       }
       // hinlaufen (Weg neu berechnen, wenn das Ziel sich bewegt hat)
       u.repath = (u.repath ?? 0) - dt;
       const moved = !u.goal || Math.hypot(u.goal[0] - tx, u.goal[1] - ty) > 1.5;
-      if ((moved || !u.path.length) && u.repath <= 0) {
-        u.repath = 1 + Math.random() * 0.5;
-        if (!pathTo(g, u, tx, ty) || !u.path.length) {
+      if ((moved || !u.path.length) && u.repath <= 0 && mayPlan(g)) {
+        u.repath = 1 + g.rng() * 0.5;
+        const r = pathTo(g, u, tx, ty, !u.ordered);
+        if (r === 'none' || (r === 'ok' && !u.path.length)) {
           // kein Weg dorthin (andere Insel, eingemauert): Ziel aufgeben
           if (!u.ordered || dd > 3) { u.target = undefined; u.ordered = false; u.then = undefined; }
         }
@@ -584,7 +907,7 @@ function tickUnit(g: Game, u: Unit, dt: number) {
   // gestaffelter Laufbefehl
   if (u.dest && u.target === undefined && u.board === undefined && !u.path.length) {
     u.repath = (u.repath ?? 0) - dt;
-    if (u.repath <= 0) { const [dx, dy] = u.dest; u.dest = undefined; pathTo(g, u, dx, dy); }
+    if (u.repath <= 0 && mayPlan(g)) { const [dx, dy] = u.dest; u.dest = undefined; pathTo(g, u, dx, dy); }
   }
   // laufen
   let step = d.speed * dt;
@@ -615,26 +938,43 @@ function tickUnit(g: Game, u: Unit, dt: number) {
 
 /** stehende Soldaten nicht übereinander: einer macht ein paar Schritte zur Seite (läuft sichtbar, statt zu rutschen) */
 function separate(g: Game) {
-  const land = g.units.filter((u) => u.ship === undefined && !u.path.length && u.target === undefined && !u.dest);
+  const land = g.units.filter((u) => u.ship === undefined && !u.path.length && u.target === undefined && !u.dest && u.fell === undefined);
+  if (land.length < 2) return;
+  // Raster je Feld: nur Nachbarn in den umliegenden Feldern vergleichen (statt jeder mit jedem)
+  const N = g.size;
+  const cell = new Map<number, Unit[]>();
+  const key = (x: number, y: number) => Math.floor(y) * N + Math.floor(x);
+  for (const u of land) { const k = key(u.x, u.y); const l = cell.get(k); if (l) l.push(u); else cell.set(k, [u]); }
+  const near = (x: number, y: number, r: number, skip: Unit) => {
+    const cx = Math.floor(x), cy = Math.floor(y);
+    for (let j = -1; j <= 1; j++) for (let i = -1; i <= 1; i++) {
+      const l = cell.get((cy + j) * N + cx + i);
+      if (l) for (const o of l) if (o !== skip && Math.hypot(o.x - x, o.y - y) < r) return o;
+    }
+    return undefined;
+  };
+  const order = new Map<Unit, number>();
+  land.forEach((u, i) => order.set(u, i));
   const taken = new Set<number>();
-  for (let i = 0; i < land.length; i++) for (let j = i + 1; j < land.length; j++) {
-    const a = land[i], b = land[j];
-    if (b.path.length || a.path.length) continue;
-    const d = Math.hypot(b.x - a.x, b.y - a.y);
-    if (d > 0.4) continue;
+  for (const b of land) {
+    if (b.path.length) continue;
+    // nur ausweichen, wenn ein früherer (noch stehender) Soldat zu nah steht
+    const cx = Math.floor(b.x), cy = Math.floor(b.y);
+    let crowded = false;
+    for (let j = -1; j <= 1 && !crowded; j++) for (let i = -1; i <= 1 && !crowded; i++) {
+      const l = cell.get((cy + j) * N + cx + i);
+      if (l) for (const a of l) if (a !== b && order.get(a)! < order.get(b)! && !a.path.length && Math.hypot(b.x - a.x, b.y - a.y) <= 0.4) { crowded = true; break; }
+    }
+    if (!crowded) continue;
     // freien Platz in der Nähe suchen (Feldmitte oder Viertelpunkt eines freien Nachbarfelds)
-    const spots: [number, number][] = [];
     for (const [ox, oy] of [[0.3, 0], [-0.3, 0], [0, 0.3], [0, -0.3], [0.8, 0.8], [-0.8, 0.8], [0.8, -0.8], [-0.8, -0.8], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
       const x = b.x + ox, y = b.y + oy;
-      const k = g.idx(Math.floor(x), Math.floor(y));
-      if (!walkableOrSame(g, b, x, y) || taken.has(Math.round(x * 4) * 10000 + Math.round(y * 4))) continue;
-      if (land.some((o) => o !== b && Math.hypot(o.x - x, o.y - y) < 0.45)) continue;
-      spots.push([x, y]); void k;
+      const tk = Math.round(x * 4) * 10000 + Math.round(y * 4);
+      if (!walkableOrSame(g, b, x, y) || taken.has(tk) || near(x, y, 0.45, b)) continue;
+      taken.add(tk);
+      b.path = [[x, y]];
+      break;
     }
-    if (!spots.length) continue;
-    const [x, y] = spots[0];
-    taken.add(Math.round(x * 4) * 10000 + Math.round(y * 4));
-    b.path = [[x, y]];
   }
 }
 function walkableOrSame(g: Game, u: Unit, x: number, y: number) {
@@ -651,9 +991,9 @@ function tickTower(g: Game, b: Building, dt: number) {
   if (!t) { b.cd = 0.5; return; }
   b.cd = tw.interval;
   const [tx, ty] = targetPos(g, t, cx, cy);
-  const hit = Math.random() < 0.8;
+  const hit = g.rng() < HIT.turm;
   g.ev.shot('turm', cx, cy, tx, ty, hit);
-  if (hit) damage(g, t, tw.str, b.owner, cx, cy);
+  if (hit) damage(g, t, tw.str / HIT.turm, b.owner, cx, cy, true);
 }
 
 function tickShipCombat(g: Game, s: Ship, dt: number) {
@@ -661,38 +1001,94 @@ function tickShipCombat(g: Game, s: Ship, dt: number) {
   s.hp ??= max;
   // Ausbessern an der eigenen Werft (Holz aus dem Lager)
   const S = st(g);
-  if (s.hp < max && g.time - (S.lastHit.get(s.id) ?? -99) > 10 && !s.path.length) {
+  const calm = g.time - (S.lastHit.get(s.id) ?? -99);
+  if (s.hp < max && calm > 10 && !s.path.length) {
     const w = g.buildings.find((b) => (b.type === 'werft' || b.type === 'grosswerft') && b.owner === s.owner && Math.hypot(g.center(b)[0] - s.x, g.center(b)[1] - s.y) < 7);
     const l = w ? g.lagerOf(s.owner, w.island) : null;
     if (l && l.holz >= 0.1) { const h = Math.min(max - s.hp, 2 * dt); s.hp += h; l.holz = Math.max(0, l.holz - h / 10); }
   }
+  const pirate = !!g.players[s.owner]?.pirate;
+  // Piraten fliehen bei schwerem Schaden und kommen erst erholt wieder (sie flicken ihr Schiff auf See)
+  if (pirate) {
+    if (!S.flee.has(s.id) && s.hp < max * PIRATE_FLEE) {
+      S.flee.add(s.id);
+      s.target = undefined; S.shipChase.delete(s.id);
+      sailAway(g, s);
+      if (g.seen[g.idx(Math.floor(s.x), Math.floor(s.y))]) g.ev.message('🏴‍☠️ Das Piratenschiff dreht schwer beschädigt ab!', 'good', at(s.x, s.y));
+    }
+    if (S.flee.has(s.id)) {
+      if (calm > 20) s.hp = Math.min(max, s.hp + 0.3 * dt);
+      if (s.hp >= max * PIRATE_BACK) S.flee.delete(s.id);
+      else { s.target = undefined; return; }
+    }
+  }
+  tickPatrol(g, s, dt);
   if (!s.guns) { s.target = undefined; return; }
   s.cd = Math.max(0, (s.cd ?? 0) - dt);
   const ch = S.shipChase.get(s.id) ?? { ordered: false, repath: 0 };
+  const white = S.white.has(s.id);
   let t = s.target !== undefined ? resolve(g, s.target) : undefined;
-  if (t && !atWar(g, s.owner, t.owner)) t = undefined;
+  if (t && !hostile(g, s.owner, t.owner, ch.ordered)) t = undefined;
+  // weiße Flagge: Piraten und Computergegner lassen ab (verfolgende Piraten segeln davon)
+  if (t && t.kind === 'ship' && flagProtects(g, t.s, s.owner)) { t = undefined; if (pirate) sailAway(g, s); }
   if (!t) {
+    const pt = S.patrol.get(s.id);
+    // Verfolgung auf Patrouille vorbei: Kurs zum Feind abbrechen, die Patrouille geht weiter
+    if (pt && (pt.chase || ch.ordered) && s.path.length) { s.path = []; s.goal = undefined; }
     s.target = undefined; ch.ordered = false;
-    t = acquire(g, s.owner, s.x, s.y, SHIP_GUN.range + 1, { ships: true, units: false });
+    // eigene Kanonen schießen unter weißer Flagge nicht von selbst
+    if (!white) t = acquire(g, s.owner, s.x, s.y, SHIP_GUN.range + (s.patrol ? 3 : 1), { ships: true, units: false });
     if (t) s.target = t.kind === 'ship' ? t.s.id : undefined;
+    if (pt) pt.chase = !!t;
   }
   S.shipChase.set(s.id, ch);
   if (!t) return;
   const [tx, ty] = targetPos(g, t, s.x, s.y);
   const dd = Math.hypot(tx - s.x, ty - s.y);
+  const pt = S.patrol.get(s.id);
   if (dd <= SHIP_GUN.range) {
-    if (ch.ordered && s.path.length && dd < SHIP_GUN.range - 1.5) s.path = [];
+    if ((ch.ordered || pt?.chase) && s.path.length && dd < SHIP_GUN.range - 1.5) s.path = [];
     if (s.cd <= 0) {
       s.cd = SHIP_GUN.interval;
       s.shotT = g.time;
-      const hit = Math.random() < 0.75;
+      const hit = g.rng() < HIT.schiff;
       g.ev.shot('schiff', s.x, s.y, tx, ty, hit);
-      if (hit) damage(g, t, s.guns * SHIP_GUN.dmg, s.owner, s.x, s.y);
+      if (hit) damage(g, t, (s.guns * SHIP_GUN.dmg) / HIT.schiff, s.owner, s.x, s.y, true);
     }
-  } else if (ch.ordered) {
+  } else if (ch.ordered || pt?.chase) {
+    // Patrouille verfolgt nur in der Nähe (sonst weiter auf ihrer Strecke)
+    if (!ch.ordered && pt && dd > SHIP_GUN.range + 5) { s.target = undefined; pt.chase = false; s.path = []; return; }
     ch.repath -= dt;
     if (ch.repath <= 0) { ch.repath = 2.5; g.moveShip(s, tx, ty); }
   }
+}
+
+/** Patrouille: zwischen den beiden Punkten pendeln; ein anderer Fahrbefehl des Spielers beendet sie */
+function tickPatrol(g: Game, s: Ship, dt: number) {
+  const S = st(g);
+  if (!s.patrol) { S.patrol.delete(s.id); return; }
+  let pt = S.patrol.get(s.id);
+  // nach dem Laden: Richtung aus der Lage ableiten
+  if (!pt) {
+    const [x1, y1, x2, y2] = s.patrol;
+    pt = { leg: Math.hypot(s.x - x1, s.y - y1) < Math.hypot(s.x - x2, s.y - y2) ? 1 : 0, chase: false, repath: 0 };
+    S.patrol.set(s.id, pt);
+  }
+  const [x1, y1, x2, y2] = s.patrol;
+  // Fahrt zu einem anderen Ziel (nicht beim Verfolgen) = neuer Befehl: Patrouille endet
+  if (!pt.chase && !S.shipChase.get(s.id)?.ordered && s.goal && s.path.length) {
+    const near = (x: number, y: number) => Math.hypot(s.goal![0] - x, s.goal![1] - y) < 1;
+    if (!near(x1, y1) && !near(x2, y2)) { stopPatrol(g, s); return; }
+  }
+  if (s.target !== undefined || s.path.length) return;
+  pt.repath -= dt;
+  if (pt.repath > 0) return;
+  // am Ende angekommen (oder nach einer Verfolgung): zum anderen Punkt bzw. weiter zum Ziel der Strecke
+  const [ex, ey] = pt.leg ? [x2, y2] : [x1, y1];
+  if (Math.hypot(ex - s.x, ey - s.y) < 1.5) pt.leg = pt.leg ? 0 : 1;
+  const [nx, ny] = pt.leg ? [x2, y2] : [x1, y1];
+  // nicht in jedem Rechenschritt neu planen (Wegsuche auf See ist teuer)
+  pt.repath = g.moveShip(s, nx, ny) ? 1 : 5;
 }
 
 // ---------- Piraten ----------
@@ -700,7 +1096,7 @@ function tickShipCombat(g: Game, s: Ship, dt: number) {
 /** nach einem Überfall davonsegeln */
 function sailAway(g: Game, s: Ship) {
   for (let i = 0; i < 20; i++) {
-    const a = Math.random() * Math.PI * 2;
+    const a = g.rng() * Math.PI * 2;
     const x = Math.floor(s.x + Math.cos(a) * 40), y = Math.floor(s.y + Math.sin(a) * 40);
     if (g.inMap(x, y) && g.isWater(g.idx(x, y)) && g.moveShip(s, x + 0.5, y + 0.5)) return;
   }
@@ -716,7 +1112,7 @@ function tickPirates(g: Game, dt: number) {
       g.pirateT = PIRATE_RESPAWN;
       // weit weg von allen Kontoren auftauchen
       for (let i = 0; i < 200; i++) {
-        const x = 5 + Math.floor(Math.random() * (g.size - 10)), y = 5 + Math.floor(Math.random() * (g.size - 10));
+        const x = 5 + Math.floor(g.rng() * (g.size - 10)), y = 5 + Math.floor(g.rng() * (g.size - 10));
         if (!g.isWater(g.idx(x, y))) continue;
         if (g.buildings.some((b) => b.type === 'kontor' && Math.hypot(b.x - x, b.y - y) < 35)) continue;
         g.ships.push({ id: g.nextId++, type: 'pirat' as ShipType, owner: pir.id, name: 'Schwarze Möwe', x: x + 0.5, y: y + 0.5, dir: 0, path: [], slots: [], hp: SHIPS.pirat.hp, guns: SHIPS.pirat.kanonen });
@@ -731,17 +1127,17 @@ function tickPirates(g: Game, dt: number) {
   S.pirateThinkT = 3;
   for (const s of ships) {
     // erst gesichtet → Warnung
-    if (g.seen[g.idx(Math.floor(s.x), Math.floor(s.y))] && !g.pirateSeen) { g.pirateSeen = true; g.ev.message('🏴‍☠️ Piraten gesichtet! Sie überfallen Schiffe. Schutz kannst du im Menü ☰ kaufen.', 'bad'); }
-    if (s.target !== undefined) continue;
+    if (g.seen[g.idx(Math.floor(s.x), Math.floor(s.y))] && !g.pirateSeen) { g.pirateSeen = true; g.ev.message('🏴‍☠️ Piraten gesichtet! Sie überfallen Schiffe. Schutz kannst du im Menü ☰ kaufen, oder hisse die weiße Flagge.', 'bad', at(s.x, s.y)); }
+    if (s.target !== undefined || S.flee.has(s.id)) continue;
     let prey: Ship | undefined, pd = 16;
     for (const o of g.ships) {
-      if (!atWar(g, pir.id, o.owner) || (o.safeUntil ?? 0) > g.time) continue;
+      if (!atWar(g, pir.id, o.owner) || (o.safeUntil ?? 0) > g.time || flagProtects(g, o, pir.id)) continue;
       const d = Math.hypot(o.x - s.x, o.y - s.y);
       if (d < pd) { pd = d; prey = o; }
     }
     if (prey) { shipAttack(g, s, prey.id); continue; }
     // ab und zu eine schlecht bewachte Küste beschießen
-    if (s.target === undefined && g.time > PIRATE_COAST && Math.random() < 0.08) {
+    if (s.target === undefined && g.time > PIRATE_COAST && g.rng() < 0.08) {
       const b = acquire(g, pir.id, s.x, s.y, 30, { buildings: true, units: false });
       // nur Küsten von Spielern, die schon Wachtürme bauen können (und das seit einer Weile)
       const since = b ? g.players[b.owner]?.defendAt : undefined;
@@ -749,7 +1145,7 @@ function tickPirates(g: Game, dt: number) {
     }
     if (!s.path.length && s.target === undefined) {
       for (let i = 0; i < 20; i++) {
-        const x = Math.floor(s.x + (Math.random() - 0.5) * 70), y = Math.floor(s.y + (Math.random() - 0.5) * 70);
+        const x = Math.floor(s.x + (g.rng() - 0.5) * 70), y = Math.floor(s.y + (g.rng() - 0.5) * 70);
         if (g.inMap(x, y) && g.isWater(g.idx(x, y)) && g.moveShip(s, x + 0.5, y + 0.5)) break;
       }
     }
@@ -764,6 +1160,7 @@ function tickAIMilitary(g: Game) {
     if (!p.ai || p.defeated) continue;
     const k = g.kontor(p.id);
     if (!k) { if (p.warnAt !== undefined) g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good'); p.warnAt = undefined; continue; }
+    const kAt = atB(g, k);
     const pop = g.buildings.reduce((n, b) => n + (b.owner === p.id && b.type === 'haus' ? b.residents : 0), 0);
     const mine = g.units.filter((u) => u.owner === p.id);
     const war = atWar(g, p.id, HUMAN);
@@ -772,7 +1169,7 @@ function tickAIMilitary(g: Game) {
     const want = Math.min(16, (war ? 4 : 2) + Math.floor(pop / 120));
     if (mine.length < want && pop > 60 && g.time >= (S.recruitT.get(p.id) ?? 0)) {
       S.recruitT.set(p.id, g.time + (war ? 40 : 75));
-      const type: UnitType = Math.random() < 0.6 ? 'infanterie' : pop > 300 && Math.random() < 0.5 ? 'kanonier' : 'reiter';
+      const type: UnitType = g.rng() < 0.6 ? 'infanterie' : pop > 300 && g.rng() < 0.5 ? 'kanonier' : 'reiter';
       const price = type === 'kanonier' ? 900 : 500;
       const [cx, cy] = g.center(k);
       const spot = freeSpot(g, cx, cy, 3);
@@ -783,7 +1180,7 @@ function tickAIMilitary(g: Game) {
       S.shipT.set(p.id, g.time + 480);
       const [cx, cy] = g.center(k);
       for (let r = 2; r < 8; r++) {
-        const x = Math.floor(cx + (Math.random() - 0.5) * r * 2), y = Math.floor(cy + (Math.random() - 0.5) * r * 2);
+        const x = Math.floor(cx + (g.rng() - 0.5) * r * 2), y = Math.floor(cy + (g.rng() - 0.5) * r * 2);
         if (g.inMap(x, y) && g.isWater(g.idx(x, y))) {
           p.money -= Math.min(3000, Math.max(0, p.money));
           g.ships.push({ id: g.nextId++, type: 'krieg_klein', owner: p.id, name: `${p.name.split(' ')[0]}s Fregatte`, x: x + 0.5, y: y + 0.5, dir: 0, path: [], slots: [{ g: null, n: 0 }, { g: null, n: 0 }, { g: null, n: 0 }], hp: SHIPS.krieg_klein.hp, guns: 8, troops: [] });
@@ -798,17 +1195,17 @@ function tickAIMilitary(g: Game) {
       && g.time - (p.peaceAt?.[HUMAN] ?? -9999) > 900 && strength(g, p.id) > strength(g, HUMAN) * 1.2 + 3;
     if (!ready) {
       // Lage hat sich geändert: Vorwarnung verfällt
-      if (p.warnAt !== undefined && !war) { g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good'); p.calmUntil = g.time + 300; g.players[HUMAN].calmUntil = g.time + 300; }
+      if (p.warnAt !== undefined && !war) { g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good', kAt); p.calmUntil = g.time + 300; g.players[HUMAN].calmUntil = g.time + 300; }
       p.warnAt = undefined;
     } else if (p.warnAt !== undefined) {
       if (g.time >= p.warnAt) { p.warnAt = undefined; declareWar(g, p.id, HUMAN); }
     } else {
       // nie zwei Vorwarnungen gleichzeitig und frühestens 10 Minuten nach der letzten Kriegserklärung
       const busy = g.players.some((o) => o.ai && o !== p && o.warnAt !== undefined) || g.time - (g.players[HUMAN].lastWarAt ?? -9999) < 600 || g.time < (p.calmUntil ?? 0) || g.time < (g.players[HUMAN].calmUntil ?? 0);
-      if (!busy && Math.random() < 0.04) {
+      if (!busy && g.rng() < 0.04) {
         // erst eine Vorwarnung, drei Minuten später der Krieg
         p.warnAt = g.time + 180;
-        g.ev.message(`⚠️ ${p.name} rüstet zum Krieg gegen dich! ${defenseAdvice(g)}`, 'bad');
+        g.ev.message(`⚠️ ${p.name} rüstet zum Krieg gegen dich! ${defenseAdvice(g)}`, 'bad', kAt);
       }
     }
     // Soldaten, die noch an Bord sitzen (z. B. nach dem Laden eines Spielstands): heimfahren und absetzen
@@ -837,7 +1234,7 @@ function raid(g: Game, owner: number, mine: Unit[]) {
   const islandAt = (x: number, y: number) => g.islandOf[g.idx(Math.floor(x), Math.floor(y))];
   const idle = mine.filter((u) => u.ship === undefined && u.target === undefined && !u.path.length && u.board === undefined);
   if (!r) {
-    if (idle.length < 4 || Math.random() > 0.15) return;
+    if (idle.length < 4 || g.rng() > 0.15) return;
     const ship = g.ships.find((s) => s.owner === owner && !s.path.length);
     if (!ship) return;
     const goal = g.buildings.filter((b) => b.owner === HUMAN && (b.type === 'kontor' || b.type === 'markt'))
@@ -888,22 +1285,26 @@ function raid(g: Game, owner: number, mine: Unit[]) {
 export function tickCombat(g: Game, dt: number) {
   ensurePirates(g);
   const S = st(g);
+  S.budget = PATH_BUDGET;
   for (const b of g.buildings) {
     const d = BUILDINGS[b.type];
     if (d.trains) tickTraining(g, b, dt);
     if (d.tower) tickTower(g, b, dt);
-    // Gebäude bessern sich langsam aus, wenn eine Weile Ruhe ist
+    // Gebäude bessern sich langsam aus, wenn eine Weile Ruhe ist – von selbst aber nur bis 75 %
     if (b.hp !== undefined && g.time - (S.lastHit.get(b.id) ?? -99) > 15) {
-      b.hp = Math.min(g.maxHp(b), b.hp + 0.4 * dt);
-      if (b.hp >= g.maxHp(b)) b.hp = undefined;
+      const cap = g.maxHp(b) * SELF_REPAIR;
+      if (b.hp < cap) b.hp = Math.min(cap, b.hp + 0.4 * dt);
     }
   }
+  // Ziele, die es nicht mehr gibt: Laufzeit-Zustand aufräumen (selten)
+  if (S.lastHit.size > 2000) for (const id of S.lastHit.keys()) if (!g.byId.has(id) && !g.ships.some((x) => x.id === id)) S.lastHit.delete(id);
   for (const u of [...g.units]) if (g.units.includes(u)) tickUnit(g, u, dt);
   for (const s of [...g.ships]) if (g.ships.includes(s)) tickShipCombat(g, s, dt);
-  // Soldaten heilen langsam auf eigenem Gebiet, wenn kein Feind nah ist
+  // Soldaten heilen: beim Arzt schnell (auch im Kampf), sonst nur ganz langsam auf eigenem Gebiet ohne Kampf
   for (const u of g.units) {
-    if (u.ship !== undefined || u.target !== undefined || u.hp >= UNITS[u.type].hp) continue;
-    if (g.own[g.idx(Math.floor(u.x), Math.floor(u.y))] === u.owner) u.hp = Math.min(UNITS[u.type].hp, u.hp + 0.15 * dt);
+    if (u.ship !== undefined || u.hp >= UNITS[u.type].hp) continue;
+    const rate = nearDoctor(g, u) ? HEAL_DOCTOR : u.target === undefined && g.own[g.idx(Math.floor(u.x), Math.floor(u.y))] === u.owner ? HEAL_FIELD : 0;
+    if (rate) u.hp = Math.min(UNITS[u.type].hp, u.hp + rate * dt);
   }
   S.sepT += dt;
   if (S.sepT > 0.2) { S.sepT = 0; separate(g); }
@@ -931,7 +1332,7 @@ function rescue(g: Game) {
   for (let i = 0; i < 4; i++) ship.slots.push(START_CARGO[i] ? { g: START_CARGO[i][0], n: START_CARGO[i][1] } : { g: null, n: 0 });
   g.ships.push(ship);
   if (me.money < 300) me.money = 300;
-  g.ev.message('⛵ Ein neues Schiff mit Baumaterial ist angekommen – gründe ein neues Kontor!', 'good');
+  g.ev.message('⛵ Ein neues Schiff mit Baumaterial ist angekommen – gründe ein neues Kontor!', 'good', at(ship.x, ship.y));
 }
 
 /** Nach der Niederlage weiterspielen: Frieden mit allen, neues Schiff */
@@ -947,9 +1348,29 @@ export function restart(g: Game) {
   rescue(g);
 }
 
-/** Unterhalt der Soldaten je Minute */
+/** Ärzte eines Besitzers (Mittelpunkte), zwischengespeichert bis zur nächsten Bauänderung */
+function doctors(g: Game, owner: number): [number, number][] | undefined {
+  const S = st(g);
+  if (!S.doctors || S.doctors.ver !== g.buildVersion || S.doctors.n !== g.buildings.length) {
+    const by = new Map<number, [number, number][]>();
+    for (const b of g.buildings) if (b.type === 'arzt') { let l = by.get(b.owner); if (!l) by.set(b.owner, (l = [])); l.push(g.center(b)); }
+    S.doctors = { ver: g.buildVersion, n: g.buildings.length, by };
+  }
+  return S.doctors.by.get(owner);
+}
+
+/** Steht der Soldat im Umkreis eines eigenen Arztes? (an Land) */
+export function nearDoctor(g: Game, u: Unit): boolean {
+  if (u.ship !== undefined) return false;
+  const l = doctors(g, u.owner);
+  if (!l) return false;
+  const r = BUILDINGS.arzt.radius ?? 16;
+  return l.some(([x, y]) => Math.hypot(x - u.x, y - u.y) <= r);
+}
+
+/** Unterhalt (Sold) der Soldaten je Minute; wer beim eigenen Arzt gepflegt wird, kostet keinen Sold */
 export function unitUpkeep(g: Game, owner: number): number {
   let n = 0;
-  for (const u of g.units) if (u.owner === owner) n += UNITS[u.type].upkeep;
+  for (const u of g.units) if (u.owner === owner && !nearDoctor(g, u)) n += UNITS[u.type].upkeep;
   return n;
 }
