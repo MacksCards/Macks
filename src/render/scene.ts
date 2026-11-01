@@ -1289,10 +1289,14 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     r.pitch = Math.min(1.3, 0.62 + (r.dist - 7) / 63 * 0.5);
     const cp = Math.cos(r.pitch), sp = Math.sin(r.pitch);
     const cx = r.tx + Math.sin(r.yaw) * cp * r.dist, cz = r.tz + Math.cos(r.yaw) * cp * r.dist;
+    // Blickziel: nah herangezoomt auf der Höhe des Geländes (über einem Berg schaut man auf den Berg, nicht
+    // in den Fels darunter); weiter weg sanft zurück auf Meereshöhe, damit das Bild beim Verschieben ruhig bleibt
+    const near = Math.min(1, Math.max(0, (25 - r.dist) / 18));
+    const ty = this.terrain ? LAND_Y + Math.max(0, this.terrain.heightAt(r.tx, r.tz) - LAND_Y) * near : LAND_Y;
     // nah am Hang nie in den Berg tauchen: Kamera bleibt mindestens 1,5 über dem Gelände unter ihr
     const ground = this.terrain ? Math.max(this.terrain.heightAt(cx, cz), this.terrain.heightAt((cx + r.tx) / 2, (cz + r.tz) / 2) - 0.5) : 0;
-    this.camera.position.set(cx, Math.max(LAND_Y + sp * r.dist, ground + 1.5), cz);
-    this.camera.lookAt(r.tx, LAND_Y, r.tz);
+    this.camera.position.set(cx, Math.max(ty + sp * r.dist, ground + 1.5), cz);
+    this.camera.lookAt(r.tx, ty, r.tz);
     this.sky.position.set(r.tx, 0, r.tz);
     // Schattenausschnitt nur in festen Stufen ändern (sonst flimmern die Schatten beim Zoomen)
     const want = Math.min(45, 12 + r.dist * 0.9);

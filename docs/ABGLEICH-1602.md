@@ -86,27 +86,27 @@ Die Prozente sind eine grobe Schätzung: Wie viel vom Spielgefühl von 1602 ist 
 
 | Punkt aus 1602 | 1602 | Neue Ufer | Status |
 |---|---|---|---|
-| Steuersatz | je Stufe einstellbar (Höchstsätze 48 % bis 35 %), Gesichter zeigen die Stimmung; das wichtigste Werkzeug fürs Geld | fest, kein Regler. Entschieden: Regler je Stufe wie 1602 (Paket L2) | ❌ entschieden, noch offen |
-| Steuer je Einwohner | flach: ein Aristokrat zahlt etwa 1,4-mal so viel wie ein Pionier | steil: 6-mal so viel. Pioniere zahlen die Hälfte des Originals, Aristokraten mehr als das Doppelte (nirgends begründet) | 🟡 |
-| Hunger und Unzufriedenheit | Hunger macht unzufrieden, Bewohner ziehen aus, das Haus verfällt | Zufriedenheit, Steuer und Aufstieg sinken. Aber ab den Siedlern zieht wegen Hunger allein niemand aus, und Häuser steigen nie ab | 🟡 |
-| Bankrott | lange tief im Minus (etwa −10 000 Taler): Spiel verloren | Schulden haben keine Folgen außer einer roten Zahl und gesperrten Käufen | ❌ |
-| Einwohner je Betrieb | z. B. Weberei-Kette 283, Weingut 167, Schneiderei 457 Einwohner | bei Luxuswaren, Stoffen und Kleidung nur ¼ bis ⅓ davon (bei Fischerei, Fleischerei und Bäckerei etwa 80–90 %): Der Verbrauch ist 8-mal so schnell, die Herstellung meist nur 2- bis 3-mal. Bei diesen Waren braucht man etwa 3-mal so viele Betriebe | 🟡 |
-| Unterhalt im Betrieb und in Ruhe, Betrieb abschalten | ja (z. B. Weingut 35 im Betrieb, 15 in Ruhe) | ein fester Betrag, nichts lässt sich abschalten; Werften zahlen nur den Ruhebetrag | 🟡 |
-| Baumaterial an Bewohner sperren | Schalter am Kontor | fehlt; mehrere Häuser auf einmal können das knappe Werkzeug und die Steine leerräumen, die man für Betriebe braucht | ❌ |
+| Steuersatz | je Stufe einstellbar (Höchstsätze 48 % bis 35 %), Gesichter zeigen die Stimmung; das wichtigste Werkzeug fürs Geld | Regler je Stufe im Haus- und Kontorfenster, Höchstsätze 48/45/38/36/35 %, Gesicht zeigt die Stimmung (L2) | ✅ behoben (L2) |
+| Steuer je Einwohner | flach: ein Aristokrat zahlt etwa 1,4-mal so viel wie ein Pionier | flach wie im Original: 2,3 … 3,2 Taler je Bewohner, Aristokrat ≈ 1,4 × Pionier (L2) | ✅ behoben (L2) |
+| Hunger und Unzufriedenheit | Hunger macht unzufrieden, Bewohner ziehen aus, das Haus verfällt | Hunger lässt alle Stufen ausziehen (Meldung mit Grund), Häuser steigen ab („Haus verfällt“) (L2) | ✅ behoben (L2) |
+| Bankrott | lange tief im Minus (etwa −10 000 Taler): Spiel verloren | Warnungen ab −2 000 Talern, nach 10 Minuten unter −10 000 Bankrott mit Wahl „Schulden erlassen“ oder „Neues Spiel“ (L2) | ✅ behoben (L2) |
+| Einwohner je Betrieb | z. B. Weberei-Kette 283, Weingut 167, Schneiderei 457 Einwohner | Bedarfsbetriebe beschleunigt: jeder versorgt 60–83 % der Bewohner des Originals (L2, Nachweis scripts/wirtschaft-sim.ts) | ✅ behoben (L2) |
+| Unterhalt im Betrieb und in Ruhe, Betrieb abschalten | ja (z. B. Weingut 35 im Betrieb, 15 in Ruhe) | Unterhalt im Betrieb und in Ruhe mit den Werten des Originals, Knopf „💤 Ruhen lassen“ (L2) | ✅ behoben (L2) |
+| Baumaterial an Bewohner sperren | Schalter am Kontor | Schalter im Kontorfenster (L2) | ✅ behoben (L2) |
 | Lager voll | der Betrieb hält an, nichts geht verloren | war ein **Fehler** (Ware verschwand still): behoben in L1. Karren holen nichts mehr ab, wenn das Insellager voll ist, laden nur ab, was Platz hat, und der Betrieb meldet von selbst „Lager voll“ | ✅ behoben (L1) |
 | Lager und Freischaltungen je Insel | ja | gleich | ✅ |
 | Kosten für den Haus-Aufstieg | Tabelle | gleich | ✅ |
-| Marktkarren | holen im Umkreis von 6 Feldern ums Kontor ab; Marktplätze nahe den Betrieben beschleunigen den Transport | sichtbare Karren ✅, auf Pflaster schneller ✅. Sie holen aber im ganzen Gebiet (16 Felder) ab, deshalb bringen Marktplätze dafür kaum etwas | 🟡 |
+| Marktkarren | holen im Umkreis von 6 Feldern ums Kontor ab; Marktplätze nahe den Betrieben beschleunigen den Transport | sichtbare Karren, auf Pflaster schneller, holen nur in Abholweite (Kontor 8, Marktplatz 12 Felder) (L2) | ✅ behoben (L2) |
 | Felder | einzeln um Farm oder Plantage angelegt (5 Taler), müssen reifen | jede freie Wiese im Umkreis zählt unsichtbar und sofort reif als Feld und zugleich als Weide | 🟡 |
 | Wald pflanzen | der Förster pflanzt neu | niemand pflanzt neuen Wald: gefällte Bäume wachsen zwar nach, aber Wald, den ein Gebäude oder Weg überbaut hat, kommt nie zurück (die Unterlagen behaupten fälschlich „gleicher Effekt“) | 🟡 |
 | Rohstoffe zu den Werkstätten | Karren liefern an; der Weber holt die Wolle direkt beim Nachbarn | Rohstoffe „springen“ ohne Weg aus dem Lager in die Werkstatt; der Standort spielt keine Rolle | 🟡 |
 | Erz | Vorkommen 80 oder 240 t; die tiefe Mine baut den Rest ab | die normale Mine stimmt; die tiefe Mine baut den Rest ab und endet bei 3 × der Startmenge, rund 15 % der Vorkommen sind unerschöpflich (L1; früher förderte sie endlos) | ✅ behoben (L1) |
 | Wachstum | allmählich | ein Haus kann in unter 5 Minuten zur vollen Aristokratenvilla werden | 🟡 |
-| Freier Händler | kommt mit dem Schiff und handelt nach deinen Aufträgen (Ware, Menge, Preis); Zahl der Plätze je Kontorstufe; verkauft nur, was jemand hergestellt hat (Ausnahme: Werkzeug, Erz) | Sofort-Knopf ±5 t am Kontor, feste Preise, verkauft alles, auch Kanonen und Schmuck | 🟡 |
-| Handelsrouten | Schiffe fahren automatisch zwischen Kontoren | fehlen; Einladen nur von Hand in 10-t-Schritten, Ausladen nur „alles“ | ❌ |
+| Freier Händler | kommt mit dem Schiff und handelt nach deinen Aufträgen (Ware, Menge, Preis); Zahl der Plätze je Kontorstufe; verkauft nur, was jemand hergestellt hat (Ausnahme: Werkzeug, Erz) | Händlerschiff kommt alle 3–6 Minuten und handelt nach Aufträgen je Kontor (Plätze je Kontorstufe), Sortiment wie im Original; Sofort-Handel nur noch als teurer Notbehelf (S2) | ✅ behoben (S2) |
+| Handelsrouten | Schiffe fahren automatisch zwischen Kontoren | Routen mit 2–4 Halten im Schiffsfenster, Schiff fährt allein (S2); große Bedienung kommt mit U5 | ✅ behoben (S2) |
 | Handel mit Computergegnern | direkt, günstiger als beim Händler; Handelsvertrag | fehlt | ❌ |
-| Bilanz | Einnahmen und Ausgaben nach Arten | nur „Steuern“ und „Unterhalt“ (die Kosten des Heeres sind darin versteckt), kein Handel, kein Verlauf | 🟡 |
-| Waren-Statistik | Erzeugung und Verbrauch je Ware | fehlt; Raten stehen nur einzeln am Betrieb | ❌ |
+| Bilanz | Einnahmen und Ausgaben nach Arten | Kassenbuch nach Arten (Steuern je Stufe, Betriebe, Dienste, Militär, Handel) mit Verlauf (S1); das große Fenster dazu kommt mit U2 | 🟡 Logik da (S1) |
+| Waren-Statistik | Erzeugung und Verbrauch je Ware | Erzeugung, Verbrauch und Reichweite je Ware und Insel werden berechnet, Warnungen bei Mangel (S1); das Fenster kommt mit U2 | 🟡 Logik da (S1) |
 | Händlerpreise | Preistabelle | etwa 90 % davon, Kauf zu Verkauf etwa 3 : 2 | ✅ |
 | Preis für Frieden und für Schutz vor Piraten (im Original nur beim Piraten-Schutz belegt) | richtet sich nach dem Vermögen | gleich | ✅ |
 | Gewinn einer Aristokratenstadt | rechnerisch etwa ein Drittel | rechnerisch etwa ein Drittel | ✅ |
@@ -143,7 +143,7 @@ Die Prozente sind eine grobe Schätzung: Wie viel vom Spielgefühl von 1602 ist 
 | Punkt aus 1602 | 1602 | Neue Ufer | Status |
 |---|---|---|---|
 | Baumenü | alle Kategorien und der Abriss-Hammer sind immer sichtbar | zeigt nur Nutzbares ⭐. Die Spalte war zu lang; seit U1 ist sie ab 8 Knöpfen zweispaltig (44 × 44, nur Symbol, Name oben im Baumenü), „Abreißen“ ist ein fester Knopf 💥 oben | ✅ behoben (U1) |
-| Steuerfenster | Tipp auf ein Haus zeigt die Steuer der Stufe | fehlt (siehe 2.2) | ❌ |
+| Steuerfenster | Tipp auf ein Haus zeigt die Steuer der Stufe | Tipp auf ein Haus zeigt den Steuerregler der Stufe (L2) | ✅ behoben (L2) |
 | Kontor- und Lagerfenster | getrennte Ansichten | eine sehr lange Spalte; die Händlerliste steht vor Lager und Bilanz | 🟡 |
 | Warenleiste oben | zeigt die wichtigen Werte | bis zu 23 Symbole (am Anfang nur die gerade nötigen) ohne Namen, nur 5–10 gleichzeitig sichtbar; seit U1 zeigt ein Verlauf am Rand das Weiterwischen an; leere Waren werden nicht rot | 🟡 |
 | Schiff beladen | Laden je Ware, Routen | Einladen mit +10 / +50 / Max (U1), Ausladen nur „alles“ (jetzt ganz oben im Schiffsfenster) | 🟡 |

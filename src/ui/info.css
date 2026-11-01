@@ -9,10 +9,11 @@
 }
 /* feste Kopfzeile: Titel links, ▾ ✕ rechts; der Inhalt darunter wischt nie unter die Kopfknöpfe */
 .info .ibar { flex: none; display: flex; align-items: center; border-bottom: 1px solid rgba(110, 84, 52, .45); }
-.info .ititle { flex: 1 1 auto; min-width: 0; padding: 2px 2px 2px 12px; }
+.info .ititle { flex: 1 1 0; min-width: 0; padding: 2px 2px 2px 12px; }
 .info .ititle h3 { margin: 0; overflow-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-/* 44 px Tippfläche, sichtbar etwas kleiner */
+/* 44 px Tippfläche, sichtbar etwas kleiner; lange Titel dürfen die Knöpfe nicht schmaler drücken */
 .info .ibar .btn {
+  flex: none; min-width: var(--tap);
   width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 4px; border: 0; border-radius: 12px;
   background-clip: content-box; font-size: 17px;
 }
@@ -40,6 +41,8 @@
 .info .sub { font-size: 13px; color: var(--pergament-2); margin: 3px 0; }
 .info .row { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; padding: 2px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
 .info .row b { text-align: right; }
+/* Lagerraster: Symbol und Name einer Ware bleiben zusammen (lange Namen werden gekürzt statt umzubrechen) */
+.info .grid .row > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .info .row.warn b { color: var(--warn); }
 /* Bedürfnisse des Hauses: zwei Spalten, damit „Aufstieg zu …“ ohne Wischen zu sehen ist */
 .info .chips { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 8px; }
