@@ -35,6 +35,8 @@ interface Entry {
   nabe?: [number, number, number]; fluegel?: number;
   /** Spitze des Fahnenmasts im Modell (Modell-Koordinaten): dort hängt die Fahne in Besitzerfarbe, ohne eigenen Mast */
   fahne?: [number, number, number];
+  /** Schornstein-Öffnungen im Modell (Modell-Koordinaten): dort steigt Rauch auf (geprüft an Bildern, siehe docs/GRAFIK.md) */
+  rauch?: [number, number, number][];
   /** höchstens so hoch (in Feldern); sonst gilt MAX_HEIGHT je Grundfläche */
   hoehe?: number;
 }
@@ -246,6 +248,7 @@ function fitToFootprint(obj: THREE.Object3D, e: Entry): THREE.Object3D {
     wrap.userData.hubR = (e.fluegel ?? 0.9) * s;
   }
   if (e.fahne) wrap.userData.flagAt = new THREE.Vector3(...e.fahne).applyMatrix4(obj.matrix).toArray();
+  if (e.rauch?.length) wrap.userData.smokeAt = e.rauch.map((p) => new THREE.Vector3(...p).applyMatrix4(obj.matrix).toArray());
   return wrap;
 }
 

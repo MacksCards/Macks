@@ -16,7 +16,10 @@ export const WALLS = new Set<BuildingId>(['palisade', 'steinmauer']);
 /** Teile, an die Mauern anschließen */
 export const WALL_LINKS = new Set<BuildingId>(['palisade', 'steinmauer', 'holztor', 'steintor_klein', 'steintor', 'holzturm', 'wachturm']);
 
-/** Zusatzangaben für spätere Ausbaustufen (G2/G3): Kontorstufe und Variante. Noch ohne Wirkung. */
+/**
+ * Zusatzangaben: Kontorstufe (0 = Kontor I) und Aussehens-Variante. Die Darstellung reicht beide schon durch
+ * (G3); eigene Formen je Kontorstufe kommen mit G2 – bis dahin sehen alle Stufen gleich aus.
+ */
 export interface ModelOpts { level?: number; variant?: number }
 
 const KNOWN: BuildingId[] = ['kontor', 'markt', 'kapelle', 'wirtshaus', 'holzfaeller', 'fischer', 'schaffarm',
@@ -75,12 +78,18 @@ function placeholder(id: BuildingId): ModelDef {
 
 /**
  * Modell eines Gebäudes. tier = Hausstufe 0–4 (bei Mauern die Nachbarmaske).
- * opts.level (Kontorstufe) und opts.variant (Aussehens-Variante) werden vorbereitet und von
- * G2/G3 genutzt; heute haben sie noch keine Wirkung.
+ * opts.level (Kontorstufe) und opts.variant (Aussehens-Variante) kommen von der Darstellung; sie gehören
+ * schon zum Merk-Schlüssel, damit eigene Formen je Stufe (G2) ohne weitere Änderung greifen.
+ * Heute haben sie noch keine sichtbare Wirkung (alle Kontorstufen teilen sich dieselbe Form).
  */
 export function buildingModel(type: BuildingId, tier = 0, opts: ModelOpts = {}): ModelDef {
-  void opts;
-  const key = `${type}:${tier}`;
+  const key = type === 'kontor' ? `${type}:${tier}:${opts.level ?? 0}` : `${type}:${tier}`;
+  if (type === 'kontor' && (opts.level ?? 0) > 0) {
+    // bis G2: dieselbe Form wie Kontor I (gemeinsam genutzt, nicht doppelt im Speicher)
+    const base = buildingModel(type, tier);
+    cache.set(key, base);
+    return base;
+  }
   let m = cache.get(key);
   if (m) return m;
   if (WALLS.has(type)) { m = MILITAER[type]!(tier); cache.set(key, m); return m; }
