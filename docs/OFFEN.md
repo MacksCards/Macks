@@ -22,8 +22,9 @@ Was noch fehlt, damit „Neue Ufer“ den ganzen Umfang von 1602 hat (Regel 4/11
 - **U4:** Kämpfen mit dem Finger (Rahmen und Gruppen, Reihe/Block, Ausmustern, Bäume fällen, mehrere Schiffe wählen, Patrouille).
 
 ## Handel & Welt
-- **S2:** Freies Händlerschiff, das Kontore anläuft (Aufträge mit Ware, Menge, Preis; Plätze je Kontorstufe), Handelsrouten für Schiffe (automatisch laden und löschen), Handel mit Computergegnern.
-- **U5:** Bedienung dazu (Kontor-Aufträge, Routen, Laden je Ware und Ausladen je Ware).
+- **S2 (erledigt, Welle 2):** Freies Händlerschiff (neutraler Spieler mit weißer Flagge, unangreifbar) kommt ab dem ersten Kontor alle 3 bis 6 Minuten vom Kartenrand an jedes Kontor mit Küste, liegt etwa 40 s im Hafen und handelt nach den Aufträgen (Plätze 4/3 … 11/8 je Kontorstufe, Preis 70–105 %, Preise schwanken und reagieren auf Mengen, höchstens 40 t je Ware, Waffen 10 t zum dreifachen Preis, Sortiment nur Bekanntes plus Werkzeug, Erz, Holz, Nahrung). Blockade durch bewaffnete Feinde im Umkreis von 10 Feldern. Sofort-Handel als Notbehelf 40 % teurer. Handelsrouten (2–4 Halte, bis 100 t je Ware, „Route blockiert“, Pause/Weiter, Selbst-Lenken pausiert), Abwracken am Kontor. Alles im Spielstand (`ext.trade`), Test `scripts/handel-test.ts`. Einfache Bedienung: Reiter „⚖️ Handel“ im Kontor und Block „🧭 Handelsroute“ im Schiffsfenster.
+  - **Noch offen bzw. bewusst später:** Die Computergegner stellen noch keine Aufträge ein (KI2) und handeln weiter mit dem alten Sofort-Handel ohne Aufschlag; Handel mit ihnen per Handelsvertrag (M2 – `visit(g, kontor, preise)` nimmt dafür eine eigene Preisliste an). Das Kassenbuch erfasst die Buchungen erst mit S1 (`stats.book` wird schon aufgerufen). Händlerschiffe und Routenschiffe haben noch keine eigenen Geräusche (A1). Die Wahl „Ware“ und „Kontor“ ist ein einfaches Auswahlfeld; Laden und Ausladen je Ware in Schritten, Preise in 5-%-Schritten.
+- **U5:** Große Handelsoberfläche (Aufträge mit Schiebereglern und Preislinie, Routen auf der Karte, Laden und Ausladen je Ware am Schiff).
 - **S4:** Ureinwohner-Dörfer mit Tauschhandel und Fluch.
 - **S5:** Punkte und Endwertung, Rangliste (ein Sieg beendet heute das Spiel nicht).
 - **F2:** Szenarien (Hauptspiel etwa 26).

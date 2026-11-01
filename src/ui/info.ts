@@ -68,12 +68,15 @@ export class InfoPanel {
         if (locked) h += `<p class="sub">🔒 Ausbau ab ${nl.unlock!.n} ${TIERS[nl.unlock!.tier].dat}</p>`;
         else foot = `<button class="btn ok" id="kUp">⬆️ Ausbauen: Lager ${nl.storage} t<small>${costText(nl.cost)}</small></button>`;
       }
-      h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
-      for (const gd of GOODS) {
-        const pr = PRICES[gd.id];
-        if (!pr || (!ui.relevant.has(gd.id) && g.goods[gd.id] < 1)) continue;
-        h += `<div class="trade"><span>${gd.icon} ${gd.name}</span><button class="btn" data-buy="${gd.id}">+5 · ${pr.kaufen}</button><button class="btn" data-sell="${gd.id}">−5 · ${pr.verkaufen}</button></div>`;
-      }
+      // Handel (Aufträge, Sofort-Handel) steht im Reiter „Handel“ (ui/trade.ts); vorher hier der Sofort-Handel
+      if (!ui.trade.ready) {
+        h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
+        for (const gd of GOODS) {
+          const pr = PRICES[gd.id];
+          if (!pr || (!ui.relevant.has(gd.id) && g.goods[gd.id] < 1)) continue;
+          h += `<div class="trade"><span>${gd.icon} ${gd.name}</span><button class="btn" data-buy="${gd.id}">+5 · ${pr.kaufen}</button><button class="btn" data-sell="${gd.id}">−5 · ${pr.verkaufen}</button></div>`;
+        }
+      } else h += `<p class="sub">⚖️ Kaufen und verkaufen: Reiter „Handel“.</p>`;
     }
     h += `<h4>Lager</h4><div class="grid">`;
     for (const gd of GOODS) {

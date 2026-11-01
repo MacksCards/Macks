@@ -231,7 +231,7 @@ export class UI {
       this.selectShip(ship); return;
     }
     if (ship) {
-      const name = ship.type === 'pirat' ? 'Piratenschiff' : `Schiff von ${g.players[ship.owner]?.name}`;
+      const name = ship.type === 'pirat' ? 'Piratenschiff' : g.players[ship.owner]?.trader ? 'Händlerschiff (neutral)' : `Schiff von ${g.players[ship.owner]?.name}`;
       if (this.selShip && (this.selShip.guns ?? 0) > 0) { const me = this.selShip; this.attack(ship.owner, () => { shipAttack(g, me, ship.id); sound.play('glocke'); this.toast(`💣 Angriff auf ${name}`, 'info'); }); return; }
       if (this.selShip) { this.toast('Dein Schiff hat keine Kanonen – lade sie am Kontor', 'bad'); return; }
       const kan = sel.filter((u) => u.type === 'kanonier');
@@ -359,6 +359,8 @@ export class UI {
   attack(owner: number, go: () => void) {
     const g = this.g, p = g.players[owner];
     if (!p || owner === HUMAN) return;
+    // der freie Händler ist neutral und lässt sich nicht angreifen (src/trade.ts)
+    if (p.trader) { this.toast('Der freie Händler ist neutral – ihn kann man nicht angreifen', 'info'); return; }
     if (atWar(g, HUMAN, owner)) { go(); return; }
     if (p.pirate) {
       this.ask('🏴‍☠️ Die Piraten angreifen?', 'Dein gekaufter Schutz endet damit sofort.', '⚔️ Angreifen', () => { g.players[HUMAN].protectedUntil = 0; go(); });

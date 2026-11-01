@@ -179,7 +179,7 @@ Schiffe brauchen Holz, Stoffe (Segel) und Werkzeug, Kriegsschiffe zusätzlich Ka
 
 **Neue Inseln:** Ein Schiff mit Holz und Werkzeug gründet dort ein Kontor. Danach kann man bauen wie auf der Startinsel. Das Lager der Inseln ist getrennt; Waren werden per Schiff befördert.
 
-**Handel:** Schiffe fahren auf festen **Handelsrouten** zwischen Kontoren (Beladen und Entladen einstellbar). **Freie Händler** laufen die Küsten an und tauschen Waren gegen Taler; Preise schwanken leicht. Ureinwohner handeln wie oben.
+**Handel:** Schiffe fahren auf festen **Handelsrouten** zwischen Kontoren (2 bis 4 Halte, Beladen und Entladen je Ware einstellbar). **Freie Händler** kommen mit ihrem Schiff vom Kartenrand, laufen alle paar Minuten jedes Kontor an und kaufen oder verkaufen nach den Aufträgen, die man am Kontor einstellt (Ware, Menge, Preis); Preise schwanken leicht und reagieren auf große Mengen. Ein feindliches Kriegsschiff vor dem Kontor hält sie fern. Der Sofort-Handel am Kontor bleibt als teurer Notbehelf. Ureinwohner handeln wie oben.
 
 **Piraten:** Sie greifen Handelsschiffe an und plündern Küsten. Man kann sie abwehren oder **bestechen** (sie ziehen gegen Taler ab, ein weiterer Angriff bleibt möglich).
 
