@@ -33,7 +33,7 @@ export class UnitsPanel {
       ui.selectUnits([...new Set([...list, ...add])]);
     });
     $('#uStop').addEventListener('click', () => {
-      for (const u of list) { u.path = []; u.target = undefined; u.ordered = false; u.board = undefined; }
+      for (const u of list) { u.path = []; u.target = undefined; u.ordered = false; u.board = undefined; u.dest = undefined; u.fell = undefined; u.chop = undefined; }
       ui.renderInfo();
     });
   }

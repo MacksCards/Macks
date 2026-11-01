@@ -1,6 +1,7 @@
 // Schiffe: Modelle (klein/groß, Piraten), Fahnen in Besitzerfarbe, Kanonen, Bewegung, Auswahl, Fahrtroute, Untergang.
 import * as THREE from 'three';
 import { SHIPS } from '../data';
+import { whiteFlag } from '../combat';
 import { Game, Ship } from '../game';
 import { Builder, M, Paint } from './kit';
 import { buildingMaterial } from './materials';
@@ -302,8 +303,10 @@ export class ShipLayer {
       // beschädigt: Schlagseite
       v.mesh.rotation.set(Math.sin(t * 1.3 + s.id) * 0.04, sdir, Math.cos(t * 1.1 + s.id) * 0.05 + (1 - frac) * 0.12);
       v.guns.visible = !v.real && (s.guns ?? 0) > 0;
-      // Fahne flattert
+      // Fahne flattert; weiße Flagge statt der Besitzerfarbe, solange sie gehisst ist
       v.flag.rotation.y = Math.sin(t * 5 + s.id) * 0.12;
+      const flagMat = this.flagMat(whiteFlag(this.g, s) ? 0xf2efe6 : this.isPirate(s) ? 0x111111 : this.g.players[s.owner]?.color ?? 0x2f6fd0);
+      if (v.flag.material !== flagMat) v.flag.material = flagMat;
       v.ring.visible = this.selected === s.id;
       v.ring.position.set(sx, 0.06, sy);
       v.wake.visible = visible && s.path.length > 0;

@@ -136,6 +136,7 @@ export class UI {
       shot: (kind, fx, fy, tx, ty, hit) => this.onShot(kind, fx, fy, tx, ty, hit),
       sunk: (s) => { v.ships.sink(s.id); if (this.visible(s.x, s.y)) sound.play('versenkt', { x: s.x, z: s.y }); if (this.selShip === s) this.selectShip(null); },
       died: (u) => { v.onUnitDied(u); if (this.visible(u.x, u.y)) sound.play('fall', { x: u.x, z: u.y }); },
+      chop: (u) => { if (this.visible(u.x, u.y)) sound.play('axt', { x: u.x, z: u.y }); },
     };
   }
 
@@ -362,6 +363,13 @@ export class UI {
     // der freie Händler ist neutral und lässt sich nicht angreifen (src/trade.ts)
     if (p.trader) { this.toast('Der freie Händler ist neutral – ihn kann man nicht angreifen', 'info'); return; }
     if (atWar(g, HUMAN, owner)) { go(); return; }
+    // freier Händler: neutral, nie angreifbar
+    if (p.trader) { this.toast('Der freie Händler ist neutral – ihn kannst du nicht angreifen', 'info'); return; }
+    // Ureinwohner: nur auf ausdrücklichen Befehl, kein Krieg
+    if (p.natives) {
+      this.ask('🪶 Die Ureinwohner angreifen?', 'Sie wehren sich nicht mit Waffen, aber sie werden nie wieder mit dir tauschen.', '⚔️ Angreifen', go);
+      return;
+    }
     if (p.pirate) {
       this.ask('🏴‍☠️ Die Piraten angreifen?', 'Dein gekaufter Schutz endet damit sofort.', '⚔️ Angreifen', () => { g.players[HUMAN].protectedUntil = 0; go(); });
       return;
