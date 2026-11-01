@@ -574,6 +574,78 @@ const ALPHA_KEEP = `#include <map_fragment>
 }
 #endif`;
 
+// ---------------------------------------------------------------------------------------------
+// Bauplatz freiräumen: beim Platzieren eines Gebäudes sieht man genau, wo es steht
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Werte für die Bau-Vorschau, gemeinsam für alle Bäume (und das Gras):
+ * - uClearBox: Grundfläche (x0, z0, x1, z1 in Weltmaßen). Bäume, die darauf stehen, werden nicht gezeichnet
+ *   (beim echten Bau werden sie ohnehin gefällt). Aus, wenn x1 < x0.
+ * - uClearFocus: Mitte der Vorschau (x, y, z) und ihr Radius (w, 0 = aus). Bäume, die von der Kamera aus
+ *   davor stehen, und Bäume dicht am Rand werden fein gerastert durchsichtig (kein langsames Sortieren nötig).
+ * Es werden nur diese zwei Werte geändert – die Bäume selbst bleiben unverändert (kein Neuaufbau, flüssig).
+ */
+export const placeClear = {
+  uClearBox: { value: new THREE.Vector4(0, 0, -1, -1) },
+  uClearFocus: { value: new THREE.Vector4(0, 0, 0, 0) },
+};
+
+/** Ecken-Teil: Baum auf der Grundfläche verschwinden lassen; mit fade zusätzlich die Durchsichtigkeit ausrechnen */
+function clearVertex(sh: { vertexShader: string; uniforms: Record<string, THREE.IUniform> }, fade: boolean) {
+  sh.uniforms.uClearBox = placeClear.uClearBox;
+  sh.uniforms.uClearFocus = placeClear.uClearFocus;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', `#include <common>
+uniform vec4 uClearBox;
+uniform vec4 uClearFocus;
+${fade ? 'varying float vClearFade;' : ''}`)
+    .replace('#include <project_vertex>', `{
+  mat4 cm = modelMatrix;
+  #ifdef USE_INSTANCING
+  cm = modelMatrix * instanceMatrix;
+  #endif
+  vec3 org = cm[3].xyz;
+  float inBox = step(uClearBox.x, org.x) * step(org.x, uClearBox.z) * step(uClearBox.y, org.z) * step(org.z, uClearBox.w);
+  transformed *= 1.0 - inBox;
+  ${fade ? `vClearFade = 0.0;
+  if (uClearFocus.w > 0.0 && inBox < 0.5) {
+    // Baum als senkrechte Linie (Fuß bis Spitze) auf dem Bild; Abstand zur Mitte der Vorschau,
+    // umgerechnet in Weltmaß auf Höhe der Vorschau
+    float ht = length(cm[1].xyz);
+    mat4 pv = projectionMatrix * viewMatrix;
+    vec4 cg = pv * vec4(uClearFocus.xyz, 1.0);
+    vec4 c0 = pv * vec4(org, 1.0);
+    vec4 c1 = pv * vec4(org + vec3(0.0, ht, 0.0), 1.0);
+    vec2 sc = vec2(cg.w / projectionMatrix[0][0], cg.w / projectionMatrix[1][1]);
+    vec2 g = cg.xy / cg.w * sc, a = c0.xy / c0.w * sc, b = c1.xy / c1.w * sc;
+    vec2 ab = b - a;
+    float t = clamp(dot(g - a, ab) / max(dot(ab, ab), 1e-5), 0.0, 1.0);
+    float d = length(g - (a + ab * t)) - ht * 0.28;
+    // nur Bäume vor der Vorschau (näher an der Kamera) …
+    float before = step(c0.w, cg.w + 0.6);
+    float line = (1.0 - smoothstep(uClearFocus.w, uClearFocus.w + 1.4, d)) * before;
+    // … und Bäume direkt am Rand der Grundfläche
+    vec2 q = max(vec2(uClearBox.x, uClearBox.y) - org.xz, org.xz - vec2(uClearBox.z, uClearBox.w));
+    float edge = 1.0 - smoothstep(0.0, 1.2, max(q.x, q.y));
+    vClearFade = max(line * 0.8, edge * 0.7);
+  }` : ''}
+}
+#include <project_vertex>`);
+}
+
+/** Bild-Teil: fein gerastert wegschneiden (wirkt wie durchsichtig, bleibt schnell) */
+function clearFragment(sh: { fragmentShader: string }) {
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', `#include <common>
+varying float vClearFade;`)
+    .replace('#include <alphatest_fragment>', `#include <alphatest_fragment>
+if (vClearFade > 0.0) {
+  float n = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
+  if (n < vClearFade) discard;
+}`);
+}
+
 export function treeMaterials(wind: THREE.IUniform, strength: number, key: string) {
   const map = treeAtlas();
   // gleiche Beleuchtung wie die übrige Welt (auch das weiche Himmelslicht); Blätter matt.
@@ -583,6 +655,8 @@ export function treeMaterials(wind: THREE.IUniform, strength: number, key: strin
   });
   mat.onBeforeCompile = (sh) => {
     windVertex(sh, wind, strength);
+    clearVertex(sh, true);
+    clearFragment(sh);
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <map_fragment>', ALPHA_KEEP)
       // Blattflächen: Rückseite wie Vorderseite beleuchten (Licht-Richtung zeigt immer aus der Krone heraus)
@@ -593,6 +667,7 @@ export function treeMaterials(wind: THREE.IUniform, strength: number, key: strin
   const depth = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map, alphaTest: 0.5, side: THREE.DoubleSide });
   depth.onBeforeCompile = (sh) => {
     windVertex(sh, wind, strength);
+    clearVertex(sh, false);
     sh.fragmentShader = sh.fragmentShader.replace('#include <map_fragment>', ALPHA_KEEP);
   };
   depth.customProgramCacheKey = () => key + '-schatten';

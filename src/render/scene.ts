@@ -23,6 +23,7 @@ import { Cloth, MarkDef, OwnerMarks, Pole, POLE_H, POLE_H_SMALL } from './marks'
 import { Smoke } from './smoke';
 import { SignLayer, paintCluster, paintIsland, paintUnit, paintWarn } from './signs';
 import { BuildAnims } from './buildanim';
+import { PlaceHelp } from './placehelp';
 import type { RenderLayer } from './layers';
 import {
   CLUSTER_DIST, ISLAND_DIST, IslandSymbol, Pin, SMOKE_DIST, SMOKE_STYLE, Sign, UNIT_MARK_DIST, UNIT_MARK_PX,
@@ -134,9 +135,10 @@ export class View {
   private mat = buildingMaterial();
   private ghost: THREE.Mesh | null = null;
   private ghostType: BuildingId | null = null;
-  private ghostMatOk = buildingMaterial({ transparent: true, opacity: 0.75, color: 0xb8ffb8 });
-  private ghostMatBad = buildingMaterial({ transparent: true, opacity: 0.6, color: 0xff7a7a });
-  private footprint: THREE.Mesh;
+  private ghostMatOk = buildingMaterial({ transparent: true, opacity: 0.8, color: 0xc8ffc0, emissive: 0x1e3c1a });
+  private ghostMatBad = buildingMaterial({ transparent: true, opacity: 0.7, color: 0xff8a7a, emissive: 0x3c1410 });
+  /** Rahmen der Grundfläche, Bäume dort ausblenden (Bau-Vorschau) */
+  private place = new PlaceHelp();
   private radiusRing: THREE.Mesh;
   private selectRing: THREE.Mesh;
   private raycaster = new THREE.Raycaster();
@@ -199,11 +201,7 @@ export class View {
     };
     void this.lib.load();
 
-    const fpMat = new THREE.MeshBasicMaterial({ color: 0x55ff55, transparent: true, opacity: 0.35, depthWrite: false });
-    this.footprint = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), fpMat);
-    this.footprint.visible = false;
-    this.footprint.renderOrder = 2;
-    this.scene.add(this.footprint);
+    this.scene.add(this.place.group);
 
     this.radiusRing = new THREE.Mesh(
       new THREE.RingGeometry(0.97, 1, 72).rotateX(-Math.PI / 2),
@@ -1220,7 +1218,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       if (this.ghost) this.scene.remove(this.ghost);
       this.ghost = null;
       this.ghostType = null;
-      this.footprint.visible = false;
+      this.place.hide();
       this.radiusRing.visible = false;
       return;
     }
@@ -1235,10 +1233,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     const gy = this.groundY(x, y, d.size);
     this.ghost!.material = ok ? this.ghostMatOk : this.ghostMatBad;
     this.ghost!.position.set(x + d.size / 2, gy + 0.02, y + d.size / 2);
-    this.footprint.visible = true;
-    this.footprint.scale.set(d.size, 1, d.size);
-    this.footprint.position.set(x + d.size / 2, gy + 0.03, y + d.size / 2);
-    (this.footprint.material as THREE.MeshBasicMaterial).color.setHex(ok ? 0x55ff55 : 0xff4444);
+    this.place.show(this.ghost!.geometry, x, y, d.size, gy, ok);
     this.showRadius(d.work ?? d.radius ?? 0, x + d.size / 2, y + d.size / 2, d.work && d.prod ? 0xffb347 : 0xffffff);
   }
 
