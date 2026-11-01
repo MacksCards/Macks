@@ -10,6 +10,7 @@ import { tickCombat, unitUpkeep } from './combat';
 import { SYSTEMS } from './systems';
 import { Island, PFLANZEN, T, WORLD_SIZE, WORLD_SIZES, generateWorld, rng } from './world';
 import { SCHWIERIGKEIT, stufe } from './schwierigkeit';
+import { book } from './stats';
 
 /** zuWeit = kein Marktkarren kommt hin (zu weit von Kontor/Marktplatz); aus = vom Spieler ruhen gelassen */
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft' | 'zuWeit' | 'aus';
@@ -1371,10 +1372,12 @@ export class Game {
       const room = Math.max(0, this.capOf(owner, island) - l[g]);
       const t = Math.floor(Math.min(n, room, p.money / pr.kaufen));
       l[g] += t; p.money -= t * pr.kaufen;
+      if (t) book(this, owner, 'handel', -t * pr.kaufen);
       return t;
     }
     const t = Math.floor(Math.min(-n, l[g]));
     l[g] -= t; p.money += t * pr.verkaufen;
+    if (t) book(this, owner, 'handel', t * pr.verkaufen);
     return t;
   }
 

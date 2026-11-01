@@ -211,12 +211,12 @@ export function book(g: Game, owner: number, kind: string, taler: number): void 
 function resplit(g: Game) {
   const tax = new Map<number, number[]>();
   const up = new Map<number, [number, number, number]>();
-  for (const p of counted(g)) { tax.set(p.id, TIERS.map(() => 0)); up.set(p.id, [0, 0, unitUpkeep(g, p.id)]); }
+  // Steuern je Stufe genau so, wie das Spiel sie rechnet (mit den Steuersätzen je Stufe)
+  for (const p of counted(g)) { tax.set(p.id, [...g.incomePerMinute(p.id).byTier]); up.set(p.id, [0, 0, unitUpkeep(g, p.id)]); }
   for (const b of g.buildings) {
-    const tx = tax.get(b.owner), u = up.get(b.owner);
-    if (!tx || !u) continue;
+    const u = up.get(b.owner);
+    if (!u) continue;
     const d = BUILDINGS[b.type];
-    if (b.type === 'haus') tx[b.tier] += b.residents * (TIERS[b.tier]?.tax ?? 0) * (0.4 + 0.6 * b.happy);
     if (d.upkeep) u[d.category === 'oeffentlich' ? 1 : d.category === 'militaer' ? 2 : 0] += d.upkeep;
   }
   for (const p of counted(g)) track(g, p.id).split = { tax: tax.get(p.id)!, up: up.get(p.id)! };
@@ -586,7 +586,10 @@ function movedOut(g: Game, s: State): Problem[] {
 const PER_CHECK = 2;
 
 function warn(g: Game, s: State) {
-  const list = [...movedOut(g, s), ...problems(g)];
+  // „Bewohner ziehen aus“ meldet das Spiel selbst (game.ts leaveMessage, mit Grund wie Hunger oder Steuern);
+  // movedOut zählt hier nur mit, damit es keine doppelte Meldung gibt
+  movedOut(g, s);
+  const list = problems(g);
   let n = 0;
   for (const p of list) {
     const last = s.said.get(p.key);

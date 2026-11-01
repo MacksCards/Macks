@@ -159,14 +159,18 @@ while (g.time < start + 185) {
   for (let i = 0; i < 4 * 60; i++) { l.nahrung = Math.min(l.nahrung, 1.5); g.tick(0.25); }
   check('Warnung: dieselbe nicht vor 5 Minuten wiederholt', msgs.filter((m) => /Nahrung/.test(m.text)).length === before);
   // Bewohner ziehen weg
+  const vorher = msgs.map((m) => m.text);
   msgs.length = 0;
   houses[2].short = { nahrung: true };
   houses[2].residents = 1;
   houses[3].short = { nahrung: true };
   houses[3].residents = 1;
   for (let i = 0; i < 24; i++) g.tick(0.25);
-  const weg = msgs.find((m) => /ziehen Bewohner weg/.test(m.text));
-  check('Warnung: Bewohner ziehen weg, mit Grund', !!weg && /Nahrung/.test(weg.text) && !!weg.at, weg?.text ?? msgs.map((m) => m.text).join(' | '));
+  // die Meldung kommt aus dem Spiel selbst (game.ts, mit Grund) – die Statistik meldet sie nicht doppelt
+  // (bei Hunger kam sie schon während der Nahrungs-Prüfung oben – je Insel höchstens alle 2 Minuten)
+  const alle = [...vorher, ...msgs.map((m) => m.text)];
+  const weg = alle.filter((t) => /ziehen.*(aus|weg)/.test(t));
+  check('Warnung: Bewohner ziehen aus, mit Grund, nicht doppelt', weg.length === 1 && /Hunger/.test(weg[0]), alle.join(' | '));
   // Lager voll
   msgs.length = 0;
   fl.eff = 1; fl.active = 1;
@@ -238,7 +242,7 @@ while (g.time < start + 185) {
   const hm: string[] = [];
   h.ev.message = (t) => { hm.push(t); };
   for (let i = 0; i < 24; i++) h.tick(0.25);
-  check('Spielstand: nach dem Laden keine „ziehen weg“-Meldung ohne Grund', !hm.some((t) => /ziehen Bewohner weg/.test(t)), hm.join(' | '));
+  check('Spielstand: nach dem Laden keine „ziehen weg“-Meldung der Statistik ohne Grund', !hm.some((t) => /ziehen Bewohner weg/.test(t)), hm.join(' | '));
   // alter Stand ohne Statistik
   delete d.ext.stats;
   const old = Game.fromSave(d);
