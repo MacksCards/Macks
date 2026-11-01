@@ -475,10 +475,30 @@ export class Game {
       for (let i = 0; i < 4; i++) ship.slots.push(START_CARGO[i] ? { g: START_CARGO[i][0], n: START_CARGO[i][1] } : { g: null, n: 0 });
       g.ships.push(ship);
     }
-    const [sx, sy] = g.starts[HUMAN];
-    g.reveal(sx, sy, SHIP_SIGHT + 2);
-    // ein Stück Küste der Heimatinsel aufdecken, damit beim Start Land in Sicht ist
+    // Das eigene Schiff startet im freien Meer 10 bis 13 Felder vor der Heimatküste, auf der Seite der
+    // Startecke, damit beim Start Schiff und Land zugleich im Bild sind
     const coast = g.homeCoast();
+    const me = g.ships.find((s) => s.owner === HUMAN)!;
+    if (coast) {
+      const cx = coast[0] + 0.5, cy = coast[1] + 0.5;
+      const free = (x: number, y: number) => {
+        for (let j = -2; j <= 2; j++) for (let i = -2; i <= 2; i++) if (!g.inMap(x + i, y + j) || !g.isWater(g.idx(x + i, y + j))) return false;
+        return true;
+      };
+      let best: [number, number] | null = null, bd = Infinity;
+      for (let y = Math.floor(cy) - 14; y <= cy + 14; y++) for (let x = Math.floor(cx) - 14; x <= cx + 14; x++) {
+        const dc = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+        if (dc < 10 || dc > 13 || !free(x, y)) continue;
+        const ds = Math.hypot(x + 0.5 - me.x, y + 0.5 - me.y);
+        if (ds < bd) { bd = ds; best = [x, y]; }
+      }
+      if (best && bd < Math.hypot(me.x - cx, me.y - cy)) {
+        me.x = best[0] + 0.5; me.y = best[1] + 0.5;
+        me.dir = Math.atan2(cx - me.x, cy - me.y);
+      }
+    }
+    g.reveal(me.x, me.y, SHIP_SIGHT + 2);
+    // ein Stück Küste der Heimatinsel aufdecken, damit beim Start Land in Sicht ist
     if (coast) g.reveal(coast[0] + 0.5, coast[1] + 0.5, 6);
     g.seenDirty = false;
     g.recompute();

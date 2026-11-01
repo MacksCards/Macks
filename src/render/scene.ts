@@ -262,7 +262,15 @@ export class View {
     const k = g.kontor();
     const ship = g.myShips()[0];
     if (k) { const [cx, cy] = g.center(k); this.rig.tx = cx; this.rig.tz = cy + 3; }
-    else if (ship) { this.rig.tx = ship.x + 4; this.rig.tz = ship.y - 4; this.rig.dist = 34; }
+    else if (ship) {
+      // Schiff und die nächste Küste der Heimatinsel zugleich ins Bild (liegt sie nah genug)
+      const c = g.homeCoast();
+      const sep = c ? Math.hypot(c[0] + 0.5 - ship.x, c[1] + 0.5 - ship.y) : 99;
+      if (c && sep < 30) {
+        this.rig.tx = (ship.x + c[0] + 0.5) / 2; this.rig.tz = (ship.y + c[1] + 0.5) / 2;
+        this.rig.dist = Math.max(28, Math.min(46, 16 + sep * 1.4));
+      } else { this.rig.tx = ship.x + 4; this.rig.tz = ship.y - 4; this.rig.dist = 34; }
+    }
     this.terrain = new Terrain(g);
     this.scene.add(this.terrain.group);
     if (!this.ships) { this.ships = new ShipLayer(g); this.scene.add(this.ships.group); this.ships.models = (id) => this.lib.other(id); }

@@ -170,7 +170,7 @@ export class UI {
     this.hud.build(hud);
     this.build.buildPanel(hud);
     // Infofenster: feste Kopfknöpfe (▾ einklappen, ✕ schließen), darunter der wechselnde Inhalt
-    const info = el('div', 'info hidden', `<div class="ibar"><button class="btn sq" id="infoFold" aria-label="Einklappen">▾</button><button class="btn sq close" id="infoX" aria-label="Schließen">✕</button></div><div class="ibody" id="infoBody"></div>`);
+    const info = el('div', 'info hidden', `<div class="ibar"><button class="btn sq" id="infoFold" aria-label="Einklappen">▾</button><button class="btn sq close" id="infoX" aria-label="Schließen">✕</button></div><div class="ibody" id="infoBody"></div><div class="ifoot hidden" id="infoFoot"></div>`);
     info.id = 'info';
     hud.appendChild(info);
     $('#infoX').addEventListener('click', () => this.select(null));
@@ -443,12 +443,18 @@ export class UI {
   // ---------- Infofenster ----------
 
   /** Inhalt des Infofensters setzen – nur wenn er sich geändert hat (sonst gehen Tipps auf Knöpfe verloren).
+   *  foot = Knöpfe der festen Fußleiste (leer = keine Leiste).
    *  true = neu aufgebaut: dann die Knöpfe darin neu verbinden */
-  setInfo(html: string): boolean {
+  setInfo(html: string, foot = ''): boolean {
     const body = $('#infoBody') as HTMLElement & { _h?: string };
-    if (body._h === html) return false;
-    body._h = html;
+    const key = html + '\u0000' + foot;
+    if (body._h === key) return false;
+    body._h = key;
     body.innerHTML = html;
+    // Fußleiste: Hauptknöpfe (Abreißen, Bewaffnen, Ausbilden, Bestellen …) bleiben beim Wischen stehen
+    const f = $('#infoFoot');
+    f.innerHTML = foot;
+    f.classList.toggle('hidden', !foot);
     return true;
   }
 

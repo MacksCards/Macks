@@ -25,8 +25,9 @@ export class UnitsPanel {
     h += `<div class="row"><span>Lage</span><b>${fighting ? '⚔️ kämpft' : walking ? '🚶 unterwegs' : '🛡️ wartet'}</b></div>`;
     h += `<p class="sub">Tippe aufs Land, um hinzulaufen · auf Feinde, um anzugreifen · auf dein Schiff, um einzusteigen.</p>`;
     const near = g.units.filter((u) => u.owner === HUMAN && u.ship === undefined && !list.includes(u) && Math.hypot(u.x - list[0].x, u.y - list[0].y) < 10).length;
-    h += `<div class="row2">${near ? `<button class="btn ok" id="uAll">👥 +${near} in der Nähe</button>` : ''}<button class="btn" id="uStop">✋ Halt</button></div>`;
-    if (!ui.setInfo(h)) return;
+    // Knöpfe in der festen Fußleiste
+    const foot = `${near ? `<button class="btn ok" id="uAll">👥 +${near}<small>in der Nähe</small></button>` : ''}<button class="btn" id="uStop">✋ Halt</button>`;
+    if (!ui.setInfo(h, foot)) return;
     document.getElementById('uAll')?.addEventListener('click', () => {
       const add = g.units.filter((u) => u.owner === HUMAN && u.ship === undefined && Math.hypot(u.x - list[0].x, u.y - list[0].y) < 10);
       ui.selectUnits([...new Set([...list, ...add])]);

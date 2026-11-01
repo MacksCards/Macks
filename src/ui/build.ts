@@ -26,6 +26,8 @@ export class BuildTool {
   roadNoWay = false;
   /** true = Ziel nicht erreichbar, der Weg endet am nächsten erreichbaren Feld */
   roadPartial = false;
+  /** zuletzt getipptes Wegziel (für „schon verbunden“) */
+  private roadTarget: [number, number] | null = null;
   /** wann die Vorschau (Gebäude oder Wegziel) zuletzt gesetzt wurde */
   private shownAt = 0;
 
@@ -60,6 +62,7 @@ export class BuildTool {
     this.roadEndSet = false;
     this.roadNoWay = false;
     this.roadPartial = false;
+    this.roadTarget = null;
     v.setGhost(null);
     v.setRoadPreview([], []);
     const building = m.kind !== 'none';
@@ -122,8 +125,11 @@ export class BuildTool {
       const cost = build
         ? `${build} Felder · ${costText(Object.fromEntries(Object.entries(d.cost).map(([k, v]) => [k, (v ?? 0) * build])))}`
         : `${costText(d.cost)} je Feld`;
+      // Gebäude und Weg (oder zwei Wegstücke) hängen schon zusammen: das melden statt „geht nicht“
+      const linked = ok && isRoad && (this.roadNoWay || !build) ? this.alreadyLinked() : null;
       const msg = !this.roadStart ? `Tippe aufs Startfeld.${m.type === 'steinweg' ? ' Feldwege werden gepflastert.' : ''}`
         : !ok ? 'Tippe jetzt aufs Ziel (gelb = Start).'
+        : linked ? (linked === 'haus' ? 'Schon mit dem Weg verbunden ✓ – anderes Ziel tippen.' : 'Hier liegt schon ein Weg ✓ – anderes Ziel tippen.')
         : this.roadNoWay ? 'Kein Durchgang – tippe ein anderes Ziel.'
         : build ? (this.roadPartial ? '✓ baut bis vors Hindernis – oder anderes Ziel.' : '✓ baut – oder anderes Ziel tippen.')
         : `⚠️ ${why()} – anderes Ziel tippen.`;
@@ -155,7 +161,7 @@ export class BuildTool {
     p.innerHTML = '';
     p.classList.remove('hidden');
     $('#quest').classList.add('hidden');
-    // Name der Kategorie oben (in der zweispaltigen Leiste stehen nur Symbole)
+    // Name der Kategorie oben (in der zweispaltigen Leiste steht nur eine kurze Beschriftung)
     const cat = CATEGORIES.find((x) => x.id === c);
     if (cat) p.appendChild(el('h3', 'ptitle', `${cat.icon} ${cat.name}`));
     for (const d of Object.values(BUILDINGS)) {
@@ -247,6 +253,41 @@ export class BuildTool {
 
   // ---------- Wege per Tippen ----------
 
+  /**
+   * Hängen Start und Ziel schon über Wege zusammen? Ein Gebäude zählt über die Wegfelder an seinem Rand.
+   * 'haus' = mindestens ein Ende ist ein Gebäude, 'weg' = beide Enden sind Wegfelder, null = nicht verbunden.
+   */
+  private alreadyLinked(): 'haus' | 'weg' | null {
+    const g = this.ui.g, a = this.roadStart, b = this.roadTarget;
+    if (!a || !b) return null;
+    let house = false;
+    const seeds = ([x, y]: [number, number]): number[] => {
+      if (!g.inMap(x, y)) return [];
+      const k = g.idx(x, y);
+      if (g.roads[k]) return [k];
+      const bd = g.buildingAt(x, y);
+      if (!bd) return [];
+      house = true;
+      return g.ring(bd).filter(([rx, ry]) => g.inMap(rx, ry) && g.roads[g.idx(rx, ry)] > 0).map(([rx, ry]) => g.idx(rx, ry));
+    };
+    const from = seeds(a), to = new Set(seeds(b));
+    if (!from.length || !to.size) return null;
+    // Breitensuche über die Wege (begrenzt, die Suche läuft bei jedem Tipp)
+    const N = g.size, seen = new Set(from), q = [...from];
+    for (let i = 0; i < q.length && i < 8000; i++) {
+      const k = q[i];
+      if (to.has(k)) return house ? 'haus' : 'weg';
+      const x = k % N, y = (k - x) / N;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy;
+        if (!g.inMap(nx, ny)) continue;
+        const nk = g.idx(nx, ny);
+        if (g.roads[nk] > 0 && !seen.has(nk)) { seen.add(nk); q.push(nk); }
+      }
+    }
+    return null;
+  }
+
   /** freie Nachbarfelder des Gebäudes, das auf (x,y) steht */
   private freeAround(x: number, y: number, pass: (x: number, y: number) => boolean): [number, number][] {
     const g = this.ui.g;
@@ -271,6 +312,7 @@ export class BuildTool {
         if (performance.now() - this.shownAt >= CONFIRM_MS) this.confirmRoad();
         return;
       }
+      this.roadTarget = t;
       this.roadTo(t);
       this.roadEndSet = true;
       this.shownAt = performance.now();

@@ -16,8 +16,19 @@
   background-clip: content-box; font-size: 17px;
 }
 .info .ibody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; }
+/* feste Fußleiste: Hauptknöpfe bleiben sichtbar, auch wenn der Inhalt darüber gewischt wird.
+   Zwei Spalten; ein einzelner Knopf (oder der letzte bei ungerader Zahl) nimmt die ganze Breite */
+.info .ifoot {
+  flex: none; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px;
+  padding: 6px 8px 8px; border-top: 1px solid var(--rand); background: rgba(33, 25, 18, .98); border-radius: 0 0 10px 10px;
+}
+.info .ifoot > .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.info .ifoot .btn { min-height: var(--tap); min-width: 0; padding: 3px 6px; font-size: 14px; line-height: 1.15; overflow-wrap: break-word; }
+.info .ifoot .btn small { display: block; font-size: 12px; font-weight: 400; color: var(--pergament-2); }
+.info .ifoot .btn.ok small { color: #dfe9c8; }
 /* eingeklappt: nur noch die Titelzeile */
 #info.folded { bottom: auto; }
+.info.folded .ifoot { display: none; }
 .info.folded .ibody { overflow: hidden; padding-bottom: 4px; }
 .info.folded .ibody > :not(:first-child) { display: none; }
 /* Soldatenfenster: schmaler und nur so hoch wie nötig */
@@ -29,7 +40,10 @@
 .info .row { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; padding: 2px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
 .info .row b { text-align: right; }
 .info .row.warn b { color: var(--warn); }
-.info .danger { margin-top: 10px; width: 100%; }
+/* Bedürfnisse des Hauses: zwei Spalten, damit „Aufstieg zu …“ ohne Wischen zu sehen ist */
+.info .chips { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 8px; }
+.info .chips > span { display: flex; justify-content: space-between; gap: 2px; font-size: 13px; padding: 2px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); white-space: nowrap; }
+.info .chips > span i { font-style: normal; overflow: hidden; text-overflow: ellipsis; }
 .info .ok.wide { margin-top: 8px; }
 .info .grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
 .bar { height: 7px; background: rgba(0, 0, 0, .35); border-radius: 4px; overflow: hidden; margin: 4px 0; }

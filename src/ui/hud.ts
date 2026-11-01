@@ -1,7 +1,7 @@
 // Oberleiste (Geld, Einwohner, Insel, Warenleiste, Knöpfe), linke Baumenü-Spalte, Aufgabe,
 // Pause/Tempo sowie die Kartenknöpfe + / − und der Kompass unten rechts.
 import './hud.css';
-import { BUILDINGS, CATEGORIES, GOODS, GoodId, TIERS, UNITS } from '../data';
+import { BUILDINGS, CATEGORIES, Category, GOODS, GoodId, TIERS, UNITS } from '../data';
 import { HUMAN, QUESTS } from '../game';
 import { ZOOM_STEP } from '../input';
 import type { UI } from '../ui';
@@ -9,6 +9,8 @@ import { $, el, fmt } from './util';
 
 /** so lange drücken (ms), bis der Kompass zum Kontor springt */
 const LONG_MS = 550;
+/** kurze Beschriftung für die zweispaltige Baumenü-Leiste (nur wo der volle Name nicht passt) */
+const CAT_SHORT: Partial<Record<Category, string>> = { werkstatt: 'Werkstatt' };
 
 export class Hud {
   private goodEls = new Map<GoodId, HTMLElement>();
@@ -70,7 +72,10 @@ export class Hud {
     // Linke Baumenü-Spalte
     const left = el('div', 'left');
     for (const c of CATEGORIES) {
-      const b = el('button', 'btn cat', `<span>${c.icon}</span><small>${c.name}</small>`);
+      // anfangs versteckt (update() zeigt nur Kategorien mit freigeschalteten Gebäuden);
+      // zweispaltig ist weniger Platz: dann die kurze Beschriftung (z. B. „Werkstatt“ statt „Werkstätten“)
+      const short = CAT_SHORT[c.id];
+      const b = el('button', 'btn cat hidden', `<span>${c.icon}</span><small class="${short ? 'long' : ''}">${c.name}</small>${short ? `<small class="short">${short}</small>` : ''}`);
       b.dataset.cat = c.id;
       b.setAttribute('aria-label', c.name);
       b.addEventListener('click', () => ui.build.toggleCat(c.id));
@@ -208,10 +213,10 @@ export class Hud {
       if (show) shown++;
     });
     $('#demBtn').classList.toggle('hidden', !hasKontor);
-    // ab 8 Knöpfen – oder wenn eine Spalte nicht in die Höhe passt – zweispaltig, nur mit Symbolen
+    // wenn eine Spalte nicht in die Höhe passt: zweispaltig (Symbol mit kurzer Beschriftung)
     const left = document.querySelector<HTMLElement>('#hud .left');
     if (left) {
-      const two = shown >= 8 || shown * 48 - 4 > left.clientHeight;
+      const two = shown * 48 - 4 > left.clientHeight;
       left.classList.toggle('two', two);
       document.body.classList.toggle('cols2', two);
     }

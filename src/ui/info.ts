@@ -7,7 +7,7 @@ import { Building, HUMAN } from '../game';
 import { PFLANZEN, Pflanze, depositText } from '../world';
 import { sound } from '../audio';
 import type { UI } from '../ui';
-import { $, costText, fmt, hpHtml } from './util';
+import { $, costText, fmt, hpHtml, soft } from './util';
 
 /** Reiter im Kontor: Lager (immer) und Handel (sobald ui/trade.ts Inhalt hat) */
 type KontorTab = 'lager' | 'handel';
@@ -59,13 +59,14 @@ export class InfoPanel {
     const inc = g.incomePerMinute();
     const pt = g.popByTier();
     h += `<p class="sub">Lagerplatz: ${g.capacity} je Ware</p>`;
+    let foot = '';
     if (b && own) {
       const nl = KONTOR_LEVELS[(b.level ?? 0) + 1];
       h += `<p class="sub">Kontor ${['I', 'II', 'III', 'IV'][b.level ?? 0]}</p>`;
       if (nl) {
         const locked = nl.unlock && !g.reached(nl.unlock);
-        h += locked ? `<p class="sub">🔒 Ausbau ab ${nl.unlock!.n} ${TIERS[nl.unlock!.tier].dat}</p>`
-          : `<button class="btn wide ok" id="kUp">⬆️ Ausbauen: Lager ${nl.storage} t (${costText(nl.cost)})</button>`;
+        if (locked) h += `<p class="sub">🔒 Ausbau ab ${nl.unlock!.n} ${TIERS[nl.unlock!.tier].dat}</p>`;
+        else foot = `<button class="btn ok" id="kUp">⬆️ Ausbauen: Lager ${nl.storage} t<small>${costText(nl.cost)}</small></button>`;
       }
       h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
       for (const gd of GOODS) {
@@ -85,7 +86,7 @@ export class InfoPanel {
       <div class="row"><span>Unterhalt</span><b class="neg">−${fmt(inc.upkeep)}</b></div>
       <h4>Einwohner</h4>`;
     TIERS.forEach((t, i) => { h += `<div class="row"><span>${t.name}</span><b>${pt[i]}</b></div>`; });
-    if (!ui.setInfo(h)) return;
+    if (!ui.setInfo(h, foot)) return;
     this.bindTabs();
     document.getElementById('kUp')?.addEventListener('click', () => {
       const res = g.kontorUpgrade(b!);
@@ -113,25 +114,28 @@ export class InfoPanel {
     const ui = this.ui, g = ui.g;
     const d = BUILDINGS[b.type];
     let h = '';
+    /** Knöpfe der festen Fußleiste */
+    let foot = '';
     if (b.type === 'haus') {
       const tier = TIERS[b.tier];
       const cov = g.coverage.get(b.id) ?? new Set();
       h += `<h3>🏠 Haus der ${tier.name}</h3>
-        <div class="row"><span>Bewohner</span><b>${b.residents} / ${tier.maxResidents}</b></div>
-        <div class="row"><span>Zufriedenheit</span><b>${Math.round(b.happy * 100)} %</b></div>
+        <div class="row"><span>Bewohner <b>${b.residents} / ${tier.maxResidents}</b></span><span>Zufrieden <b>${Math.round(b.happy * 100)} %</b></span></div>
         <div class="bar"><i style="width:${Math.round(b.happy * 100)}%;background:${b.happy > 0.85 ? '#6c3' : b.happy > 0.45 ? '#eb3' : '#d43'}"></i></div>
-        <h4>Bedürfnisse</h4>`;
+        <h4>Bedürfnisse</h4><div class="chips">`;
+      // kompakt in zwei Spalten (Waren aus dem Lager, Gebäude in der Nähe)
       for (const gId of Object.keys(tier.consumes) as GoodId[]) {
         const ok = (b.need[gId] ?? 1) > 0.6 && !b.short[gId];
-        h += `<div class="row"><span>${GOOD[gId].icon} ${GOOD[gId].name}</span><b>${ok ? '✅' : '❌'}</b></div>`;
+        h += `<span title="${GOOD[gId].name}"><i>${GOOD[gId].icon} ${GOOD[gId].name}</i><b>${ok ? '✅' : '❌'}</b></span>`;
       }
       for (const s of tier.services) {
-        h += `<div class="row"><span>${BUILDINGS[s].icon} ${BUILDINGS[s].name} in der Nähe</span><b>${cov.has(s) ? '✅' : '❌'}</b></div>`;
+        h += `<span title="${BUILDINGS[s].name} in der Nähe"><i>${BUILDINGS[s].icon} ${BUILDINGS[s].name}</i><b>${cov.has(s) ? '✅' : '❌'}</b></span>`;
       }
+      h += '</div>';
       const block = g.upgradeBlocker(b);
       if (b.tier < TIERS.length - 1) {
         const next = TIERS[b.tier + 1];
-        h += `<h4>Aufstieg zu ${next.name}</h4><p class="sub">${block ? '⏳ ' + block : '⬆️ Steigt gerade auf …'}</p>`;
+        h += `<h4>⬆️ Aufstieg zu ${next.name}</h4><p class="sub">${block ? '⏳ ' + block : '⬆️ Steigt gerade auf …'}</p>`;
         const l = g.goods;
         for (const grp of tier.next?.goods ?? []) {
           const ok = grp.some((x) => l[x] >= 1);
@@ -166,33 +170,40 @@ export class InfoPanel {
       else if (d.radius) h += `<div class="row"><span>Reichweite</span><b>${d.radius} Felder</b></div>`;
       if (d.storage) h += `<div class="row"><span>Lager</span><b>+${d.storage} je Ware</b></div>`;
       if (d.tower) h += `<div class="row"><span>🎯 Schießt auf Feinde</span><b>${d.tower.range} Felder</b></div>`;
-      if (d.trains) h += this.trainHtml(b);
+      if (d.trains) { const t = this.trainHtml(b); h += t.body; foot += t.foot; }
       if (b.type === 'werft' || b.type === 'grosswerft') {
         if (b.job) {
           const sd = SHIPS[b.job.ship];
           h += `<h4>Im Bau: ${sd.name}</h4><div class="bar"><i style="width:${Math.round((b.job.t / sd.time) * 100)}%"></i></div>`;
         } else {
+          // Bestellknöpfe unten in der Fußleiste, Einzelheiten der Schiffe hier im Inhalt
           h += `<h4>Schiff bauen</h4>`;
+          let locked: typeof SHIPS[ShipType] | null = null;
           for (const [id, sd] of Object.entries(SHIPS) as [ShipType, typeof SHIPS[ShipType]][]) {
             if (sd.build === false) continue;
             if (sd.werft === 'grosswerft' && b.type !== 'grosswerft') continue;
+            if (!g.reached(sd.unlock)) { locked ??= sd; continue; }
             const chk = g.canOrderShip(b, id);
-            h += `<button class="btn wide ${chk.ok ? 'ok' : ''}" data-ship="${id}">⛵ ${sd.name}<br><small>${sd.slots} Laderäume · Tempo ${Math.round(sd.speed * 100)} % · bis ${sd.kanonen} Kanonen · 💰${sd.cost.taler} 🪵${sd.cost.holz} 🧵${sd.cost.stoff}${chk.ok ? '' : ` – ${chk.reason}`}</small></button>`;
+            h += `<div class="row"><span>⛵ ${sd.name}</span></div><p class="sub">${sd.slots} Laderäume · Tempo ${Math.round(sd.speed * 100)} % · bis ${sd.kanonen} Kanonen${chk.ok ? '' : ` · <span class="neg">${chk.reason}</span>`}</p>`;
+            foot += `<button class="btn ${chk.ok ? 'ok' : ''}" data-ship="${id}" aria-label="${sd.name} bestellen">⛵ ${soft(sd.name)}<small>💰${sd.cost.taler} 🪵${sd.cost.holz} 🧵${sd.cost.stoff}</small></button>`;
           }
+          if (locked) h += `<p class="sub">🔒 ${locked.name} ab ${locked.unlock.n} ${TIERS[locked.unlock.tier].dat}</p>`;
+          if (foot) h += `<p class="sub">Tippe unten auf ein Schiff, um es zu bestellen.</p>`;
         }
       }
     }
     if (b.hp !== undefined) h += hpHtml(b.hp, g.maxHp(b));
     h += `<div class="row"><span>Unterhalt</span><b>${d.upkeep} Taler/Min</b></div>`;
-    if (b.type !== 'kontor') h += `<button class="btn danger" id="infoDel">💥 Abreißen</button>`;
-    if (!ui.setInfo(h)) return;
-    const body = $('#infoBody');
-    body.querySelectorAll<HTMLElement>('[data-train]').forEach((bt) => bt.addEventListener('click', () => {
+    if (b.type !== 'kontor') foot += `<button class="btn danger" id="infoDel">💥 Abreißen</button>`;
+    if (!ui.setInfo(h, foot)) return;
+    // Knöpfe stehen im Inhalt oder in der Fußleiste: im ganzen Fenster suchen
+    const box = $('#info');
+    box.querySelectorAll<HTMLElement>('[data-train]').forEach((bt) => bt.addEventListener('click', () => {
       const res = train(g, b, bt.dataset.train as UnitType);
       if (res.ok) sound.play('marsch'); else ui.toast(res.reason ?? '', 'bad');
       ui.renderInfo();
     }));
-    body.querySelectorAll<HTMLElement>('[data-ship]').forEach((bt) => bt.addEventListener('click', () => {
+    box.querySelectorAll<HTMLElement>('[data-ship]').forEach((bt) => bt.addEventListener('click', () => {
       const res = g.orderShip(b, bt.dataset.ship as ShipType);
       ui.toast(res.ok ? 'Die Werft beginnt mit dem Bau.' : res.reason ?? '', res.ok ? 'good' : 'bad');
       ui.renderInfo();
@@ -206,22 +217,25 @@ export class InfoPanel {
   }
 
   /** Burg: Ausbildung (nur freigeschaltete Soldaten, dazu ein Hinweis auf den nächsten) */
-  private trainHtml(b: Building): string {
+  private trainHtml(b: Building): { body: string; foot: string } {
     const g = this.ui.g, d = BUILDINGS[b.type].trains!;
     const l = g.lagerOf(HUMAN, b.island);
-    let h = `<h4>Ausbildung (${b.train?.length ?? 0} von ${d.slots})</h4>`;
+    let h = `<h4>Ausbildung (${b.train?.length ?? 0} von ${d.slots})</h4>`, foot = '';
     for (const j of b.train ?? []) h += `<div class="row"><span>${UNITS[j.type].icon} ${UNITS[j.type].name}</span><b>${Math.ceil(j.t)} s</b></div><div class="bar"><i style="width:${Math.round((1 - j.t / d.time) * 10) * 10}%"></i></div>`;
     const locked = (Object.values(UNITS)).filter((ud) => !g.reached(ud.unlock)).sort((a, c) => a.unlock.tier - c.unlock.tier || a.unlock.n - c.unlock.n)[0];
     for (const [id, ud] of Object.entries(UNITS) as [UnitType, typeof UNITS[UnitType]][]) {
       if (!g.reached(ud.unlock)) continue;
       const chk = canTrain(g, b, id);
       const cost = Object.entries(ud.cost).map(([k, n]) => `${GOOD[k as GoodId].icon}${n} (da: ${Math.floor(l?.[k as GoodId] ?? 0)})`).join(' ');
-      h += `<button class="btn wide ${chk.ok ? 'ok' : ''}" data-train="${id}">${ud.icon} ${ud.name} ausbilden<br><small>${cost} · ❤️${ud.hp} · ${ud.range > 2 ? `Reichweite ${ud.range}` : 'Nahkampf'} · ${ud.upkeep} Taler/Min${chk.ok ? '' : ` – ${chk.reason}`}</small></button>`;
+      // Knopf unten in der Fußleiste, Einzelheiten hier im Inhalt
+      h += `<div class="row"><span>${ud.icon} ${ud.name}</span><b>${cost}</b></div><p class="sub">❤️${ud.hp} · ${ud.range > 2 ? `Reichweite ${ud.range}` : 'Nahkampf'} · ${ud.upkeep} Taler/Min${chk.ok ? '' : ` · <span class="neg">${chk.reason}</span>`}</p>`;
+      foot += `<button class="btn ${chk.ok ? 'ok' : ''}" data-train="${id}" aria-label="${ud.name} ausbilden">${ud.icon} ${soft(ud.name)}<small>ausbilden ${Object.entries(ud.cost).map(([k, n]) => `${GOOD[k as GoodId].icon}${n}`).join(' ')}</small></button>`;
     }
     if (locked) h += `<p class="sub">🔒 ${locked.icon} ${locked.plural} ab ${locked.unlock.n} ${TIERS[locked.unlock.tier].dat}</p>`;
+    if (foot) h += `<p class="sub">Tippe unten auf eine Truppe, um sie auszubilden.</p>`;
     const mine = g.units.filter((u) => u.owner === HUMAN).length;
     if (mine) h += `<p class="sub">Du hast ${mine === 1 ? 'einen Soldaten' : `${mine} Soldaten`}. Tippe einen an, um ihn zu führen.</p>`;
-    return h;
+    return { body: h, foot };
   }
 
   /** Inselinfo: Größe, Klima, Besitzer, Fruchtbarkeit, Vorkommen im Berg */

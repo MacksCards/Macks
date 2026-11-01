@@ -23,6 +23,9 @@ export function costText(c: Cost): string {
   return parts.join(' ') || 'kostenlos';
 }
 
+/** weiche Trennstellen in langen zusammengesetzten Wörtern (für schmale Knöpfe, z. B. „Schwert-kämpfer“) */
+export const soft = (s: string) => s.replace(/(Schwert|Handels|Kriegs)(?=\p{Ll})/gu, '$1\u00AD');
+
 /** Zahl mit Tausenderpunkt (8.000) */
 export const fmt = (n: number) => Math.floor(n).toLocaleString('de-DE');
 

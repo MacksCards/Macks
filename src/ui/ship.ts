@@ -1,5 +1,6 @@
-// Schiffsfenster: am Kontor ganz oben „Alles ausladen“ und Einladen (+10 / +50 / Max), dann Laderaum,
-// Kontor gründen, Zustand sowie die einklappbaren Blöcke Kanonen und Soldaten.
+// Schiffsfenster: Laderaum, Zustand, die einklappbaren Blöcke Kanonen, Soldaten und Einladen (+10 / +50 / Max,
+// anfangs zu). Die Hauptknöpfe (Kontor bauen, Alles ausladen, Bewaffnen, an Land setzen) stehen in der festen
+// Fußleiste des Infofensters und sind so immer ohne Wischen erreichbar.
 // Handelsrouten kommen aus dem Gerüst ui/trade.ts und erscheinen erst, wenn es sie gibt.
 import './ship.css';
 import { GOOD, GOODS, GoodId, SHIPS, UNITS } from '../data';
@@ -14,7 +15,7 @@ const STEPS: (number | 'max')[] = [10, 50, 'max'];
 /** so heißt der Segel-Hinweis im Fenster und in der Hilfe */
 export const SAIL_HINT = 'Tippe aufs Meer oder auf eine Insel – das Schiff segelt so nah wie möglich heran.';
 
-type Block = 'guns' | 'troops';
+type Block = 'guns' | 'troops' | 'load';
 
 export class ShipPanel {
   /** vom Spieler auf- oder zugeklappte Blöcke (ohne Wahl: offen bei Krieg oder wenn es dort etwas gibt) */
@@ -32,22 +33,29 @@ export class ShipPanel {
     const war = g.players.some((p) => p.id !== HUMAN && !p.pirate && atWar(g, HUMAN, p.id));
     let h = `<h3>⛵ ${s.name}</h3><p class="sub">${sd.name} · ${s.path.length ? 'unterwegs …' : 'liegt vor Anker'}</p>`;
     if (!dock && !canFound) h += `<p class="sub">${SAIL_HINT}</p>`;
-    // Am Kontor: Löschen und Laden ganz oben
+    // Hauptknöpfe (Kontor bauen, Ausladen, Bewaffnen, an Land setzen) stehen in der festen Fußleiste
+    let foot = '';
+    if (canFound) foot += `<button class="btn ok" id="shipKontor">⚓ Kontor auf ${g.islands[near].name} bauen<small>💰100 🪵6 🔧3</small></button>`;
+    // Am Kontor: Ausladen unten in der Fußleiste, Einladen einklappbar (anfangs zu, damit nichts verdeckt wird)
     if (dock) {
       const l = g.lagerOf(HUMAN, dock.island)!;
       const cargo = s.slots.reduce((a, sl) => a + sl.n, 0);
-      h += `<h4>⚓ Am Kontor von ${g.islands[dock.island].name}</h4>
-        <button class="btn wide ok" id="shipUnload"${cargo ? '' : ' disabled'}>⬇️ Alles ausladen${cargo ? ` (${cargo} t)` : ''}</button>`;
+      h += `<p class="sub">⚓ Am Kontor von ${g.islands[dock.island].name}</p>`;
+      if (cargo) foot += `<button class="btn ok" id="shipUnload">⬇️ Alles ausladen<small>${cargo} t an Bord</small></button>`;
       const loadable = GOODS.filter((gd) => l[gd.id] >= 1);
       if (loadable.length) {
-        h += '<p class="sub">Einladen aus dem Kontor:</p>';
-        for (const gd of loadable) {
-          h += `<div class="load"><span title="${gd.name}">${gd.icon} ${Math.floor(l[gd.id])}</span>` + STEPS.map((n) =>
-            `<button class="btn" data-load="${gd.id}" data-n="${n}" aria-label="${gd.name}: ${n === 'max' ? 'so viel wie geht' : `${n} t`} einladen">${n === 'max' ? 'Max' : `+${n}`}</button>`).join('') + '</div>';
+        const loadOpen = this.open.load ?? false;
+        h += this.foldHead('load', '📦 Einladen', `${loadable.length} Waren`, loadOpen);
+        if (loadOpen) {
+          h += '<div class="fold-b"><p class="sub">Aus dem Kontor aufs Schiff:</p>';
+          for (const gd of loadable) {
+            h += `<div class="load"><span title="${gd.name}">${gd.icon} ${Math.floor(l[gd.id])}</span>` + STEPS.map((n) =>
+              `<button class="btn" data-load="${gd.id}" data-n="${n}" aria-label="${gd.name}: ${n === 'max' ? 'so viel wie geht' : `${n} t`} einladen">${n === 'max' ? 'Max' : `+${n}`}</button>`).join('') + '</div>';
+          }
+          h += '</div>';
         }
       }
     }
-    if (canFound) h += `<button class="btn wide ok" id="shipKontor">⚓ Kontor auf ${g.islands[near].name} bauen (💰100 🪵6 🔧3)</button>`;
     // Laderaum
     h += `<h4>Laderaum</h4><div class="slots">`;
     for (const sl of s.slots) h += `<div class="slot">${sl.g ? `<span>${GOOD[sl.g].icon}</span><b>${sl.n}</b>` : '<small>leer</small>'}</div>`;
@@ -67,12 +75,12 @@ export class ShipPanel {
       h += '<div class="fold-b">';
       if (s.guns) h += `<p class="sub">Tippe auf ein feindliches Schiff oder Gebäude, um es zu beschießen.</p>`;
       if (kl) {
-        if (canArm) h += `<button class="btn wide ok" id="shipArm">💣 Bewaffnen (${Math.min(sd.kanonen - (s.guns ?? 0), Math.floor(kl.kanonen))} Kanonen aus dem Lager)</button>`;
-        else if ((s.guns ?? 0) < sd.kanonen && g.isUnlocked('kanonengiesserei')) h += `<p class="sub">Kanonen kommen aus der Kanonengießerei ins Lager.</p>`;
+        if (!canArm && (s.guns ?? 0) < sd.kanonen && g.isUnlocked('kanonengiesserei')) h += `<p class="sub">Kanonen kommen aus der Kanonengießerei ins Lager.</p>`;
         if (s.guns) h += `<button class="btn wide" id="shipDisarm">Kanonen ins Lager zurück</button>`;
       } else if ((s.guns ?? 0) < sd.kanonen) h += `<p class="sub">Kanonen lädst du am Kontor auf.</p>`;
       h += '</div>';
     }
+    if (canArm) foot += `<button class="btn ok" id="shipArm">💣 Bewaffnen<small>${Math.min(sd.kanonen - (s.guns ?? 0), Math.floor(kl!.kanonen))} Kanonen aus dem Lager</small></button>`;
     // Soldaten (einklappbar)
     const tr = s.troops?.length ?? 0;
     if (tr || g.reached(UNITS.infanterie.unlock)) {
@@ -80,18 +88,19 @@ export class ShipPanel {
       h += this.foldHead('troops', '🪖 Soldaten an Bord', `${tr} / ${sd.troops}`, troopsOpen);
       if (troopsOpen) {
         h += '<div class="fold-b">';
-        if (tr && near >= 0 && !s.path.length) h += `<button class="btn wide ok" id="shipLand">🪖 Soldaten an Land setzen</button>`;
-        else if (tr) h += `<p class="sub">Segle an eine Küste, um sie an Land zu setzen.</p>`;
-        else h += `<p class="sub">Wähle Soldaten an Land und tippe dann auf dieses Schiff – sie steigen ein.</p>`;
+        // mit Soldaten an der Küste steht „An Land setzen“ unten in der Fußleiste
+        if (tr && (near < 0 || s.path.length)) h += `<p class="sub">Segle an eine Küste, um sie an Land zu setzen.</p>`;
+        else if (!tr) h += `<p class="sub">Wähle Soldaten an Land und tippe dann auf dieses Schiff – sie steigen ein.</p>`;
         h += '</div>';
       }
+      if (tr && near >= 0 && !s.path.length) foot += `<button class="btn ok" id="shipLand">🪖 An Land setzen<small>${tr} Soldaten</small></button>`;
     }
     // Handelsrouten (Gerüst ui/trade.ts)
     if (ui.trade.ready) h += ui.trade.shipHtml(s);
     if (canFound) h += `<h4>Insel in der Nähe</h4>${ui.info.islandHtml(near).replace('<h3>', '<h3 class="small">')}`;
     else if (near < 0 && !s.path.length && !dock) h += '<p class="sub">Segle an eine Küste, um dort ein Kontor zu bauen.</p>';
     if (dock || canFound) h += `<p class="sub">${SAIL_HINT}</p>`;
-    if (!ui.setInfo(h)) return;
+    if (!ui.setInfo(h, foot)) return;
     this.bind(s);
   }
 

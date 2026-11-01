@@ -24,11 +24,12 @@
   --tap: 44px;
   --top-h: 52px;                              /* Oberleiste ohne Rand */
   --top: calc(var(--top-h) + var(--in-t));    /* Oberleiste mit Rand */
-  --left-w: 72px;                             /* linke Baumenü-Spalte (zweispaltig: 92 px) */
+  --left-w: 72px;                             /* linke Baumenü-Spalte (zweispaltig: 2 × --cat-w + 4 px) */
+  --cat-w: 58px;                              /* Kategorie-Knopf in der zweispaltigen Leiste */
   --info-w: clamp(220px, 28vw, 270px);        /* Infofenster rechts */
   color-scheme: dark;
 }
-body.cols2 { --left-w: 92px; }
+body.cols2 { --left-w: calc(2 * var(--cat-w) + 4px); }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; margin: 0; overflow: hidden; background: var(--meer); color: var(--pergament); }

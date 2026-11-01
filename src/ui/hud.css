@@ -81,11 +81,13 @@ button.stat:active { background: var(--holz-3); }
 }
 .cat span { font-size: 19px; line-height: 1; }
 .cat small { font-size: 12px; max-width: 100%; padding: 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pergament-2); }
-/* ab 8 Knöpfen zweispaltig, je 44 × 44 nur mit Symbol (der Name steht oben im Baumenü) */
-.left.two { display: grid; grid-template-columns: var(--tap) var(--tap); grid-auto-rows: var(--tap); gap: 4px; align-content: start; }
-.left.two .cat { width: var(--tap); height: var(--tap); padding: 0; }
-.left.two .cat span { font-size: 21px; }
-.left.two .cat small { display: none; }
+/* passt eine Spalte nicht in die Höhe: zweispaltig, je 58 × 44 – Symbol mit kurzer Beschriftung darunter */
+.left.two { display: grid; grid-template-columns: var(--cat-w) var(--cat-w); grid-auto-rows: var(--tap); gap: 4px; align-content: start; }
+.left.two .cat { width: var(--cat-w); height: var(--tap); padding: 1px 0; gap: 0; }
+.left.two .cat span { font-size: 18px; }
+.left.two .cat small { display: block; font-size: 12px; line-height: 1.15; padding: 0 1px; letter-spacing: -.01em; }
+.cat small.short, .left.two .cat small.long { display: none; }
+.left.two .cat small.short { display: block; }
 
 /* ---------- Aufgabe unten in der Mitte ---------- */
 .quest {
