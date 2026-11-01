@@ -483,14 +483,13 @@ export class UI {
       return;
     }
     // andere Auswahl: Inhalt sicher neu aufbauen (Knöpfe gehören zum neuen Objekt) und wieder aufklappen
+    let fresh = false;
     const key = `${b?.id ?? ''}|${this.showStorage}|${this.selShip?.id ?? ''}|${this.islandInfo ?? ''}|${this.selUnits.map((u) => u.id).join(',')}`;
     if (key !== this.infoKey) {
       this.infoKey = key;
       this.infoFolded = false;
-      const body = $('#infoBody') as HTMLElement & { _h?: string };
-      body._h = undefined;
-      // neues Fenster beginnt oben (nicht dort, wohin man im vorigen gewischt hatte)
-      body.scrollTop = 0;
+      ($('#infoBody') as HTMLElement & { _h?: string })._h = undefined;
+      fresh = true;
     }
     box.classList.remove('hidden');
     box.classList.toggle('folded', this.infoFolded);
@@ -504,6 +503,9 @@ export class UI {
     else if (this.selUnits.length) this.units.render(this.selUnits);
     else if (this.islandInfo !== null) this.info.renderIsland(this.islandInfo);
     else this.info.render(b, this.showStorage);
+    // neues Fenster beginnt oben (nicht dort, wohin man im vorigen gewischt hatte) – erst jetzt, wo es sichtbar
+    // ist: bei einem versteckten Fenster übergeht der Browser das Zurücksetzen
+    if (fresh) $('#infoBody').scrollTop = 0;
   }
 
   // ---------- Fenster (Menü, Karte, Hilfe, Diplomatie: siehe ui/windows.ts, ui/diplomacy.ts) ----------
