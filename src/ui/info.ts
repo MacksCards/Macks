@@ -135,7 +135,10 @@ export class InfoPanel {
       const block = g.upgradeBlocker(b);
       if (b.tier < TIERS.length - 1) {
         const next = TIERS[b.tier + 1];
-        h += `<h4>⬆️ Aufstieg zu ${next.name}</h4><p class="sub">${block ? '⏳ ' + block : '⬆️ Steigt gerade auf …'}</p>`;
+        // fehlende Gebäude/Waren stehen gleich darunter in eigenen Zeilen – nicht doppelt nennen
+        const dup = !!block && (block.endsWith('in der Nähe fehlt') || block.endsWith('fehlt im Lager'));
+        h += `<h4>⬆️ Aufstieg zu ${next.name}</h4>`;
+        if (!dup) h += `<p class="sub">${block ? '⏳ ' + block : '⬆️ Steigt gerade auf …'}</p>`;
         const l = g.goods;
         for (const grp of tier.next?.goods ?? []) {
           const ok = grp.some((x) => l[x] >= 1);

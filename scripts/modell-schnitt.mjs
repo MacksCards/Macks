@@ -16,6 +16,10 @@
 //                (rotes Tuch entfernt, Mast bleibt; "fahne": [-0.515, 0.601, 0.446])
 //   festung.glb: --ymax 0.25   (alle rot-blauen Fahnen samt Masten auf den Türmen entfernt)
 //   schule.glb, weingut.glb: --flecken
+//   burg.glb:    --rotbox -0.30,-0.11,-0.22,0.05,0.62,0.74, danach --box -0.29,-0.12,-0.21,0.04,0.668,0.74 (rotes Wandbanner)
+//   theater.glb: --box -0.2,0.1,0.46,0.7,0.4,0.6   (Fahne auf dem Dach)
+//   schiff-krieg.glb: --box -0.14,-0.04,0.62,0.75,-0.1,0.05, --box 0.80,0.98,0.10,0.22,-0.10,0.06,
+//                --box 0.84,0.97,-0.115,0.02,-0.07,0.005   (Wimpel und Heckflagge)
 const { NodeIO } = await import('@gltf-transform/core');
 const { ALL_EXTENSIONS } = await import('@gltf-transform/extensions');
 const { MeshoptDecoder, MeshoptEncoder } = await import('meshoptimizer');

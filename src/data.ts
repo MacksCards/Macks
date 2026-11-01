@@ -15,7 +15,7 @@ export interface GoodDef { id: GoodId; name: string; icon: string }
 
 export const GOODS: GoodDef[] = [
   { id: 'holz', name: 'Holz', icon: '🪵' },
-  { id: 'stein', name: 'Steine', icon: '🧱' },
+  { id: 'stein', name: 'Steine', icon: '🪨' },
   { id: 'werkzeug', name: 'Werkzeug', icon: '🔧' },
   { id: 'nahrung', name: 'Nahrung', icon: '🍖' },
   { id: 'stoff', name: 'Stoffe', icon: '🧵' },
