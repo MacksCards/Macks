@@ -1,7 +1,9 @@
 // 3D-Darstellung mit three.js: Insel, Wasser, Bäume, Berge, Wege, Gebäude.
 import * as THREE from 'three';
-import { BUILDINGS, BuildingId, GOOD, UNITS } from '../data';
-import { Building, Game, Unit } from '../game';
+import { BUILDINGS, BuildingId, UNITS } from '../data';
+import { Building, Game, HUMAN, Unit } from '../game';
+import { iconFor } from '../events';
+import { sound } from '../audio';
 import { T } from '../world';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { WALLS, WALL_LINKS, buildingModel } from './models';
@@ -18,10 +20,26 @@ import { Builder, ModelDef } from './kit';
 import { Level, Quality, QualityMode } from './quality';
 import { ensureCapacity } from './instances';
 import { Cloth, MarkDef, OwnerMarks, Pole, POLE_H, POLE_H_SMALL } from './marks';
+import { Smoke } from './smoke';
+import { SignLayer, paintCluster, paintIsland, paintUnit, paintWarn } from './signs';
+import { BuildAnims } from './buildanim';
+import type { RenderLayer } from './layers';
+import {
+  CLUSTER_DIST, ISLAND_DIST, IslandSymbol, Pin, SMOKE_DIST, SMOKE_STYLE, Sign, UNIT_MARK_DIST, UNIT_MARK_PX,
+  buildingSign, clusterPins, effColor, islandSymbols, smokeStrength, tapRadius, working,
+} from './citysigns';
 
 
 interface BView {
-  mesh: THREE.Object3D; spin: { m: THREE.Mesh; axis: 'x' | 'z'; speed: number }[]; icon: THREE.Sprite; iconKey: string; tier: number;
+  mesh: THREE.Object3D; spin: { m: THREE.Mesh; axis: 'x' | 'z'; speed: number }[]; tier: number;
+  /** Warnsymbol (null = keins) und sein Schlüssel (zum Erkennen von Änderungen) */
+  sign: Sign | null; signKey: string;
+  /** Kontorstufe (0 = Kontor I) */
+  level: number;
+  /** Schornstein-Öffnungen in Weltkoordinaten (x, y, z hintereinander) */
+  smoke: number[];
+  /** Drehtempo der Flügel 0..1 (Mühle dreht nur, wenn sie arbeitet; läuft sanft an und aus) */
+  spinV: number;
   owner: number; mask: number; top: number;
   /** gezeigtes Meshy-Modell („gebäude:stufe“) oder null, dann die Form des Code-Modells (geo) */
   glbKey: string | null; geo: THREE.BufferGeometry | null;
@@ -83,6 +101,23 @@ export class View {
   fx!: Fx;
   /** alle Fahnen, Wimpel und Fahnenmasten in Besitzerfarbe (wenige Zeichenaufrufe für alle Gebäude) */
   private marks!: OwnerMarks;
+  /** Rauch aus allen Schornsteinen (ein Zeichenaufruf) */
+  readonly smoke = new Smoke();
+  /** Warnsymbole, Sammelmarken, Insel-Symbole, Soldaten-Marken (ein Zeichenaufruf) */
+  readonly signs = new SignLayer();
+  /** Bau-Animationen: Wachsen, Gerüst, Einsinken */
+  private anims!: BuildAnims;
+  /** weitere Bild-Ebenen (Andockstelle, z. B. Bewohner und Felder aus G3b) */
+  private layers: RenderLayer[] = [];
+  /** entdeckte Inseln (für die Insel-Symbole) und deren Symbole */
+  private seenIslands = new Set<number>();
+  private islandSyms = new Map<number, IslandSymbol[]>();
+  /** Gebäude, deren Meshy-Modell mitten im Wachsen fertig geladen wurde: Zeit, ab der das neue Modell weiterwächst */
+  private resumeRise = new Map<number, number>();
+  /** true, solange buildWorld die Gebäude aufstellt (dann keine Bau-Animation) */
+  private settingUp = false;
+  /** Fläche im Arbeitsradius, gefärbt nach Ergiebigkeit (beim Antippen eines Betriebs) */
+  private effDisc: THREE.Mesh;
   private carts!: CartLayer;
   private life!: LifeLayer;
   private seenTex!: THREE.DataTexture;
@@ -104,7 +139,6 @@ export class View {
   private footprint: THREE.Mesh;
   private radiusRing: THREE.Mesh;
   private selectRing: THREE.Mesh;
-  private iconTex = new Map<string, THREE.Texture>();
   private raycaster = new THREE.Raycaster();
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y);
   private sun: THREE.DirectionalLight;
@@ -119,8 +153,6 @@ export class View {
   private dirty = true;
   private drawn = { tx: NaN, tz: NaN, dist: NaN, yaw: NaN, w: 0, h: 0, ship: null as number | null, units: -1 };
   private borderMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
-  /** bleibt immer bestehen, damit das Programm für Warnsymbole nicht wieder freigegeben wird */
-  private warmSprite = new THREE.SpriteMaterial({ transparent: true, depthTest: false, sizeAttenuation: false });
   private cam = { x: 0, z: 0, dist: 0 };
 
   constructor(canvas: HTMLCanvasElement, g: Game) {
@@ -154,7 +186,12 @@ export class View {
       for (const b of this.g.buildings) {
         if (!what.buildings.has(b.type)) continue;
         const v = this.views.get(b.id);
-        if (v && this.lib.shownKey(b.type, b.tier) !== v.glbKey) { this.removeBuilding(b, false); this.addBuilding(b, false); }
+        if (v && this.lib.shownKey(b.type, b.tier) !== v.glbKey) {
+          // wächst das Gebäude gerade noch aus dem Boden, wächst das neue Modell an derselben Stelle weiter
+          const t = this.anims.riseTime(b.id);
+          if (t >= 0) this.resumeRise.set(b.id, t);
+          this.removeBuilding(b, false); this.addBuilding(b, false);
+        }
       }
       if (what.others.size) this.ships?.resetViews();
     };
@@ -182,8 +219,18 @@ export class View {
     this.selectRing.renderOrder = 3;
     this.scene.add(this.selectRing);
 
+    this.effDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(1, 72).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.13, depthWrite: false }),
+    );
+    this.effDisc.visible = false;
+    this.effDisc.renderOrder = 2;
+    this.scene.add(this.effDisc);
+
     this.marks = new OwnerMarks(this.mat);
     this.scene.add(this.marks.group);
+    this.anims = new BuildAnims(this.scene, this.mat);
+    this.scene.add(this.smoke.points, this.signs.mesh);
 
     this.buildWorld();
   }
@@ -226,9 +273,12 @@ export class View {
   /** Alles (neu) aufbauen – z. B. nach "Neues Spiel" */
   setGame(g: Game) {
     this.g = g;
-    for (const v of this.views.values()) { this.scene.remove(v.mesh, v.icon); v.icon.material.dispose(); }
+    for (const v of this.views.values()) this.scene.remove(v.mesh);
     this.views.clear();
     this.marks.clear();
+    this.anims.clear();
+    this.smoke.clear();
+    this.resumeRise.clear();
     // Meshy-Modelle, die das neue Spiel (noch) nicht braucht, aus dem Grafikspeicher nehmen;
     // sie werden bei Bedarf neu geladen. Gebraucht = Gebäudearten im neuen Spiel (geladener Spielstand).
     this.lib.release(new Set(g.buildings.map((b) => b.type)));
@@ -291,7 +341,12 @@ export class View {
     this.writeSeen(null);
     this.onTerritory();
     this.buildRoads();
-    for (const b of g.buildings) this.addBuilding(b);
+    this.settingUp = true;
+    try { for (const b of g.buildings) this.addBuilding(b); } finally { this.settingUp = false; }
+    // entdeckte Inseln (für ihre Symbole)
+    this.seenIslands.clear(); this.islandSyms.clear();
+    for (const il of g.islands) if (g.islandSeen(il.id)) this.seenIslands.add(il.id);
+    for (const l of this.layers) l.setGame(g, h);
     this.dirty = true;
     void this.prewarm();
   }
@@ -324,11 +379,7 @@ export class View {
       grp.add(inst);
     }
     grp.add(...this.marks.warm());
-    this.warmSprite.map = this.iconTexture('🚧');
-    const spr = new THREE.Sprite(this.warmSprite);
-    spr.frustumCulled = false;
-    spr.scale.set(1e-4, 1e-4, 1); // Warnsymbole werden über allem gezeichnet: hier winzig klein
-    grp.add(spr);
+    // (Rauch und Symbole hängen immer in der Szene – auch leer –, ihre Programme werden also mit vorbereitet)
     // unter dem Meeresboden: wird gezeichnet (und damit vorbereitet), ist aber nie zu sehen
     grp.position.set(this.rig.tx, -6, this.rig.tz);
     this.scene.add(grp);
@@ -411,7 +462,7 @@ export class View {
 
   /** Bild zeichnen nötig? (Kamera bewegt, Fenstergröße, Auswahl oder sonst etwas Sichtbares geändert) */
   needsRedraw(): boolean {
-    if (this.dirty) return true;
+    if (this.dirty || this.anims.busy) return true;
     const r = this.rig, d = this.drawn, el = this.renderer.domElement;
     return r.tx !== d.tx || r.tz !== d.tz || r.dist !== d.dist || r.yaw !== d.yaw || el.width !== d.w || el.height !== d.h
       || this.ships.selected !== d.ship || this.units.selected.size !== d.units;
@@ -631,7 +682,11 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       this.veg.markTile(i);
       if (t !== tOld) splat.push(i);
       if (t !== tOld || r !== rOld || (o !== 0) !== (oOld !== 0)) grow(land, x, y);
-      if (sn !== sOld) { nSeen++; grow(seen, x, y); if (g.islandOf[i] >= 0) islandSeen = true; if (g.own[i] >= 0) ownedSeen = true; }
+      if (sn !== sOld) {
+        nSeen++; grow(seen, x, y);
+        if (g.islandOf[i] >= 0) { islandSeen = true; if (sn) this.seenIslands.add(g.islandOf[i]); }
+        if (g.own[i] >= 0) ownedSeen = true;
+      }
       if (r !== rOld || sn !== sOld) roads.push(i);
     }
     // sehr viel auf einmal (z. B. ganze Karte aufgedeckt): einmal alles statt vieler kleiner Stücke
@@ -643,6 +698,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       this.life.rebuild(big ? undefined : seen, 3);
     }
     if (land.x1 >= 0 && !(nSeen && big)) this.life.rebuild(land, 2);
+    if (land.x1 >= 0) for (const l of this.layers) l.rebuild?.(land);
     this.veg.flush();
     if (roads.length) this.updateRoads(roads);
     // Gebietsgrenze nur neu, wenn ein Feld mit Besitzer neu entdeckt wurde
@@ -651,7 +707,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       // fremde Gebäude erst zeigen, wenn ihr Platz entdeckt ist
       for (const [id, v] of this.views) {
         const b = g.byId.get(id);
-        if (b) { v.mesh.visible = g.seen[g.idx(b.x, b.y)] === 1; v.icon.visible = v.icon.visible && v.mesh.visible; }
+        if (b) v.mesh.visible = g.seen[g.idx(b.x, b.y)] === 1;
       }
       this.marks.touch();
     }
@@ -886,11 +942,16 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     return this.g.players[owner]?.color ?? 0x2f6fd0;
   }
 
+  /**
+   * Gebäude darstellen. neighbors = true heißt „wirklich neu gebaut“ (Ereignis aus dem Spiel): dann auch
+   * Mauer-Nachbarn anpassen und – wenn es im Bild ist – die kurze Bau-Animation zeigen.
+   */
   addBuilding(b: Building, neighbors = true) {
     const d = BUILDINGS[b.type];
     const isWall = WALLS.has(b.type), isGate = !!d.gate;
     const mask = isWall ? this.wallMask(b) : isGate ? this.gateTurn(b) : 0;
-    const model = buildingModel(b.type, isWall ? mask : b.tier);
+    const level = b.level ?? 0;
+    const model = buildingModel(b.type, isWall ? mask : b.tier, { level, variant: b.id % 4 });
     const glbKey = this.lib.shownKey(b.type, b.tier);
     const glb = glbKey ? this.lib.building(b.type, b.tier) : null;
     const mesh: THREE.Object3D = glb ?? new THREE.Mesh(model.geo, this.mat);
@@ -910,16 +971,33 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       const p = mesh.localToWorld(new THREE.Vector3(fx, fy, fz));
       marks.push({ cloth: Cloth.Flag, x: p.x, y: p.y, z: p.z, scale: 1, pole: Pole.None, px: 0, py: 0, pz: 0 });
     }
-    this.marks.set(b.id, mesh, this.ownerColor(b.owner), marks);
+    // Schornstein-Öffnungen in Weltkoordinaten (Meshy-Modell: aus manifest.json „rauch“; Code-Modell: aus dem Modell)
+    const smoke: number[] = [];
+    if (SMOKE_STYLE[b.type]) {
+      const pts = glb ? (glb.userData.smokeAt as [number, number, number][] | undefined) ?? [] : model.smoke;
+      const p = new THREE.Vector3();
+      for (const [sx, sy, sz] of pts) { mesh.localToWorld(p.set(sx, sy, sz)); smoke.push(p.x, p.y + 0.02, p.z); }
+    }
+    const setMarks = () => this.marks.set(b.id, mesh, this.ownerColor(b.owner), marks);
+    // neu gebaut und im Bild: wächst aus dem Boden (Fahnen erst, wenn es steht)
+    const r = this.rig;
+    const near = Math.hypot(mesh.position.x - r.tx, mesh.position.z - r.tz) < r.dist * 1.6 + 10;
+    const resume = this.resumeRise.get(b.id);
+    this.resumeRise.delete(b.id);
+    if ((neighbors && !this.settingUp && mesh.visible && near) || resume !== undefined) {
+      const at = { x: mesh.position.x, z: mesh.position.z };
+      this.anims.rise(b.id, mesh, () => { if (this.views.get(b.id)?.mesh === mesh) setMarks(); this.dirty = true; }, (k) => {
+        const n = d.size === 1 ? 4 : 6 + d.size * 4;
+        this.fx.dust(at.x, mesh.position.y + 0.05, at.z, k ? Math.ceil(n / 2) : n, 0.35 + d.size * 0.3);
+      }, resume ?? 0);
+      if (b.owner === HUMAN && resume === undefined) sound.play('hammer', at);
+    } else setMarks();
     if (!model.geo.boundingBox) model.geo.computeBoundingBox();
     const top = glb ? (glb.userData.height as number | undefined) ?? d.size * 0.6 + 0.6 : model.geo.boundingBox!.max.y;
-    const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, sizeAttenuation: false }));
-    icon.scale.set(0.055, 0.055, 1);
-    icon.position.set(mesh.position.x, mesh.position.y + 2.6, mesh.position.z);
-    icon.visible = false;
-    icon.renderOrder = 10;
-    this.scene.add(icon);
-    this.views.set(b.id, { mesh, spin, icon, iconKey: '', tier: b.tier, owner: b.owner, mask, top, glbKey, geo: glb ? null : model.geo });
+    this.views.set(b.id, {
+      mesh, spin, tier: b.tier, level, sign: null, signKey: '', smoke, spinV: 0,
+      owner: b.owner, mask, top, glbKey, geo: glb ? null : model.geo,
+    });
     this.dirty = true;
     this.pend |= 1; // Gras und Tiere unter dem Gebäude anpassen
     if (neighbors && WALL_LINKS.has(b.type)) this.refreshWallNeighbors(b);
@@ -967,20 +1045,25 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     });
   }
 
+  /** Gebäude aus dem Bild nehmen. neighbors = true heißt „wirklich abgerissen/zerstört“: dann Staub und Einsinken. */
   removeBuilding(b: Building, neighbors = true) {
     const v = this.views.get(b.id);
     if (!v) return;
-    this.scene.remove(v.mesh, v.icon);
-    v.icon.material.dispose();
+    this.anims.finish(b.id, false);
+    this.anims.detach(v.mesh);
     this.views.delete(b.id);
     this.marks.remove(b.id);
+    for (let i = 0; i < v.smoke.length / 3; i++) this.smoke.forget(b.id * 8 + i);
     this.dirty = true;
     this.pend |= 1;
-    // zerstört (nicht abgerissen): Staubwolke und Trümmer
-    if (neighbors && b.hp !== undefined && b.hp <= 0 && !this.g.byId.has(b.id) && v.mesh.visible) {
-      const s = BUILDINGS[b.type].size;
-      this.fx.dust(v.mesh.position.x, v.mesh.position.y + 0.1, v.mesh.position.z, 10 + s * 8, 0.6 + s * 0.4);
-    }
+    const gone = neighbors && !this.g.byId.has(b.id) && v.mesh.visible;
+    if (gone) {
+      // abgerissen oder zerstört: Staubwolke, das Gebäude sinkt ein (zerstört: mehr Staub und Trümmer)
+      const s = BUILDINGS[b.type].size, p = v.mesh.position;
+      const destroyed = b.hp !== undefined && b.hp <= 0;
+      this.fx.dust(p.x, p.y + 0.1, p.z, (destroyed ? 10 : 6) + s * (destroyed ? 8 : 5), 0.5 + s * 0.4);
+      this.anims.sink(v.mesh, v.top);
+    } else this.scene.remove(v.mesh);
     if (neighbors && WALL_LINKS.has(b.type)) this.refreshWallNeighbors(b);
   }
 
@@ -993,58 +1076,138 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       this.marks.recolor(b.id, this.ownerColor(b.owner));
       this.dirty = true;
     }
-    if (v.tier !== b.tier) {
-      // neue Ausbaustufe → Modell nur austauschen, wenn sich das gezeigte Modell wirklich ändert
-      v.tier = b.tier;
+    const level = b.level ?? 0;
+    if (v.tier !== b.tier || v.level !== level) {
+      // neue Ausbaustufe (Haus) oder Kontorstufe → Modell nur austauschen, wenn sich das gezeigte Modell wirklich ändert
+      const up = b.tier > v.tier || level > v.level;
+      v.tier = b.tier; v.level = level;
       const key = this.lib.shownKey(b.type, b.tier);
-      if (key !== v.glbKey || (!key && buildingModel(b.type, b.tier).geo !== v.geo)) {
+      let cur = v;
+      if (key !== v.glbKey || (!key && buildingModel(b.type, b.tier, { level, variant: b.id % 4 }).geo !== v.geo)) {
         this.removeBuilding(b, false);
         this.addBuilding(b, false);
+        cur = this.views.get(b.id) ?? v;
       }
+      // Aufstieg sichtbar machen: kurz ein Gerüst, das neue Haus streckt sich; Abstieg: nur etwas Staub
+      if (cur.mesh.visible) {
+        const d = BUILDINGS[b.type], p = cur.mesh.position;
+        if (up) {
+          this.anims.scaffold(cur.mesh, d.size, cur.top);
+          if (b.owner === HUMAN) sound.play('hammer', { x: p.x, z: p.z });
+        }
+        this.fx.dust(p.x, p.y + 0.05, p.z, 4 + d.size * 2, 0.4 + d.size * 0.3);
+      }
+      this.dirty = true;
     }
   }
 
-  private iconTexture(key: string): THREE.Texture {
-    let t = this.iconTex.get(key);
-    if (t) return t;
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = 64;
-    const ctx = cv.getContext('2d')!;
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.beginPath(); ctx.arc(32, 32, 29, 0, Math.PI * 2); ctx.fill();
-    ctx.lineWidth = 4; ctx.strokeStyle = '#d33'; ctx.stroke();
-    ctx.font = '34px "Apple Color Emoji","Segoe UI Emoji",sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(key, 32, 35);
-    t = new THREE.CanvasTexture(cv);
-    t.colorSpace = THREE.SRGBColorSpace;
-    this.iconTex.set(key, t);
-    return t;
-  }
-
-  /** Warnsymbole über Gebäuden aktualisieren (selten aufrufen) */
+  /** Warnsymbole und Insel-Symbole neu bestimmen (selten aufrufen, etwa zweimal je Sekunde) */
   refreshIcons() {
-    for (const b of this.g.buildings) {
+    const g = this.g;
+    for (const b of g.buildings) {
       const v = this.views.get(b.id);
       if (!v) continue;
-      let key = '';
-      if (b.owner === 0) switch (b.status) {
-        case 'keinWeg': case 'zuWeit': key = '🚧'; break;
-        case 'aus': key = '💤'; break;
-        case 'rohstoff': key = b.missing[0] ? GOOD[b.missing[0]].icon : '📦'; break;
-        case 'lagerVoll': key = '📦'; break;
-        case 'keinWald': key = '🌲'; break;
-        case 'keinWasser': key = '🌊'; break;
-        case 'erschoepft': key = BUILDINGS[b.type].deposit ? '⛏️' : ({ baum: '🌲', fisch: '🐟', wild: '🦌', weide: '🌿', feld: '🌾' } as Record<string, string>)[BUILDINGS[b.type].harvest?.res ?? 'baum']; break;
-        case 'wohnen': key = b.happy < 0.45 ? '😠' : ''; break;
-      }
-      if (key !== v.iconKey) {
-        v.iconKey = key;
+      // nur die eigenen Gebäude zeigen Warnungen; ein laufendes Ereignis (🔥 Brand, 💀 Pest …) geht vor
+      const sign = b.owner === HUMAN ? buildingSign(b, iconFor(g, b)) : null;
+      const key = sign ? sign.icon + sign.level : '';
+      if (key !== v.signKey) { v.signKey = key; v.sign = sign; this.dirty = true; }
+    }
+    // Insel-Symbole (Erz wird weniger, Gold kann versiegen)
+    for (const id of this.seenIslands) {
+      const il = g.islands[id];
+      if (!il) continue;
+      const syms = islandSymbols(il);
+      const old = this.islandSyms.get(id);
+      if (!old || old.length !== syms.length || old.some((o, i) => o.icon !== syms[i].icon || o.text !== syms[i].text)) {
+        this.islandSyms.set(id, syms);
         this.dirty = true;
-        v.icon.visible = !!key;
-        if (key) { (v.icon.material as THREE.SpriteMaterial).map = this.iconTexture(key); (v.icon.material as THREE.SpriteMaterial).needsUpdate = true; }
       }
     }
+  }
+
+  /**
+   * Alle Symbole für dieses Bild setzen (ein Zeichenaufruf): Warnsymbole bzw. – weit herausgezoomt –
+   * Sammelmarken je 6 × 6 Felder, Insel-Symbole ab Abstand 20, Soldaten-Marken ab Abstand 45.
+   */
+  private updateSigns() {
+    const sl = this.signs, r = this.rig, el = this.renderer.domElement;
+    sl.setView(el.clientWidth || el.width, el.clientHeight || el.height);
+    sl.begin();
+    // zuerst die Insel-Symbole: Warnungen und Soldaten-Marken liegen darüber (spätere Symbole decken frühere)
+    if (r.dist >= ISLAND_DIST) {
+      // sanft einblenden (Abstand 20 bis 30), damit die Symbole beim Zoomen nicht plötzlich aufspringen
+      // und nah an der eigenen Stadt kaum stören
+      const alpha = Math.min(1, (r.dist - ISLAND_DIST) / 10);
+      for (const id of this.seenIslands) {
+        const il = this.g.islands[id], syms = this.islandSyms.get(id);
+        if (!il || !syms?.length) continue;
+        const w = 40;
+        syms.forEach((sym, i) => sl.add(il.cx + 0.5, LAND_Y + 3, il.cy + 0.5, `i${sym.icon}${sym.text}`, paintIsland(sym.icon, sym.text), 38, (i - (syms.length - 1) / 2) * w, 0, alpha));
+      }
+    }
+    if (r.dist < CLUSTER_DIST) {
+      for (const [id, v] of this.views) {
+        const s = v.sign;
+        if (!s || !v.mesh.visible || this.anims.rising(id)) continue;
+        const p = v.mesh.position;
+        sl.add(p.x, p.y + v.top + 0.4, p.z, `w${s.icon}${s.level}`, paintWarn(s.icon, s.level), 30);
+      }
+    } else {
+      const pins: Pin[] = [];
+      for (const v of this.views.values()) {
+        const s = v.sign;
+        if (s && v.mesh.visible) pins.push({ x: v.mesh.position.x, z: v.mesh.position.z, level: s.level, icon: s.icon });
+      }
+      for (const c of clusterPins(pins)) sl.add(c.x, LAND_Y + 1.6, c.z, `c${c.icon}${c.level}${c.count}`, paintCluster(c.icon, c.level, c.count), 40);
+    }
+    if (r.dist >= UNIT_MARK_DIST) {
+      const col = this.ownerColor(HUMAN), sel = this.units.selected;
+      for (const s of this.units.shown) {
+        if (s.u.owner !== HUMAN) continue;
+        const on = sel.has(s.u.id);
+        sl.add(s.x, s.top + 0.3, s.z, `u${col}${on ? 1 : 0}`, paintUnit(col, on), UNIT_MARK_PX);
+      }
+    }
+    sl.end();
+  }
+
+  /** Rauch aus arbeitenden Betrieben und bewohnten Häusern nahe der Kamera (dt = 0 in der Pause) */
+  private emitSmoke(dt: number) {
+    const r = this.rig;
+    if (dt <= 0 || r.dist >= SMOKE_DIST) return;
+    const reach = r.dist * 1.3 + 6;
+    for (const [id, v] of this.views) {
+      if (!v.smoke.length || !v.mesh.visible) continue;
+      const p = v.mesh.position;
+      if (Math.abs(p.x - r.tx) > reach || Math.abs(p.z - r.tz) > reach) continue;
+      if (this.anims.rising(id)) continue;
+      const b = this.g.byId.get(id);
+      if (!b) continue;
+      const k = smokeStrength(b);
+      if (k <= 0) continue;
+      const style = SMOKE_STYLE[b.type]!;
+      for (let i = 0; i < v.smoke.length; i += 3) this.smoke.emit(id * 8 + i / 3, v.smoke[i], v.smoke[i + 1], v.smoke[i + 2], dt, style, k);
+    }
+  }
+
+  /** Drehende Teile: Betriebe (Mühle) drehen nur, wenn sie arbeiten – sanft an- und auslaufend, in der Pause still */
+  private spinParts(gameDt: number) {
+    if (gameDt <= 0) return;
+    for (const [id, v] of this.views) {
+      if (!v.spin.length) continue;
+      const b = this.g.byId.get(id);
+      const on = !b || !BUILDINGS[b.type].prod || working(b) ? 1 : 0;
+      v.spinV += (on - v.spinV) * Math.min(1, gameDt * 0.6);
+      if (v.spinV < 0.002) continue;
+      for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed * v.spinV;
+    }
+  }
+
+  /** weitere Bild-Ebene anmelden (Andockstelle, siehe layers.ts) */
+  addLayer(l: RenderLayer) {
+    this.layers.push(l);
+    this.scene.add(l.group);
+    if (this.terrain) l.setGame(this.g, (x, z) => this.terrain.heightAt(x, z));
   }
 
   // ---------- Vorschau / Auswahl ----------
@@ -1087,13 +1250,24 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
   }
 
   setSelected(b: Building | null) {
+    this.effDisc.visible = false;
     if (!b) { this.selectRing.visible = false; this.showRadius(0); return; }
     const d = BUILDINGS[b.type];
     this.selectRing.visible = true;
     const r = d.size * 0.75;
     this.selectRing.scale.set(r, 1, r);
     this.selectRing.position.set(b.x + d.size / 2, this.groundY(b.x, b.y, d.size) + 0.06, b.y + d.size / 2);
-    this.showRadius(d.work ?? d.radius ?? 0, b.x + d.size / 2, b.y + d.size / 2, d.work && d.prod ? 0xffb347 : 0xffffff);
+    const cx = b.x + d.size / 2, cz = b.y + d.size / 2, rad = d.work ?? d.radius ?? 0;
+    if (d.harvest && rad) {
+      // fertiger Betrieb, der aus der Umgebung erntet: Arbeitsradius in der Farbe seiner Ergiebigkeit
+      // (wie die Skala beim Bauen: grün ergiebig, gelb mäßig, rot kaum etwas da)
+      const col = effColor(b.eff);
+      this.showRadius(rad, cx, cz, col);
+      (this.effDisc.material as THREE.MeshBasicMaterial).color.setHex(col);
+      this.effDisc.scale.set(rad, 1, rad);
+      this.effDisc.position.set(cx, LAND_Y + 0.05, cz);
+      this.effDisc.visible = true;
+    } else this.showRadius(rad, cx, cz, d.work && d.prod ? 0xffb347 : 0xffffff);
   }
 
   // ---------- Kamera & Picking ----------
@@ -1179,10 +1353,23 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     return this.ships.pick(this.raycaster);
   }
 
-  /** Soldat unter dem Finger (großzügig: nächster in ca. 0,9 Feldern) */
+  /**
+   * Soldat unter dem Finger: nächster in 0,9 Feldern – weit herausgezoomt mindestens in Fingerbreite
+   * (24 Bildpunkte), damit man die kleinen Soldaten bzw. ihre Marken sicher trifft.
+   */
   pickUnit(clientX: number, clientY: number): Unit | undefined {
     const p = this.groundPoint(clientX, clientY);
-    return p ? this.units.pick(p.x, p.z, 0.9) : undefined;
+    return p ? this.units.pick(p.x, p.z, tapRadius(0.9, this.pxPerTile(p))) : undefined;
+  }
+
+  /** Wie viele Bildpunkte (CSS) ein Feld an diesem Bodenpunkt auf dem Bildschirm misst */
+  pxPerTile(p: THREE.Vector3): number {
+    const el = this.renderer.domElement, w = el.clientWidth || el.width, h = el.clientHeight || el.height;
+    this.camera.updateMatrixWorld();
+    const a = p.clone().project(this.camera), b = new THREE.Vector3(p.x + 1, p.y, p.z).project(this.camera);
+    const c = new THREE.Vector3(p.x, p.y, p.z + 1).project(this.camera);
+    const dx = (b.x - a.x) * w / 2, dy = (b.y - a.y) * h / 2, ex = (c.x - a.x) * w / 2, ey = (c.y - a.y) * h / 2;
+    return Math.max(Math.hypot(dx, dy), Math.hypot(ex, ey), 1e-3);
   }
 
   /** Soldat gefallen */
@@ -1233,12 +1420,20 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.life.update(this.lifeT, cam);
     this.units.update(t, cam);
     this.damage(dt);
-    this.fx.update(dt, this.renderer.domElement.clientHeight || 400);
+    const vh = this.renderer.domElement.clientHeight || 400;
+    this.fx.update(dt, vh);
     this.marks.update(t);
+    this.anims.update(dt);
+    // Rauch: läuft in echter Zeit, steht aber in der Pause still (wie das ganze Spiel)
+    const sdt = gameDt > 0 ? dt : 0;
+    this.emitSmoke(sdt);
+    this.smoke.update(sdt, vh);
+    for (const l of this.layers) l.update(t, gameDt, cam);
     this.waterUniforms.uTime.value = t;
     windTime.value = t;
-    for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;
+    this.spinParts(gameDt);
     this.updateCamera();
+    this.updateSigns();
     if (this.preparing) return; // Grafik-Programme werden noch vorbereitet: altes Bild bleibt stehen
     // Pflanzen: je nach Entfernung volle Dichte, halbe Dichte oder einfache Formen; Schatten nur nah
     this.veg.update(this.camera.position, this.rig.tx, this.rig.tz, this.rig.dist);

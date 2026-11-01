@@ -190,6 +190,14 @@ export class Sound {
         this.play('bauen', at);
         [523, 659, 784].forEach((f, i) => this.tone(f, 0.6, { vol: 0.12, delay: 0.25 + i * 0.09, verb: 0.6 }));
         break;
+      case 'hammer': // drei Hammerschläge auf Holz (Bau-Animation)
+        if (!this.throttle('hammer', 250)) return;
+        for (let i = 0; i < 3; i++) {
+          const d = 0.18 + i * 0.24 + Math.random() * 0.03;
+          this.tone(380 + Math.random() * 40, 0.05, { type: 'triangle', vol: 0.16 * v, delay: d, slide: 0.7 });
+          this.burst(0.035, { freq: 2100 + Math.random() * 500, q: 3, vol: 0.14 * v, delay: d });
+        }
+        break;
       case 'weg': // Kies knirscht
         if (!this.throttle('weg', 45)) return;
         this.burst(0.07, { freq: 1800 + Math.random() * 1200, q: 0.8, vol: 0.22 });
