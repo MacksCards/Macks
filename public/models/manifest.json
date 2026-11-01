@@ -11,7 +11,12 @@
   "art": "gebaeude",
   "building": "kontor",
   "tier": 0,
-  "size": 3
+  "size": 3,
+  "fahne": [
+   -0.515,
+   0.601,
+   0.446
+  ]
  },
  "haus-0": {
   "file": "haus-0.glb",
@@ -66,13 +71,6 @@
   "file": "kirche.glb",
   "art": "gebaeude",
   "building": "kirche",
-  "tier": 0,
-  "size": 3
- },
- "hochschule": {
-  "file": "hochschule.glb",
-  "art": "gebaeude",
-  "building": "hochschule",
   "tier": 0,
   "size": 3
  },
@@ -138,13 +136,6 @@
   "tier": 0,
   "size": 3
  },
- "erzmine": {
-  "file": "erzmine.glb",
-  "art": "gebaeude",
-  "building": "erzmine",
-  "tier": 0,
-  "size": 2
- },
  "weingut": {
   "file": "weingut.glb",
   "art": "gebaeude",
@@ -165,13 +156,6 @@
   "building": "zuckerrohrplantage",
   "tier": 0,
   "size": 3
- },
- "rumbrennerei": {
-  "file": "rumbrennerei.glb",
-  "art": "gebaeude",
-  "building": "rumbrennerei",
-  "tier": 0,
-  "size": 2
  },
  "brauerei": {
   "file": "brauerei.glb",
@@ -259,20 +243,6 @@
   "tier": 0,
   "size": 3,
   "yaw": 90
- },
- "tiefeErzmine": {
-  "file": "erzmine.glb",
-  "art": "gebaeude",
-  "building": "tiefeErzmine",
-  "tier": 0,
-  "size": 2
- },
- "goldmine": {
-  "file": "erzmine.glb",
-  "art": "gebaeude",
-  "building": "goldmine",
-  "tier": 0,
-  "size": 2
  },
  "grosseburg": {
   "file": "burg.glb",

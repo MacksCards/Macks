@@ -30,6 +30,10 @@ interface Entry {
   yaw?: number;
   /** Mühle: Mitte der Flügel (Nabe) in Modell-Koordinaten und Flügellänge – dort drehen sich Code-Flügel */
   nabe?: [number, number, number]; fluegel?: number;
+  /** Spitze des Fahnenmasts im Modell (Modell-Koordinaten): dort hängt die Fahne in Besitzerfarbe, ohne eigenen Mast */
+  fahne?: [number, number, number];
+  /** höchstens so hoch (in Feldern); sonst gilt MAX_HEIGHT je Grundfläche */
+  hoehe?: number;
 }
 
 /** Was nach einem Ladevorgang neu da ist (damit nur diese Gebäude/Schiffe neu aufgebaut werden) */
@@ -37,6 +41,13 @@ export interface Loaded { buildings: Set<BuildingId>; others: Set<string> }
 
 /** Mindest-Verhältnisse des Hüllquaders: flachere/dünnere Modelle sind meist nur Bruchstücke */
 const MIN_DEPTH = 0.35, MIN_HEIGHT = 0.3;
+/**
+ * Höchste sinnvolle Höhe je Grundfläche (in Feldern). Schlanke Modelle (Turm auf 1×1) würden sonst
+ * auf volle Breite gezogen und ragten weit über das Kontor. Das Modell wird dann gleichmäßig kleiner
+ * (nie gestaucht) und steht etwas schmaler auf seinem Feld.
+ * Heute betrifft das nur den Holzturm (2,8 → 1,5); Kirche (3,1 bei 3×3) und Erzschmelze (2,6 bei 2×2) bleiben.
+ */
+const MAX_HEIGHT: Record<number, number> = { 1: 1.5, 2: 2.8, 3: 3.6 };
 
 export class ModelLibrary {
   private base = 'models/';
@@ -73,18 +84,50 @@ export class ModelLibrary {
     if (this.entries.size) this.onLoaded(what);
   }
 
-  /** Kopie des Gebäudemodells (höchste vorhandene Stufe ≤ tier) oder null (dann Code-Modell) */
-  building(type: BuildingId, tier = 0): THREE.Object3D | null {
+  /**
+   * Welches Modell building() jetzt liefern würde (Schlüssel „gebäude:stufe“, null = Code-Modell).
+   * Stößt das Laden fehlender Modelle an. Solange eine höhere Stufe noch lädt, bleibt die nächstniedrige
+   * fertige Stufe sichtbar (kein kurzes Zurückspringen auf das Code-Modell beim Aufstieg).
+   */
+  shownKey(type: BuildingId, tier = 0): string | null {
     for (let t = tier; t >= 0; t--) {
       const key = `${type}:${t}`;
       if (!this.entries.has(key)) continue;
       const m = this.ready.get(key);
       if (m === false) continue; // unbrauchbar: nächstniedrige Stufe versuchen
-      if (m) return m.clone(true);
+      if (m) return key;
       this.request(key);
-      return null;
     }
     return null;
+  }
+
+  /** Kopie des Gebäudemodells (höchste fertige Stufe ≤ tier) oder null (dann Code-Modell) */
+  building(type: BuildingId, tier = 0): THREE.Object3D | null {
+    const key = this.shownKey(type, tier);
+    const m = key ? this.ready.get(key) : null;
+    return m ? m.clone(true) : null;
+  }
+
+  /**
+   * Grafikspeicher freigeben (bei „Neues Spiel“): Gebäudemodelle, die im neuen Spiel nicht gebraucht werden
+   * (Gebäudearten nicht in keep), werden losgelassen und bei Bedarf einfach neu geladen.
+   * Schiffsmodelle bleiben (jedes Spiel beginnt mit einem Schiff).
+   * Vorher müssen alle Gebäude des alten Spiels aus der Szene genommen sein.
+   */
+  release(keep: Set<BuildingId>) {
+    const keepFiles = new Set<string>();
+    for (const [key, e] of this.entries) if (!e.building || keep.has(e.building) || this.pending.has(key)) keepFiles.add(e.file);
+    for (const [key, e] of this.entries) {
+      if (keepFiles.has(e.file)) continue;
+      const m = this.ready.get(key);
+      if (m) disposeModel(m);
+      this.ready.delete(key);
+    }
+    for (const [file, p] of this.files) {
+      if (keepFiles.has(file)) continue;
+      this.files.delete(file);
+      void p.then((raw) => { if (raw) disposeModel(raw); });
+    }
   }
 
   other(id: string): THREE.Object3D | null {
@@ -170,7 +213,9 @@ function fitToFootprint(obj: THREE.Object3D, e: Entry): THREE.Object3D {
   obj.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(obj);
   const dim = box.getSize(new THREE.Vector3());
-  const s = (size * 0.96) / Math.max(dim.x, dim.z, 0.001);
+  // auf die Grundfläche passen, aber nicht höher als sinnvoll (gleichmäßig verkleinern, nie stauchen)
+  const maxH = e.hoehe ?? MAX_HEIGHT[size] ?? size * 1.2;
+  const s = Math.min((size * 0.96) / Math.max(dim.x, dim.z, 0.001), maxH / Math.max(dim.y, 0.001));
   const wrap = new THREE.Group();
   obj.scale.multiplyScalar(s);
   const c = box.getCenter(new THREE.Vector3());
@@ -183,7 +228,21 @@ function fitToFootprint(obj: THREE.Object3D, e: Entry): THREE.Object3D {
     wrap.userData.hub = new THREE.Vector3(...e.nabe).applyMatrix4(obj.matrix).toArray();
     wrap.userData.hubR = (e.fluegel ?? 0.9) * s;
   }
+  if (e.fahne) wrap.userData.flagAt = new THREE.Vector3(...e.fahne).applyMatrix4(obj.matrix).toArray();
   return wrap;
+}
+
+/** Form, Oberflächen und Bilder eines geladenen Modells im Grafikspeicher freigeben */
+function disposeModel(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    m.geometry.dispose();
+    for (const mat of Array.isArray(m.material) ? m.material : [m.material]) {
+      for (const v of Object.values(mat)) if (v instanceof THREE.Texture) v.dispose();
+      mat.dispose();
+    }
+  });
 }
 
 /** höchster Punkt des Modells (x, y, z in der Grundfläche) */

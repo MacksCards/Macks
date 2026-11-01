@@ -24,16 +24,21 @@ scripts/meshy-modell.sh <id> "<Beschreibung>" <Dreiecke>   # Form → Oberfläch
 scripts/meshy-remesh.sh <id> <ziel-id> <Dreiecke>          # sauberer Neuaufbau mit weniger Dreiecken
 node scripts/modell-texturen.mjs                           # Oberflächenbilder fürs iPhone verkleinern (s. u.)
 ```
-Die Aufträge (Beschreibungen) stehen in `assets/meshy-batch.json`, die fertigen Dateien in `public/models/<id>.glb`, die Zuordnung zum Spiel in `public/models/manifest.json` (Gebäude, Stufe, Grundfläche; bei Bedarf `yaw` = Drehung in Grad, z. B. Werft mit der Helling zum Wasser; bei der Mühle `nabe`/`fluegel` = Mitte und Länge der drehenden Flügel). Rohdateien in `assets/raw/` kommen nicht ins Git (zu groß). Das ältere `scripts/meshy.mjs` mit `assets/modelle.json` ist nicht mehr der Weg.
+Die Aufträge (Beschreibungen) stehen in `assets/meshy-batch.json`, die fertigen Dateien in `public/models/<id>.glb`, die Zuordnung zum Spiel in `public/models/manifest.json` (Gebäude, Stufe, Grundfläche; bei Bedarf `yaw` = Drehung in Grad, z. B. Werft mit der Helling zum Wasser; bei der Mühle `nabe`/`fluegel` = Mitte und Länge der drehenden Flügel; `fahne` = Spitze eines Fahnenmasts im Modell, dort hängt die Fahne in Besitzerfarbe; `hoehe` = Höchsthöhe in Feldern, falls die Regel unten nicht passt). Rohdateien in `assets/raw/` kommen nicht ins Git (zu groß). Das ältere `scripts/meshy.mjs` mit `assets/modelle.json` ist nicht mehr der Weg.
 
-**Jedes Modell vor dem Einbau ansehen.** Meshy liefert manchmal nur Bruchstücke (14 Modelle wurden deshalb wieder entfernt). Das Spiel prüft zusätzlich die Maße: Ist ein Gebäude-Modell viel flacher (Höhe < 0,3 × Breite) oder dünner (Tiefe < 0,35 × Breite) als ein Haus sein kann, nimmt es das Code-Modell und schreibt eine Warnung in die Konsole.
+**Jedes Modell vor dem Einbau ansehen.** Meshy liefert manchmal nur Bruchstücke (17 Modelle wurden deshalb wieder entfernt, zuletzt Erzmine – auch für Tiefe Erzmine und Goldmine –, Hochschule und Rumbrennerei). Das Spiel prüft zusätzlich die Maße: Ist ein Gebäude-Modell viel flacher (Höhe < 0,3 × Breite) oder dünner (Tiefe < 0,35 × Breite) als ein Haus sein kann, nimmt es das Code-Modell und schreibt eine Warnung in die Konsole.
+
+**Größe:** Ein Modell wird gleichmäßig so skaliert, dass es auf seine Grundfläche passt – aber höchstens 1,5 Felder hoch bei 1 × 1, 2,8 bei 2 × 2 und 3,6 bei 3 × 3 (nie gestaucht; ein schlanker Turm steht dann etwas schmaler auf seinem Feld). Heute betrifft das nur den Holzturm (vorher 2,8 Felder hoch, höher als das Kontor).
+
+**Nachbessern mit `scripts/modell-schnitt.mjs`:** schneidet lose Einzelteile neben dem Hauptkörper heraus (Schule: Brett davor, Weingut: Rebstock davor) und entfernt fest eingebaute Fahnen (Kontor: rotes Tuch, der Mast bleibt und trägt jetzt die Fahne in Besitzerfarbe; Festung: alle rot-blauen Fahnen auf den Türmen). Fest eingebautes Rot oder Blau ist verboten, weil das Spielerfarben sind. Die genauen Aufrufe stehen oben im Skript.
 
 **Mühle:** Die Meshy-Mühle hatte feste Flügel. `scripts/muehle-fluegel.mjs` hat sie aus der Datei geschnitten; das Spiel setzt an der Nabe drehende Flügel aus Code (Rute, Gitter, Segeltuch) ein.
 
-**Besitzerfarbe:** Meshy-Modelle bekommen im Spiel eine Fahne aus Code an ihrer höchsten Stelle – groß bei Kontor, Marktplatz, Werften, Burgen, Festung, Türmen und Triumphbogen, als kleiner Wimpel bei allen anderen Gebäuden. So sind eigene und fremde Gebäude immer unterscheidbar.
+**Besitzerfarbe:** Meshy-Modelle bekommen im Spiel eine Fahne aus Code an ihrer höchsten Stelle – groß bei Kontor, Marktplatz, Werften, Burgen, Festung, Türmen und Triumphbogen, als kleiner Wimpel bei allen anderen Gebäuden. So sind eigene und fremde Gebäude immer unterscheidbar. Alle Fahnen, Wimpel und Masten werden gemeinsam gezeichnet (`src/render/marks.ts`: je Art eine Vorlage mit vielen Kopien, die Farbe steht je Kopie) – in einer Test-Stadt mit 45 Gebäuden sank die Zahl der Zeichenaufrufe dadurch von 198 auf 113 (Übersicht) bzw. 129 auf 89 (nah).
 
 ## So lädt das Spiel die Modelle (`src/render/glb.ts`)
-- Beim Start wird nur die Liste `manifest.json` gelesen. Ein Modell wird erst geladen, wenn ein Gebäude oder Schiff dieser Art zum ersten Mal gezeigt wird; bis dahin steht das Code-Modell da. Danach werden nur die Gebäude dieser Art neu aufgebaut.
+- Beim Start wird nur die Liste `manifest.json` gelesen. Ein Modell wird erst geladen, wenn ein Gebäude oder Schiff dieser Art zum ersten Mal gezeigt wird; bis dahin steht das Code-Modell da. Danach werden nur Gebäude neu aufgebaut, deren gezeigtes Modell sich wirklich ändert. Beim Aufstieg eines Hauses bleibt das bisherige Modell stehen, bis das der neuen Stufe geladen ist (kein Zurückspringen auf das Code-Modell).
+- Bei „Neues Spiel“ werden Modelle, die das neue Spiel nicht braucht, aus dem Grafikspeicher genommen und bei Bedarf neu geladen (Schiffe bleiben). Test: nach einer Stadt mit allen Modellen 8 statt 92 Bilder im Grafikspeicher.
 - Jede Datei wird nur einmal geladen, auch wenn mehrere Gebäude sie nutzen (z. B. Werft und Große Werft). Alle Kopien teilen sich Form und Oberflächenbilder im Grafikspeicher.
 
 ## Budget fürs iPhone (ehrliche Zahlen, Stand 01.11.2026)
@@ -46,6 +51,6 @@ Die Aufträge (Beschreibungen) stehen in `assets/meshy-batch.json`, die fertigen
 - Wenige hundert Zeichenaufrufe pro Bild. Viele gleiche Dinge (Bäume, Gras, Tiere) als „Instanzen“ zeichnen (ein Aufruf für alle).
 
 ## Nächste Grafik-Schritte
-- Die 14 entfernten Modelle neu erzeugen (Liste in `docs/OFFEN.md`), wenn wieder Meshy-Guthaben da ist.
+- Die 17 entfernten Modelle neu erzeugen (Liste in `docs/OFFEN.md`), wenn wieder Meshy-Guthaben da ist.
 - Figuren mit Animationen (Träger auf Wegen, Arbeiter, Soldaten), Tiere auf Weiden.
 - Test auf dem iPhone des Nutzers (Grafikspeicher, Bildrate, Akku).

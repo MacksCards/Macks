@@ -19,7 +19,7 @@ await page.goto('http://localhost:4176/');
 await page.waitForFunction(() => window.__view, null, { timeout: 60000 });
 await page.click('#hClose').catch(() => {});
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${out}/f1-start.png` });
+await page.screenshot({ path: `${out}/f1-start.png`, timeout: 240000 });
 const r1 = await page.evaluate(() => {
   const g = window.__game();
   const ship = g.myShips()[0];
@@ -39,7 +39,7 @@ const r1 = await page.evaluate(() => {
 console.log('Segeln:', JSON.stringify(r1));
 await page.evaluate(() => { const s = window.__game().myShips()[0]; const r = window.__view.rig; r.tx = s.x; r.tz = s.y; r.dist = 30; });
 await page.waitForTimeout(1200);
-await page.screenshot({ path: `${out}/f2-ship.png` });
+await page.screenshot({ path: `${out}/f2-ship.png`, timeout: 240000 });
 const r2 = await page.evaluate(() => {
   const g = window.__game();
   const ship = g.myShips()[0];
@@ -56,7 +56,7 @@ const r2 = await page.evaluate(() => {
 });
 console.log('Kontor:', JSON.stringify(r2));
 await page.waitForTimeout(1200);
-await page.screenshot({ path: `${out}/f3-kontor.png` });
+await page.screenshot({ path: `${out}/f3-kontor.png`, timeout: 240000 });
 await page.evaluate(() => window.__ui.selectShip(null));
 // Einfrier-Test: Kategorie mit 🔒-Karte öffnen, Spielzeit muss weiterlaufen
 await page.evaluate(() => { window.__ui.paused = false; });
@@ -64,15 +64,15 @@ const tA = await page.evaluate(() => window.__game().time);
 await page.click('.cat[data-cat="nahrung"]');
 await page.waitForTimeout(2500);
 const tB = await page.evaluate(() => window.__game().time);
-await page.screenshot({ path: `${out}/f3b-menue.png` });
+await page.screenshot({ path: `${out}/f3b-menue.png`, timeout: 240000 });
 console.log('Einfrier-Test:', tB > tA + 0.5 ? 'OK, Zeit läuft (' + tA.toFixed(1) + ' → ' + tB.toFixed(1) + ')' : 'FEHLER, Zeit steht (' + tA + ' → ' + tB + ')');
 await page.click('.cat[data-cat="nahrung"]');
 await page.evaluate(() => window.__view.showArea(true));
 await page.waitForTimeout(600);
-await page.screenshot({ path: `${out}/f4-gebiet.png` });
+await page.screenshot({ path: `${out}/f4-gebiet.png`, timeout: 240000 });
 await page.evaluate(() => { window.__view.showArea(false); window.__ui.openMap(); });
 await page.waitForTimeout(500);
-await page.screenshot({ path: `${out}/f5-karte.png` });
+await page.screenshot({ path: `${out}/f5-karte.png`, timeout: 240000 });
 await page.evaluate(() => window.__ui.closeModal());
 const r3 = await page.evaluate(() => {
   const g = window.__game();
@@ -107,7 +107,7 @@ await page.evaluate(() => {
   for (let i = 0; i < 400; i++) { g.tick(0.25); const c = g.carts.find((c) => c.state !== 'idle' && c.path.length > 2); if (c) { const r = window.__view.rig; r.tx = c.x; r.tz = c.y; r.dist = 12; return; } }
 });
 await page.waitForTimeout(1000);
-await page.screenshot({ path: `${out}/f6-karren.png` });
+await page.screenshot({ path: `${out}/f6-karren.png`, timeout: 240000 });
 const r4 = await page.evaluate(() => {
   const g = window.__game();
   for (let i = 0; i < 2400; i++) g.tick(0.25); // 10 Minuten
@@ -123,6 +123,6 @@ const r4 = await page.evaluate(() => {
 console.log('Konkurrenten nach 10 min:', JSON.stringify(r4, null, 1));
 await page.evaluate(() => window.__ui.openMap());
 await page.waitForTimeout(500);
-await page.screenshot({ path: `${out}/f7-karte-ki.png` });
+await page.screenshot({ path: `${out}/f7-karte-ki.png`, timeout: 240000 });
 console.log(errs.length ? 'FEHLER: ' + errs.join(' | ') : 'keine Fehler');
 await browser.close(); server.close();

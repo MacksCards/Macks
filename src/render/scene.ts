@@ -14,14 +14,17 @@ import { ShipLayer } from './ships';
 import { CartLayer } from './carts';
 import { LifeLayer } from './life';
 import { buildingMaterial } from './materials';
-import { Builder, M, ModelDef } from './kit';
+import { Builder, ModelDef } from './kit';
 import { Level, Quality, QualityMode } from './quality';
 import { ensureCapacity } from './instances';
+import { Cloth, MarkDef, OwnerMarks, Pole, POLE_H, POLE_H_SMALL } from './marks';
 
 
 interface BView {
   mesh: THREE.Object3D; spin: { m: THREE.Mesh; axis: 'x' | 'z'; speed: number }[]; icon: THREE.Sprite; iconKey: string; tier: number;
-  owner: number; mask: number; flags: THREE.Mesh[]; top: number;
+  owner: number; mask: number; top: number;
+  /** gezeigtes Meshy-Modell („gebäude:stufe“) oder null, dann die Form des Code-Modells (geo) */
+  glbKey: string | null; geo: THREE.BufferGeometry | null;
 }
 
 /** Größen des Schattenausschnitts (halbe Breite in Feldern); dazwischen wird nicht stufenlos gewechselt */
@@ -39,15 +42,6 @@ function softwareRenderer(r: THREE.WebGLRenderer): boolean {
   }
 }
 
-/** Fahnentuch: hängt am Mast (Kante bei z = 0) und weht nach +z.
- * Weiß angelegt (mit Farbangabe je Punkt), das Material färbt es in der Besitzerfarbe. */
-const FLAG_GEO = new Builder().box(0.008, 0.12, 0.2, 0xffffff, 0, -0.12, 0.1).geometry();
-/** kleiner dreieckiger Wimpel (für Meshy-Gebäude ohne große Fahne) */
-const PENNANT_GEO = (() => {
-  const tri = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, -0.04, 0.13), new THREE.Vector3(0, -0.08, 0)]);
-  tri.setIndex([0, 1, 2, 2, 1, 0]);
-  return new Builder().add(tri, 0xffffff).geometry();
-})();
 /**
  * Mühlenflügel für das Meshy-Modell (dessen feste Flügel wurden aus der Datei entfernt):
  * vier Ruten mit Gitterrahmen und Segeltuch, Länge 1 (wird auf die Flügellänge skaliert).
@@ -71,10 +65,6 @@ const MILL_BLADES = (() => {
   b.add(new THREE.CylinderGeometry(0.05, 0.065, 0.12, 8), wood, 0, 0, 0.0, 0, Math.PI / 2);
   return b.geometry();
 })();
-/** Fahnenmast für Meshy-Gebäude: hoch (Fahne) und kurz (Wimpel) */
-const POLE_H = 0.42, POLE_H_SMALL = 0.2;
-const POLE_GEO = new Builder().cyl(0.011, 0.015, POLE_H, 6, M.dunkelholz, 0, 0, 0).sphere(0.02, M.gold, 0, POLE_H + 0.01, 0).geometry();
-const POLE_GEO_SMALL = new Builder().cyl(0.007, 0.009, POLE_H_SMALL, 5, M.dunkelholz, 0, 0, 0).geometry();
 /** Meshy-Gebäude, die eine große Fahne in Besitzerfarbe tragen (wie die Code-Modelle) */
 const BIG_FLAG = new Set<BuildingId>(['kontor', 'markt', 'werft', 'grosswerft', 'burg', 'grosseburg', 'festung', 'holzturm', 'wachturm', 'triumphbogen']);
 
@@ -91,7 +81,8 @@ export class View {
   units!: UnitLayer;
   /** Kampf-Effekte und Lebensbalken */
   fx!: Fx;
-  private flagMats = new Map<number, THREE.Material>();
+  /** alle Fahnen, Wimpel und Fahnenmasten in Besitzerfarbe (wenige Zeichenaufrufe für alle Gebäude) */
+  private marks!: OwnerMarks;
   private carts!: CartLayer;
   private life!: LifeLayer;
   private seenTex!: THREE.DataTexture;
@@ -158,7 +149,13 @@ export class View {
     // (jedes Modell kommt erst, wenn ein Gebäude/Schiff es braucht; dann nur die Betroffenen neu darstellen)
     this.lib.onLoaded = (what) => {
       if (!this.terrain) return;
-      for (const b of this.g.buildings) if (what.buildings.has(b.type) && this.views.has(b.id)) { this.removeBuilding(b, false); this.addBuilding(b, false); }
+      // nur Gebäude neu aufbauen, deren gezeigtes Modell sich wirklich ändert
+      // (shownKey stößt beim ersten Mal auch das Laden an: Liste da → gebrauchte Modelle holen)
+      for (const b of this.g.buildings) {
+        if (!what.buildings.has(b.type)) continue;
+        const v = this.views.get(b.id);
+        if (v && this.lib.shownKey(b.type, b.tier) !== v.glbKey) { this.removeBuilding(b, false); this.addBuilding(b, false); }
+      }
       if (what.others.size) this.ships?.resetViews();
     };
     void this.lib.load();
@@ -184,6 +181,9 @@ export class View {
     this.selectRing.visible = false;
     this.selectRing.renderOrder = 3;
     this.scene.add(this.selectRing);
+
+    this.marks = new OwnerMarks(this.mat);
+    this.scene.add(this.marks.group);
 
     this.buildWorld();
   }
@@ -228,6 +228,10 @@ export class View {
     this.g = g;
     for (const v of this.views.values()) { this.scene.remove(v.mesh, v.icon); v.icon.material.dispose(); }
     this.views.clear();
+    this.marks.clear();
+    // Meshy-Modelle, die das neue Spiel (noch) nicht braucht, aus dem Grafikspeicher nehmen;
+    // sie werden bei Bedarf neu geladen. Gebraucht = Gebäudearten im neuen Spiel (geladener Spielstand).
+    this.lib.release(new Set(g.buildings.map((b) => b.type)));
     if (this.terrain) { this.scene.remove(this.terrain.group); this.terrain.dispose(); }
     if (this.water) this.disposeWater();
     if (this.border) { this.scene.remove(this.border); this.border.geometry.dispose(); this.border = null; }
@@ -296,8 +300,9 @@ export class View {
     this.showPrepHint(true);
     const grp = new THREE.Group();
     const geo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-    const mats: THREE.Material[] = [this.ghostMatOk, this.ghostMatBad, this.mat, this.veg.material, this.flagMat(0xffffff), ...this.ships.warmMaterials()];
+    const mats: THREE.Material[] = [this.ghostMatOk, this.ghostMatBad, this.mat, this.veg.material, ...this.ships.warmMaterials()];
     for (const m of mats) { const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; grp.add(mesh); }
+    grp.add(...this.marks.warm());
     this.warmSprite.map = this.iconTexture('🚧');
     const spr = new THREE.Sprite(this.warmSprite);
     spr.frustumCulled = false;
@@ -626,6 +631,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
         const b = g.byId.get(id);
         if (b) { v.mesh.visible = g.seen[g.idx(b.x, b.y)] === 1; v.icon.visible = v.icon.visible && v.mesh.visible; }
       }
+      this.marks.touch();
     }
     this.dirty = true;
     this.lastFlushMs = performance.now() - t0;
@@ -853,10 +859,8 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     return (m & 5) && !(m & 10) ? 1 : 0;
   }
 
-  private flagMat(color: number) {
-    let m = this.flagMats.get(color);
-    if (!m) { m = buildingMaterial({ color, side: THREE.DoubleSide }); this.flagMats.set(color, m); }
-    return m;
+  private ownerColor(owner: number): number {
+    return this.g.players[owner]?.color ?? 0x2f6fd0;
   }
 
   addBuilding(b: Building, neighbors = true) {
@@ -864,7 +868,8 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     const isWall = WALLS.has(b.type), isGate = !!d.gate;
     const mask = isWall ? this.wallMask(b) : isGate ? this.gateTurn(b) : 0;
     const model = buildingModel(b.type, isWall ? mask : b.tier);
-    const glb = this.lib.building(b.type, b.tier);
+    const glbKey = this.lib.shownKey(b.type, b.tier);
+    const glb = glbKey ? this.lib.building(b.type, b.tier) : null;
     const mesh: THREE.Object3D = glb ?? new THREE.Mesh(model.geo, this.mat);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
@@ -874,15 +879,15 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     mesh.visible = this.g.seen[this.g.idx(b.x, b.y)] === 1;
     this.scene.add(mesh);
     const spin = glb ? this.glbSpinners(glb) : this.attachSpinners(mesh, model);
-    const flags: THREE.Mesh[] = [];
-    if (!glb) for (const [fx, fy, fz] of model.flags ?? []) {
-      const f = new THREE.Mesh(FLAG_GEO, this.flagMat(this.g.players[b.owner]?.color ?? 0x2f6fd0));
-      f.position.set(fx, fy, fz);
-      f.rotation.y = f.userData.base = -mesh.rotation.y + Math.PI / 2; // weht immer in dieselbe Windrichtung
-      mesh.add(f);
-      flags.push(f);
+    // Fahnen in Besitzerfarbe (gemeinsam für alle Gebäude gezeichnet, siehe marks.ts)
+    mesh.updateMatrixWorld(true);
+    const marks: MarkDef[] = [];
+    if (glb) marks.push(this.ownerMark(glb, b));
+    else for (const [fx, fy, fz] of model.flags ?? []) {
+      const p = mesh.localToWorld(new THREE.Vector3(fx, fy, fz));
+      marks.push({ cloth: Cloth.Flag, x: p.x, y: p.y, z: p.z, scale: 1, pole: Pole.None, px: 0, py: 0, pz: 0 });
     }
-    if (glb) flags.push(this.ownerMark(glb, b));
+    this.marks.set(b.id, mesh, this.ownerColor(b.owner), marks);
     if (!model.geo.boundingBox) model.geo.computeBoundingBox();
     const top = glb ? (glb.userData.height as number | undefined) ?? d.size * 0.6 + 0.6 : model.geo.boundingBox!.max.y;
     const icon = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthTest: false, sizeAttenuation: false }));
@@ -891,7 +896,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     icon.visible = false;
     icon.renderOrder = 10;
     this.scene.add(icon);
-    this.views.set(b.id, { mesh, spin, icon, iconKey: '', tier: b.tier, owner: b.owner, mask, flags, top });
+    this.views.set(b.id, { mesh, spin, icon, iconKey: '', tier: b.tier, owner: b.owner, mask, top, glbKey, geo: glb ? null : model.geo });
     this.dirty = true;
     this.pend |= 1; // Gras und Tiere unter dem Gebäude anpassen
     if (neighbors && WALL_LINKS.has(b.type)) this.refreshWallNeighbors(b);
@@ -899,22 +904,22 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
 
   /**
    * Besitzerfarbe an einem Meshy-Modell: große Fahne (Kontor, Werft, Burg, Türme …) oder kleiner Wimpel,
-   * jeweils auf einem Mast an der höchsten Stelle des Modells. Gibt das wehende Tuch zurück.
+   * jeweils auf einem Mast an der höchsten Stelle des Modells. Hat das Modell selbst einen Fahnenmast
+   * ("fahne" in manifest.json, z. B. Kontor), hängt die Fahne dort – ohne zweiten Mast.
+   * (glb muss schon an seinem Platz stehen: Lage in Weltkoordinaten)
    */
-  private ownerMark(glb: THREE.Object3D, b: Building): THREE.Mesh {
+  private ownerMark(glb: THREE.Object3D, b: Building): MarkDef {
     const big = BIG_FLAG.has(b.type);
+    const cloth = big ? Cloth.Flag : Cloth.Pennant, scale = big ? 1.25 : 1;
+    const at = glb.userData.flagAt as [number, number, number] | undefined;
+    if (at) {
+      const f = glb.localToWorld(new THREE.Vector3(at[0], at[1] - 0.01, at[2]));
+      return { cloth, x: f.x, y: f.y, z: f.z, scale, pole: Pole.None, px: 0, py: 0, pz: 0 };
+    }
     const [px, py, pz] = (glb.userData.peak as [number, number, number] | undefined) ?? [0, 1, 0];
     const h = big ? POLE_H : POLE_H_SMALL;
-    const pole = new THREE.Mesh(big ? POLE_GEO : POLE_GEO_SMALL, this.mat);
-    pole.position.set(px, py - 0.03, pz);
-    pole.castShadow = true;
-    glb.add(pole);
-    const f = new THREE.Mesh(big ? FLAG_GEO : PENNANT_GEO, this.flagMat(this.g.players[b.owner]?.color ?? 0x2f6fd0));
-    f.position.set(px, py - 0.03 + h - 0.02, pz);
-    if (big) f.scale.setScalar(1.25);
-    f.rotation.y = f.userData.base = -glb.rotation.y + Math.PI / 2; // weht immer in dieselbe Windrichtung
-    glb.add(f);
-    return f;
+    const foot = glb.localToWorld(new THREE.Vector3(px, py - 0.03, pz));
+    return { cloth, x: foot.x, y: foot.y + h - 0.02, z: foot.z, scale, pole: big ? Pole.Big : Pole.Small, px: foot.x, py: foot.y, pz: foot.z };
   }
 
   /** Drehende Teile am Meshy-Modell (Mühle: Flügel an der Nabe, die in manifest.json steht) */
@@ -945,6 +950,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.scene.remove(v.mesh, v.icon);
     v.icon.material.dispose();
     this.views.delete(b.id);
+    this.marks.remove(b.id);
     this.dirty = true;
     this.pend |= 1;
     // zerstört (nicht abgerissen): Staubwolke und Trümmer
@@ -958,10 +964,20 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
   changedBuilding(b: Building) {
     const v = this.views.get(b.id);
     if (!v) return;
-    if (v.tier !== b.tier || v.owner !== b.owner) {
-      // neue Ausbaustufe → Modell austauschen
-      this.removeBuilding(b, false);
-      this.addBuilding(b, false);
+    if (v.owner !== b.owner) {
+      // erobert: nur die Fahnen bekommen die neue Farbe
+      v.owner = b.owner;
+      this.marks.recolor(b.id, this.ownerColor(b.owner));
+      this.dirty = true;
+    }
+    if (v.tier !== b.tier) {
+      // neue Ausbaustufe → Modell nur austauschen, wenn sich das gezeigte Modell wirklich ändert
+      v.tier = b.tier;
+      const key = this.lib.shownKey(b.type, b.tier);
+      if (key !== v.glbKey || (!key && buildingModel(b.type, b.tier).geo !== v.geo)) {
+        this.removeBuilding(b, false);
+        this.addBuilding(b, false);
+      }
     }
   }
 
@@ -1194,7 +1210,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.units.update(t, cam);
     this.damage(dt);
     this.fx.update(dt, this.renderer.domElement.clientHeight || 400);
-    for (const v of this.views.values()) for (let i = 0; i < v.flags.length; i++) v.flags[i].rotation.y = v.flags[i].userData.base + Math.sin(t * 4.3 + i * 1.7 + v.mesh.position.x) * 0.22;
+    this.marks.update(t);
     this.waterUniforms.uTime.value = t;
     windTime.value = t;
     for (const v of this.views.values()) for (const sp of v.spin) sp.m.rotation[sp.axis] -= gameDt * sp.speed;

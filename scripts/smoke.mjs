@@ -18,10 +18,10 @@ page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
 page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
 await page.goto(`http://localhost:${port}/`);
 await page.waitForTimeout(2500);
-await page.screenshot({ path: `${out}/01-start.png` });
+await page.screenshot({ path: `${out}/01-start.png`, timeout: 240000 });
 await page.click('#hClose').catch(() => {});
 await page.waitForTimeout(500);
-await page.screenshot({ path: `${out}/02-island.png` });
+await page.screenshot({ path: `${out}/02-island.png`, timeout: 240000 });
 
 // Automatisch eine Siedlung bauen und lange simulieren (prüft die Warenketten)
 const report = await page.evaluate(() => {
@@ -94,36 +94,36 @@ const report = await page.evaluate(() => {
 });
 console.log(JSON.stringify(report, null, 1));
 await page.waitForTimeout(1500);
-await page.screenshot({ path: `${out}/03-settlement.png` });
+await page.screenshot({ path: `${out}/03-settlement.png`, timeout: 240000 });
 // Zoom ran
 await page.evaluate(() => { const v = window.__view; v.rig.dist = 14; });
 await page.waitForTimeout(800);
-await page.screenshot({ path: `${out}/04-zoom.png` });
+await page.screenshot({ path: `${out}/04-zoom.png`, timeout: 240000 });
 // Haus antippen → Infofenster
 await page.evaluate(() => { const ui = window.__ui; const h = window.__game().buildings.find((b) => b.type === 'haus'); ui.select(h); });
 await page.waitForTimeout(400);
-await page.screenshot({ path: `${out}/05-info.png` });
+await page.screenshot({ path: `${out}/05-info.png`, timeout: 240000 });
 // Baumenü öffnen
 await page.evaluate(() => window.__ui.select(null));
 await page.click('.cat[data-cat="rohstoffe"]');
 await page.waitForTimeout(300);
-await page.screenshot({ path: `${out}/06-buildmenu.png` });
+await page.screenshot({ path: `${out}/06-buildmenu.png`, timeout: 240000 });
 // Echte Touch-Bedienung: Karte wählen, auf Insel tippen
 await page.click('.card[data-type="holzfaeller"]');
 await page.touchscreen.tap(426, 250);
 await page.waitForTimeout(300);
-await page.screenshot({ path: `${out}/07-ghost.png` });
+await page.screenshot({ path: `${out}/07-ghost.png`, timeout: 240000 });
 // Neu laden → Spielstand muss da sein
 const before = await page.evaluate(() => window.__game().buildings.length);
-await page.reload();
+await page.reload({ timeout: 240000 });
 await page.waitForTimeout(2000);
 const after = await page.evaluate(() => window.__game().buildings.length);
 console.log('Gebäude vor/nach Neuladen:', before, after);
-await page.screenshot({ path: `${out}/08-reload.png` });
+await page.screenshot({ path: `${out}/08-reload.png`, timeout: 240000 });
 // Hochformat
 await page.setViewportSize({ width: 393, height: 852 });
 await page.waitForTimeout(300);
-await page.screenshot({ path: `${out}/09-portrait.png` });
+await page.screenshot({ path: `${out}/09-portrait.png`, timeout: 240000 });
 console.log('FEHLER:', errors.length ? errors : 'keine');
 await browser.close();
 server.close();

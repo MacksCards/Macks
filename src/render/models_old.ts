@@ -13,7 +13,9 @@ const C = {
   holz: 0xa0703f, dunkelholz: 0x6b4a2b, putz: 0xefe4cc, stein: 0xb9b2a5, dunkelstein: 0x8a8378,
   stroh: 0xcfa85a, rot: 0xb5452f, schiefer: 0x4f5d75, gruen: 0x6aa23e, feld: 0xe3c35a, feldDunkel: 0xc9a443,
   weiss: 0xf4f1ea, schwarz: 0x2a2522, blau: 0x3f6fb0, fundament: 0x7d6a55, pflaster: 0xd2c6ae, gold: 0xe0b23a,
-  wasser: 0x3a8cc4, tuchRot: 0xc8463b, tuchGelb: 0xe7c14d, tuchBlau: 0x4b7cc2,
+  wasser: 0x3a8cc4,
+  // gefärbte Stoffe in gedeckten, verblichenen Pflanzenfarben (Krapp, Ocker, Waid) statt Spielzeug-Bunt
+  tuchRot: 0x9a5c4a, tuchGelb: 0xb89b62, tuchBlau: 0x5f7380,
 };
 
 function colorize(g: Geo, hex: number): Geo {
@@ -126,9 +128,8 @@ function makeKontor(): Geo {
   for (const x of [0.3, 0.9]) for (const z of [1.2, 2.3]) b.cyl(0.05, 0.05, 0.9, 5, C.dunkelholz, x, -0.75, z);
   crate(b, -0.9, 0.7); crate(b, -0.6, 0.85, 0.18); crate(b, -0.75, 1.0, 0.2);
   b.cyl(0.12, 0.14, 0.3, 7, C.holz, 0.1, 0.05, 0.8);
-  // Fahnenmast
+  // Fahnenmast (die Fahne in Besitzerfarbe setzt der Renderer, siehe models/index.ts)
   b.cyl(0.03, 0.03, 2.2, 5, C.dunkelholz, 1.2, 0.05, -1.2);
-  b.box(0.04, 0.35, 0.55, C.tuchBlau, 1.2, 1.85, -0.92);
   return b.build();
 }
 

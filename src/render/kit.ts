@@ -9,7 +9,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 /** Oberflächenmuster (werden im Shader gezeichnet, siehe materials.ts) */
 export const P = {
-  glatt: 0, ziegel: 1, stroh: 2, bretter: 3, mauer: 4, schiefer: 5, pflaster: 6, latten: 7, putz: 8, acker: 9, laub: 10, glas: 11,
+  glatt: 0, ziegel: 1, stroh: 2, bretter: 3, mauer: 4, schiefer: 5, pflaster: 6, latten: 7, putz: 8, acker: 9, laub: 10, glas: 11, tuch: 12,
 } as const;
 
 export interface Mat { c: number; p: number }

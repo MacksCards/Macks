@@ -83,6 +83,12 @@ float patternShade(float pat, vec3 p) {
   if (pat < 10.5) { // Wiese/Laub (fein gesprenkelt)
     return 0.85 + 0.25 * hsh(vec2(floor(p.x * 14.0), floor(p.z * 14.0 + p.y * 14.0)));
   }
+  if (pat > 11.5) { // 12: Stoffplane (Leinen): grobes Gewebe, leicht fleckig und verblichen
+    float wv = gap(s * 26.0, 0.35) * gap(p.y * 26.0, 0.35);
+    float spot = hsh(vec2(floor(s * 4.0), floor(p.y * 4.0 + p.z * 2.0)));
+    gH = 0.75 + 0.25 * wv;
+    return (0.9 + 0.08 * wv) * (0.92 + 0.12 * spot);
+  }
   // 11: Fensterglas – glatt, Glanz kommt über die Rauheit (siehe unten)
   return 1.0;
 }
@@ -143,7 +149,7 @@ if ((vPat > 0.5 && vPat < 5.5) || (vPat > 6.5 && vPat < 8.5)) {
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(0.86, 0.96, 0.74), wy * 0.4);
 }`)
       .replace('#include <metalnessmap_fragment>', `#include <metalnessmap_fragment>
-if (vPat > 10.5) { roughnessFactor = 0.12; diffuseColor.rgb *= 0.8; }`)
+if (vPat > 10.5 && vPat < 11.5) { roughnessFactor = 0.12; diffuseColor.rgb *= 0.8; }`)
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
 {
   // Relief nur, wenn die Fugen größer als ein Bildpunkt sind (sonst flimmert es)
@@ -152,7 +158,7 @@ if (vPat > 10.5) { roughnessFactor = 0.12; diffuseColor.rgb *= 0.8; }`)
   if (fade > 0.0) normal = reliefNormal(-vViewPosition, normal, relief * 0.014 * fade, faceDirection);
 }`);
   };
-  mat.customProgramCacheKey = () => 'neue-ufer-pattern-v2';
+  mat.customProgramCacheKey = () => 'neue-ufer-pattern-v3';
 }
 
 export function buildingMaterial(opts: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {

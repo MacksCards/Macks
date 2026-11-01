@@ -4,6 +4,7 @@ import { BuildingId, BUILDINGS } from '../../data';
 import { Builder, M, ModelDef } from '../kit';
 import { buildingGeometry, makeMillBlades, oldSmoke } from '../models_old';
 import { houseModel } from './haeuser';
+import { marktModel } from './markt';
 import { burg, festung, grosseBurg, holztor, holzturm, palisade, steinmauer, steinturm, steintor, steintorKlein, triumphbogen } from './militaer';
 
 /** Militärbauten; bei Mauern/Palisaden ist variant die Nachbarmaske */
@@ -24,7 +25,7 @@ const KNOWN: BuildingId[] = ['kontor', 'markt', 'kapelle', 'wirtshaus', 'holzfae
 const cache = new Map<string, ModelDef>();
 
 const CROP: Partial<Record<BuildingId, number>> = {
-  tabakplantage: 0x7f8f3a, zuckerrohrplantage: 0x9cc35a, weingut: 0x5d3b6b, gewuerzplantage: 0xb5462c,
+  tabakplantage: 0x7f8f3a, zuckerrohrplantage: 0x9cc35a, weingut: 0x56703a, gewuerzplantage: 0x5f7a3c,
   kakaoplantage: 0x6b4426, baumwollplantage: 0xf2efe6, getreidefarm: 0xe3c35a,
 };
 
@@ -84,9 +85,12 @@ export function buildingModel(type: BuildingId, tier = 0, opts: ModelOpts = {}):
   if (m) return m;
   if (WALLS.has(type)) { m = MILITAER[type]!(tier); cache.set(key, m); return m; }
   if (type === 'haus') m = houseModel(tier);
+  else if (type === 'markt') m = marktModel();
   else if (KNOWN.includes(type)) {
     m = { geo: buildingGeometry(type), smoke: oldSmoke(type), spinners: [] };
     if (type === 'muehle') m.spinners.push({ geo: makeMillBlades(), pos: [0, 1.35, 0.62], axis: 'z', speed: 1.2 });
+    // Kontor: Fahne in Besitzerfarbe an der Mastspitze (früher fest blau – Blau/Rot sind Spielerfarben)
+    if (type === 'kontor') m.flags = [[1.2, 2.2, -1.2]];
   } else m = placeholder(type);
   cache.set(key, m);
   return m;
