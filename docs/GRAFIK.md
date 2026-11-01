@@ -6,8 +6,15 @@ Ziel (Regel 2 + 6 in CLAUDE.md): realistischer, detailreicher Look wie die moder
 | Was | Wer / womit |
 |---|---|
 | Gebäude, Menschen, Soldaten, Tiere, Schiffe, Bäume | **Meshy** (KI-Dienst, Stil „realistic“, echte Oberflächen) – Aufträge: `assets/meshy-batch.json` (je Modell Name, Gebäude, Stufe, Grundfläche und Beschreibung) |
-| Insel, Berge, Strand, Gras, Wasser, Wellen, Himmel, Licht, Schatten, Wind, Rauch | Claude per Programm (`src/render/terrain.ts`, `vegetation.ts`, `scene.ts`) |
+| Insel, Berge, Strand, Gras, Wege, Wasser, Wellen, Himmel, Licht, Schatten, Wind, Rauch | Claude per Programm (`src/render/terrain.ts`, `water.ts`, `border.ts`, `vegetation.ts`, `scene.ts`) |
 | Platzhalter, solange ein Meshy-Modell fehlt | einfache Modelle aus Code (`src/render/models/`) |
+
+## Oberflächen (Boden, Wege, Wasser, Gebietsgrenze) – Stand 01.11.2026
+Alles selbst im Programm erzeugt, keine fremden Bilder.
+- **Gras** (`terrain.ts`): satte und gelbliche Bereiche, trockene Flecken, Kleeinseln, kleine Erdstellen und feine Halme; eine kleine Unebenheit lässt das Licht auf Halmen, Sand und Steinen spielen (ohne zusätzliche Dreiecke). Feine Muster verblassen mit der Entfernung, damit nichts flimmert.
+- **Wege** (`terrain.ts`): werden in den Boden gemalt statt als flache Kästen draufgelegt. Erdwege mit zwei Fahrspuren (biegen in Kurven mit ab), Grasstreifen in der Mitte, ausgefranstem Rand mit niedergetretenem Gras. Pflaster aus einzelnen, unterschiedlich großen und gefärbten Steinen mit dunklen Fugen und Moos. Wege enden an der Wasserlinie.
+- **Wasser** (`water.ts`): Farbe nach echter Tiefe des Meeresbodens (an der Küste hell türkis und durchsichtig, draußen tief dunkelblau), feine bewegte Wellen in mehreren Größen (ein kleines, nahtloses Wellenmuster, auf dem Handy billig), Sonnenglitzern (gedämpft, keine grelle Fläche), weicher, ausgefranster Schaum am Strand und heranrollende Wellen.
+- **Gebietsgrenze** (`border.ts`): weiche, runde Linie in Besitzerfarbe statt Zickzack auf den Feldkanten. Entlang der Küste gibt es keine Linie mehr (die Küste ist die Grenze); läuft eine Grenze zum Meer, blendet sie am Strand aus.
 
 ## Meshy einrichten (einmalig, macht der Nutzer)
 1. Konto auf meshy.ai, Plan mit **kommerzieller Nutzung** und **API-Zugang** (Preis auf meshy.ai/pricing prüfen).

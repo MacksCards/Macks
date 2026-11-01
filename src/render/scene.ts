@@ -9,6 +9,8 @@ import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { WALLS, WALL_LINKS, buildingModel } from './models';
 import { UnitLayer } from './units';
 import { Fx } from './fx';
+import { createWater } from './water';
+import { borderGeometry } from './border';
 import { LAND_Y, Terrain, TileRect } from './terrain';
 import { Vegetation, windTime } from './vegetation';
 import { ModelLibrary } from './glb';
@@ -18,7 +20,6 @@ import { LifeLayer } from './life';
 import { buildingMaterial } from './materials';
 import { Builder, ModelDef } from './kit';
 import { Level, Quality, QualityMode } from './quality';
-import { ensureCapacity } from './instances';
 import { Cloth, MarkDef, OwnerMarks, Pole, POLE_H, POLE_H_SMALL } from './marks';
 import { Smoke } from './smoke';
 import { SignLayer, paintCluster, paintIsland, paintUnit, paintWarn } from './signs';
@@ -128,7 +129,6 @@ export class View {
   private veg!: Vegetation;
   private water!: THREE.Mesh;
   private waterUniforms: Record<string, THREE.IUniform> = { uTime: { value: 0 } };
-  private roadMesh!: THREE.InstancedMesh;
   private previewRoads!: THREE.InstancedMesh;
   private views = new Map<number, BView>();
   private mat = buildingMaterial();
@@ -154,7 +154,7 @@ export class View {
   /** etwas hat sich geändert, das im Bild sichtbar ist (für das gedrosselte Zeichnen in der Pause) */
   private dirty = true;
   private drawn = { tx: NaN, tz: NaN, dist: NaN, yaw: NaN, w: 0, h: 0, ship: null as number | null, units: -1 };
-  private borderMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.8, depthWrite: false, side: THREE.DoubleSide });
+  private borderMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
   private cam = { x: 0, z: 0, dist: 0 };
 
   constructor(canvas: HTMLCanvasElement, g: Game) {
@@ -482,143 +482,21 @@ export class View {
     this.areaShown = on;
   }
 
+  /** Meer (src/render/water.ts): Tiefenfarbe, feine Wellen, Glitzern, weicher Küstenschaum */
   private buildWater() {
-    const g = this.g;
-    const N = g.size;
-    // Tiefenkarte: 0 an der Küste, 1 im tiefen Meer → Farbe, Schaum, Durchsichtigkeit
-    const data = new Uint8Array(N * N * 4);
-    const dist = new Float32Array(N * N).fill(99);
-    const q: number[] = [];
-    for (let i = 0; i < N * N; i++) if (g.tiles[i] !== T.Wasser) { dist[i] = 0; q.push(i); }
-    for (let h = 0; h < q.length; h++) {
-      const i = q[h];
-      const x = i % N, y = (i / N) | 0;
-      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-        const nx = x + dx, ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
-        const ni = ny * N + nx;
-        if (dist[ni] > dist[i] + 1) { dist[ni] = dist[i] + 1; q.push(ni); }
-      }
-    }
-    for (let i = 0; i < N * N; i++) {
-      const v = Math.round(Math.min(1, dist[i] / 9) * 255);
-      data[i * 4] = v; data[i * 4 + 1] = v; data[i * 4 + 2] = v; data[i * 4 + 3] = 255;
-    }
-    const depthTex = new THREE.DataTexture(data, N, N);
-    depthTex.magFilter = THREE.LinearFilter;
-    depthTex.minFilter = THREE.LinearFilter;
-    depthTex.needsUpdate = true;
-
-    const geo = new THREE.PlaneGeometry(N * 5, N * 5, 160, 160).rotateX(-Math.PI / 2);
-    const mat = new THREE.MeshStandardMaterial({
-      color: 0xffffff, transparent: true, roughness: 0.22, metalness: 0.0, envMapIntensity: 0.7,
-    });
-    const uni = this.waterUniforms as Record<string, THREE.IUniform>;
-    uni.uDepth = { value: depthTex };
-    this.seenTex = new THREE.DataTexture(new Uint8Array(N * N * 4), N, N);
+    const w = createWater(this.g, this.terrain, this.waterUniforms);
+    this.water = w.mesh;
+    this.seenTex = w.seenTex;
     this.seenTexFresh = true;
-    this.seenTex.magFilter = THREE.LinearFilter;
-    this.seenTex.minFilter = THREE.LinearFilter;
-    uni.uSeen = { value: this.seenTex };
-    uni.uN = { value: N };
-    mat.onBeforeCompile = (sh) => {
-      Object.assign(sh.uniforms, uni);
-      sh.vertexShader = sh.vertexShader
-        .replace('#include <common>', `#include <common>
-uniform float uTime;
-varying vec3 vW;`)
-        .replace('#include <begin_vertex>', `#include <begin_vertex>
-vec3 wp = (modelMatrix * vec4(position, 1.0)).xyz;
-float w1 = sin(wp.x * 0.7 + uTime * 1.3) * 0.045;
-float w2 = cos(wp.z * 0.55 + uTime * 0.9) * 0.045;
-float w3 = sin((wp.x + wp.z) * 1.6 + uTime * 2.1) * 0.018;
-transformed.y += w1 + w2 + w3;
-vW = wp;`)
-        .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>
-{
-  vec3 wq = (modelMatrix * vec4(position, 1.0)).xyz;
-  float dx = cos(wq.x * 0.7 + uTime * 1.3) * 0.7 * 0.045 + cos((wq.x + wq.z) * 1.6 + uTime * 2.1) * 1.6 * 0.018;
-  float dz = -sin(wq.z * 0.55 + uTime * 0.9) * 0.55 * 0.045 + cos((wq.x + wq.z) * 1.6 + uTime * 2.1) * 1.6 * 0.018;
-  objectNormal = normalize(vec3(-dx * 1.4, 1.0, -dz * 1.4));
-}`);
-      sh.fragmentShader = sh.fragmentShader
-        .replace('#include <common>', `#include <common>
-uniform float uTime;
-uniform sampler2D uDepth;
-uniform sampler2D uSeen;
-uniform float uN;
-varying vec3 vW;
-float wh(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
-float wn(vec2 p) { vec2 i = floor(p); vec2 f = fract(p); f = f * f * (3.0 - 2.0 * f);
-  return mix(mix(wh(i), wh(i + vec2(1, 0)), f.x), mix(wh(i + vec2(0, 1)), wh(i + vec2(1, 1)), f.x), f.y); }`)
-        .replace('#include <color_fragment>', `#include <color_fragment>
-vec2 uv = vW.xz / uN;
-vec2 uvc = clamp(uv, 0.0, 1.0);
-float d = max(texture2D(uDepth, uvc).r, smoothstep(0.0, 0.2, length(uv - uvc)));
-vec3 shallow = vec3(0.10, 0.48, 0.46);
-vec3 mid = vec3(0.03, 0.26, 0.38);
-vec3 deep = vec3(0.012, 0.09, 0.20);
-vec3 col = mix(shallow, mid, smoothstep(0.0, 0.25, d));
-col = mix(col, deep, smoothstep(0.3, 1.0, d));
-// Glitzern / Strömungsmuster
-float n = wn(vW.xz * 1.3 + vec2(uTime * 0.25, uTime * 0.18)) * 0.6 + wn(vW.xz * 3.1 - vec2(uTime * 0.3, -uTime * 0.2)) * 0.4;
-col *= 0.9 + 0.2 * n;
-// Schaum an der Küste, rollt in Wellen heran
-float shore = 1.0 - smoothstep(0.0, 0.1, d);
-float waves = smoothstep(0.55, 1.0, sin(d * 70.0 - uTime * 2.2 + n * 3.0) * 0.5 + 0.5) * (1.0 - smoothstep(0.02, 0.13, d));
-float foam = clamp(shore * smoothstep(0.35, 0.75, n + 0.25) + waves * 0.8, 0.0, 1.0);
-col = mix(col, vec3(0.85, 0.9, 0.9), foam * 0.6);
-diffuseColor.rgb = col;
-diffuseColor.a = mix(0.62, 0.97, smoothstep(0.0, 0.35, d)) + foam * 0.3;
-// Nebel über Unentdecktem
-float seenV = (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) ? 0.0 : texture2D(uSeen, uvc).r;
-float cl = wn(vW.xz * 0.12 + uTime * 0.02) * 0.6 + wn(vW.xz * 0.45 - uTime * 0.03) * 0.4;
-vec3 mist = mix(vec3(0.36, 0.42, 0.50), vec3(0.62, 0.67, 0.73), cl);
-diffuseColor.rgb = mix(mist, diffuseColor.rgb, smoothstep(0.0, 1.0, seenV));
-diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
-    };
-    mat.customProgramCacheKey = () => 'wasser-v2';
-    this.water = new THREE.Mesh(geo, mat);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(N * 5, N * 5).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x0a2a3c }));
-    floor.position.set(0, -2.4, 0);
-    this.water.add(floor);
-    this.water.position.set(N / 2, 0, N / 2);
-    this.water.renderOrder = 1;
-    // Wasser empfängt keine Schatten: spart auf fast jedem Bildpunkt 16 Schatten-Abfragen
-    this.water.receiveShadow = false;
     this.scene.add(this.water);
   }
 
-  /** Grenze des eigenen Gebiets als Linie in Spielerfarbe */
+  /** Grenze der Gebiete als weiche, runde Linie in Besitzerfarbe (src/render/border.ts) */
   onTerritory() {
-    const g = this.g, N = g.size;
+    const g = this.g;
     if (this.border) { this.scene.remove(this.border); this.border.geometry.dispose(); }
     this.dirty = true;
-    const pts: number[] = [];
-    const cols: number[] = [];
-    const c = new THREE.Color();
-    const y = (x: number, z: number) => Math.max(this.terrain.heightAt(x, z), 0.05) + 0.07;
-    const ownAt = (x: number, z: number) => (x >= 0 && z >= 0 && x < N && z < N ? g.own[z * N + x] : -1);
-    // Band (0,16 Felder breit) statt dünner Linie – gut sichtbar auf dem Handy
-    const w = 0.08;
-    const seg = (x0: number, z0: number, x1: number, z1: number) => {
-      const horiz = z0 === z1;
-      const ox = horiz ? 0 : w, oz = horiz ? w : 0;
-      const a = [x0 - ox, z0 - oz], b = [x1 - ox, z1 - oz], c2 = [x1 + ox, z1 + oz], d = [x0 + ox, z0 + oz];
-      for (const [px, pz] of [a, b, c2, a, c2, d]) { pts.push(px, y(px, pz), pz); cols.push(c.r, c.g, c.b); }
-    };
-    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-      const o = ownAt(x, z);
-      if (o < 0 || g.tiles[z * N + x] === 0 || !g.seen[z * N + x]) continue;
-      c.setHex(o === 0 ? 0x8fc0ff : g.players[o]?.color ?? 0xffffff);
-      if (ownAt(x, z - 1) !== o) seg(x, z, x + 1, z);
-      if (ownAt(x, z + 1) !== o) seg(x, z + 1, x + 1, z + 1);
-      if (ownAt(x - 1, z) !== o) seg(x, z, x, z + 1);
-      if (ownAt(x + 1, z) !== o) seg(x + 1, z, x + 1, z + 1);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
+    const geo = borderGeometry(g, (x, z) => this.terrain.heightAt(x, z), (o) => (o === 0 ? 0x8fc0ff : g.players[o]?.color ?? 0xffffff));
     // ein Material für alle Neuberechnungen (vorher bei jedem Aufruf ein neues, nie freigegeben)
     this.border = new THREE.Mesh(geo, this.borderMat);
     this.border.renderOrder = 3;
@@ -777,38 +655,20 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.dirty = true;
   }
 
-  /** angezeigter Weg je Feld (0 = keiner), sein Platz in der Weg-Gruppe und das Feld je Platz */
-  private roadShown = new Uint8Array(0);
-  private roadSlot = new Int32Array(0);
-  private roadTile: number[] = [];
-
+  // Wege werden in das Bodenbild gemalt (terrain.ts: Fahrspuren, Pflastersteine, weiche Ränder);
+  // hier bleibt nur die Vorschau beim Bauen.
   private buildRoads() {
-    const N = this.g.size;
-    if (!this.roadMesh) {
+    if (!this.previewRoads) {
       const geo = new THREE.BoxGeometry(1, 0.05, 1);
-      // klein anfangen (2 048 Felder) und bei Bedarf verdoppeln
-      this.roadMesh = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), 2048);
-      this.roadMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-      this.roadMesh.receiveShadow = true;
       this.previewRoads = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }), 400);
       this.previewRoads.count = 0;
       this.previewRoads.renderOrder = 2;
-      // Farbfeld gleich anlegen: sonst braucht der erste Weg ein neues Grafik-Programm (Ruckler)
-      this.roadMesh.setColorAt(0, this.roadCol.setHex(0xffffff));
+      // Farbfeld gleich anlegen: sonst braucht die erste Vorschau ein neues Grafik-Programm (Ruckler)
       this.previewRoads.setColorAt(0, this.roadCol.setHex(0xffffff));
-      // Instanzen ändern sich laufend → nicht anhand alter Grenzen ausblenden
-      this.roadMesh.frustumCulled = false;
       this.previewRoads.frustumCulled = false;
     }
-    this.scene.add(this.roadMesh, this.previewRoads);
-    // neues Spiel: alle Wege neu eintragen
-    this.roadShown = new Uint8Array(N * N);
-    this.roadSlot = new Int32Array(N * N).fill(-1);
-    this.roadTile = [];
-    const all: number[] = [];
-    for (let i = 0; i < N * N; i++) if (this.g.roads[i] && this.g.seen[i]) all.push(i);
-    this.roadMesh.count = 0;
-    this.updateRoads(all);
+    this.scene.add(this.previewRoads);
+    this.terrain.updateRoads();
   }
 
   /** Wege gebaut, abgerissen oder gepflastert: beim nächsten Bild nur die geänderten Felder */
@@ -817,56 +677,10 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     this.dirty = true;
   }
 
-  /** Weg-Felder nachtragen, entfernen oder umfärben (nur die geänderten Plätze werden hochgeladen) */
+  /** Weg-Felder im Bodenbild nachtragen, entfernen oder umfärben */
   private updateRoads(tiles: number[]) {
-    const g = this.g, N = g.size, mesh = this.roadMesh;
-    const m = this.roadM;
-    const touched: number[] = [];
-    for (const i of tiles) {
-      const v = g.seen[i] ? g.roads[i] : 0;
-      if (v === this.roadShown[i]) continue;
-      this.roadShown[i] = v;
-      let s = this.roadSlot[i];
-      if (!v) {
-        if (s < 0) continue;
-        // letzten Platz in die Lücke schieben
-        const last = this.roadTile.length - 1, lt = this.roadTile[last];
-        if (s !== last) {
-          mesh.getMatrixAt(last, m); mesh.setMatrixAt(s, m);
-          mesh.getColorAt(last, this.roadCol); mesh.setColorAt(s, this.roadCol);
-          this.roadTile[s] = lt; this.roadSlot[lt] = s;
-          touched.push(s);
-        }
-        this.roadTile.pop();
-        this.roadSlot[i] = -1;
-        continue;
-      }
-      if (s < 0) {
-        s = this.roadTile.length;
-        if (s >= mesh.instanceMatrix.count) ensureCapacity(mesh, s + 1, N * N);
-        this.roadTile.push(i);
-        this.roadSlot[i] = s;
-        const x = i % N, y = (i / N) | 0;
-        m.makeTranslation(x + 0.5, this.groundY(x, y, 1) + 0.005, y + 0.5);
-        mesh.setMatrixAt(s, m);
-      }
-      mesh.setColorAt(s, this.roadCol.setHex(v === 2 ? 0xa9a39a : 0x8a7151));
-      touched.push(s);
-    }
-    const n = this.roadTile.length;
-    mesh.count = n;
-    if (!touched.length) return;
-    const im = mesh.instanceMatrix, ic = mesh.instanceColor!;
-    if (touched.length > 32) {
-      // viele Änderungen: belegten Teil auf einmal hochladen
-      im.clearUpdateRanges(); im.addUpdateRange(0, Math.max(1, n) * 16);
-      ic.clearUpdateRanges(); ic.addUpdateRange(0, Math.max(1, n) * 3);
-    } else for (const s of touched) if (s < n) { im.addUpdateRange(s * 16, 16); ic.addUpdateRange(s * 3, 3); }
-    im.needsUpdate = true;
-    ic.needsUpdate = true;
-    this.dirty = true;
+    if (this.terrain.updateRoads(tiles)) this.dirty = true;
   }
-  private roadM = new THREE.Matrix4();
 
   setRoadPreview(cells: [number, number][], ok: boolean[]) {
     const m = new THREE.Matrix4();
