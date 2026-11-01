@@ -125,7 +125,7 @@ export class UI {
     const v = this.view;
     this.g.ev = {
       added: (b) => { v.addBuilding(b); if (b.type === 'kontor' || b.type === 'markt') v.onTerritory(); },
-      removed: (b) => { v.removeBuilding(b); if (b.type === 'markt') v.onTerritory(); if (this.selected === b) this.select(null); if (b.owner === HUMAN) sound.play('abriss'); },
+      removed: (b) => { v.removeBuilding(b); if (b.type === 'markt' || b.type === 'kontor') v.onTerritory(); if (this.selected === b) this.select(null); if (b.owner === HUMAN) sound.play('abriss'); },
       changed: (b) => v.changedBuilding(b),
       roads: () => v.onRoadsChanged(),
       trees: () => v.onTreesChanged(),

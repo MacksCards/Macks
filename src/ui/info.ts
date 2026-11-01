@@ -8,6 +8,7 @@ import { PFLANZEN, Pflanze, depositText } from '../world';
 import { sound } from '../audio';
 import type { UI } from '../ui';
 import { $, costText, fmt, hpHtml, soft } from './util';
+import { bindTax, houseTaxHtml, taxSectionHtml } from './tax';
 
 /** Reiter im Kontor: Lager (immer) und Handel (sobald ui/trade.ts Inhalt hat) */
 type KontorTab = 'lager' | 'handel';
@@ -68,13 +69,8 @@ export class InfoPanel {
         if (locked) h += `<p class="sub">🔒 Ausbau ab ${nl.unlock!.n} ${TIERS[nl.unlock!.tier].dat}</p>`;
         else foot = `<button class="btn ok" id="kUp">⬆️ Ausbauen: Lager ${nl.storage} t<small>${costText(nl.cost)}</small></button>`;
       }
-      h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
-      for (const gd of GOODS) {
-        const pr = PRICES[gd.id];
-        if (!pr || (!ui.relevant.has(gd.id) && g.goods[gd.id] < 1)) continue;
-        h += `<div class="trade"><span>${gd.icon} ${gd.name}</span><button class="btn" data-buy="${gd.id}">+5 · ${pr.kaufen}</button><button class="btn" data-sell="${gd.id}">−5 · ${pr.verkaufen}</button></div>`;
-      }
     }
+    // Reihenfolge: Lager, Bilanz und Steuern (die wichtigsten Stellschrauben), dann der Händler
     h += `<h4>Lager</h4><div class="grid">`;
     for (const gd of GOODS) {
       const v = g.goods[gd.id];
@@ -83,11 +79,41 @@ export class InfoPanel {
     }
     h += `</div><h4>Bilanz pro Minute</h4>
       <div class="row"><span>Steuern</span><b class="pos">+${fmt(inc.tax)}</b></div>
-      <div class="row"><span>Unterhalt</span><b class="neg">−${fmt(inc.upkeep)}</b></div>
-      <h4>Einwohner</h4>`;
+      <div class="row"><span>Unterhalt der Gebäude</span><b class="neg">−${fmt(inc.buildings)}</b></div>`;
+    if (inc.army > 0) h += `<div class="row"><span>Sold der Soldaten</span><b class="neg">−${fmt(inc.army)}</b></div>`;
+    if (g.money < 0) h += `<p class="sub neg">Kasse im Minus: Steuern erhöhen, Betriebe ohne Arbeit ruhen lassen oder Waren verkaufen. Über 10 000 Taler Schulden für 10 Minuten bedeuten Bankrott.</p>`;
+    h += taxSectionHtml(g, b?.island ?? g.focus);
+    if (b && own) {
+      // Baumaterial an Bewohner: erst wichtig, sobald es Häuser gibt (sie nehmen sich Material zum Aufstieg)
+      if (g.count('haus') > 0) {
+        h += `<div class="switchrow"><span>🏠 Baumaterial an Bewohner<small>${b.matLock ? 'Gesperrt: Häuser steigen nicht auf, Holz, Werkzeug und Steine bleiben für Betriebe.' : 'Häuser nehmen sich Holz, Werkzeug und Steine zum Aufstieg.'}</small></span>
+          <button class="btn ${b.matLock ? 'danger' : ''}" id="kLock" aria-pressed="${!!b.matLock}">${b.matLock ? '🔒 Gesperrt' : '✅ Frei'}</button></div>`;
+      }
+      if (g.canDemolishKontor(b).ok) foot += `<button class="btn danger" id="kDel">💥 Kontor abreißen</button>`;
+      h += `<h4>Freier Händler</h4><p class="sub">Kaufen/verkaufen je 5 t (Preis je Tonne).</p>`;
+      for (const gd of GOODS) {
+        const pr = PRICES[gd.id];
+        if (!pr || (!ui.relevant.has(gd.id) && g.goods[gd.id] < 1)) continue;
+        h += `<div class="trade"><span>${gd.icon} ${gd.name}</span><button class="btn" data-buy="${gd.id}">+5 · ${pr.kaufen}</button><button class="btn" data-sell="${gd.id}">−5 · ${pr.verkaufen}</button></div>`;
+      }
+    }
+    h += `<h4>Einwohner</h4>`;
     TIERS.forEach((t, i) => { h += `<div class="row"><span>${t.name}</span><b>${pt[i]}</b></div>`; });
     if (!ui.setInfo(h, foot)) return;
     this.bindTabs();
+    bindTax($('#infoBody'), g, () => ui.renderInfo());
+    document.getElementById('kLock')?.addEventListener('click', () => {
+      g.setMatLock(b!, !b!.matLock);
+      ui.toast(b!.matLock ? 'Baumaterial gesperrt – Häuser steigen vorerst nicht auf.' : 'Baumaterial wieder frei für die Bewohner.', 'info');
+      ui.renderInfo();
+    });
+    document.getElementById('kDel')?.addEventListener('click', () => {
+      ui.ask('⚓ Kontor abreißen?', 'Die Insel wird aufgegeben: Das Lager mit allen Waren verfällt, Land und Wege werden frei.', '💥 Abreißen', () => {
+        const r = g.demolishKontor(b!);
+        if (!r.ok) ui.toast(r.reason ?? '', 'bad');
+        ui.select(null);
+      });
+    });
     document.getElementById('kUp')?.addEventListener('click', () => {
       const res = g.kontorUpgrade(b!);
       ui.toast(res.ok ? 'Kontor ausgebaut – mehr Lagerplatz!' : res.reason ?? '', res.ok ? 'good' : 'bad');
@@ -139,10 +165,9 @@ export class InfoPanel {
         const dup = !!block && (block.endsWith('in der Nähe fehlt') || block.endsWith('fehlt im Lager'));
         h += `<h4>⬆️ Aufstieg zu ${next.name}</h4>`;
         if (!dup) h += `<p class="sub">${block ? '⏳ ' + block : '⬆️ Steigt gerade auf …'}</p>`;
-        const l = g.goods;
-        for (const grp of tier.next?.goods ?? []) {
-          const ok = grp.some((x) => l[x] >= 1);
-          h += `<div class="row"><span>${grp.map((x) => `${GOOD[x].icon} ${GOOD[x].name}`).join(' oder ')} im Lager</span><b>${ok ? '✅' : '❌'}</b></div>`;
+        // Vorrat muss die Insel samt diesem Haus 2 Minuten versorgen
+        for (const r of g.upgradeGoods(b)) {
+          h += `<div class="row"><span>${r.group.map((x) => `${GOOD[x].icon} ${GOOD[x].name}`).join(' oder ')} im Lager${r.ok ? '' : ` <small>(${Math.floor(r.have)} von ${Math.ceil(r.need)} t)</small>`}</span><b>${r.ok ? '✅' : '❌'}</b></div>`;
         }
         for (const sv of tier.next?.services ?? []) {
           const unl = g.isUnlocked(sv);
@@ -150,7 +175,10 @@ export class InfoPanel {
         }
         h += `<p class="sub">Baumaterial: ${costText(next.upgradeCost)}</p>`;
       } else h += `<p class="sub">🏆 Höchste Stufe erreicht</p>`;
-      h += `<p class="sub">Steuern: ${(b.residents * tier.tax * (0.4 + 0.6 * b.happy)).toFixed(1)} Taler/Min</p>`;
+      if (g.hungry(b)) h += `<p class="sub neg">🍖 Hunger! Ohne Nahrung ziehen die Bewohner aus.</p>`;
+      if ((b.downT ?? 0) > 20 && b.tier > 0) h += `<p class="sub neg">🏚️ Das Haus verfällt bald zu ${TIERS[b.tier - 1].name}: ${g.houseLack(b)}.</p>`;
+      h += houseTaxHtml(g, b);
+      h += `<p class="sub">Steuern dieses Hauses: ${Math.round(g.houseTax(b))} Taler/Min</p>`;
     } else {
       h += `<h3>${d.icon} ${d.name}</h3><p class="sub">${d.desc}</p>`;
       if (d.prod) {
@@ -159,6 +187,8 @@ export class InfoPanel {
           keinWald: '🌲 Kein Wald in der Nähe', keinWasser: '🌊 Kein Wasser in der Nähe',
           erschoepft: d.deposit ? '⛏️ Das Vorkommen ist erschöpft' : ({ baum: '🌲 Keine erntereifen Bäume – Setzlinge wachsen nach', fisch: '🐟 Fischgründe leergefischt – erholen sich', wild: '🦌 Kein Wild mehr – kommt langsam zurück', weide: '🌿 Weide abgegrast – wächst nach', feld: '🌾 Felder erschöpft – wachsen nach' } as Record<string, string>)[d.harvest?.res ?? 'baum'],
           rohstoff: `⚠️ Es fehlt: ${b.missing.map((m) => GOOD[m].name).join(', ')}`,
+          zuWeit: '🚧 Zu weit vom Kontor oder Marktplatz – kein Marktkarren kommt hin (Kontor 8, Marktplatz 12 Felder)',
+          aus: '💤 Ruht – arbeitet nicht und kostet nur den Ruhe-Unterhalt',
         };
         const inp = Object.entries(d.prod.input ?? {}).map(([k, n]) => `${n} ${GOOD[k as GoodId].icon}`).join(' + ');
         h += `<div class="row"><span>Status</span><b>${st[b.status] ?? ''}</b></div>
@@ -196,11 +226,20 @@ export class InfoPanel {
       }
     }
     if (b.hp !== undefined) h += hpHtml(b.hp, g.maxHp(b));
-    h += `<div class="row"><span>Unterhalt</span><b>${d.upkeep} Taler/Min</b></div>`;
+    const idle = d.upkeepIdle !== undefined && d.upkeepIdle !== d.upkeep;
+    h += `<div class="row"><span>Unterhalt${idle ? ` <small>(ruhend ${d.upkeepIdle})</small>` : ''}</span><b>${g.upkeepOf(b)} Taler/Min</b></div>`;
+    if (d.prod) foot += b.off ? `<button class="btn ok" id="infoOff">▶ Arbeiten</button>` : `<button class="btn" id="infoOff">💤 Ruhen lassen${idle ? `<small>Unterhalt nur ${d.upkeepIdle}</small>` : ''}</button>`;
     if (b.type !== 'kontor') foot += `<button class="btn danger" id="infoDel">💥 Abreißen</button>`;
     if (!ui.setInfo(h, foot)) return;
     // Knöpfe stehen im Inhalt oder in der Fußleiste: im ganzen Fenster suchen
     const box = $('#info');
+    bindTax(box, g, () => ui.renderInfo());
+    document.getElementById('infoOff')?.addEventListener('click', () => {
+      g.setOff(b, !b.off);
+      sound.play('klick');
+      ui.toast(b.off ? `${d.name} ruht jetzt.` : `${d.name} arbeitet wieder.`, 'info');
+      ui.renderInfo();
+    });
     box.querySelectorAll<HTMLElement>('[data-train]').forEach((bt) => bt.addEventListener('click', () => {
       const res = train(g, b, bt.dataset.train as UnitType);
       if (res.ok) sound.play('marsch'); else ui.toast(res.reason ?? '', 'bad');

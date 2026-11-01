@@ -10,7 +10,8 @@ import { tickCombat, unitUpkeep } from './combat';
 import { SYSTEMS } from './systems';
 import { Island, PFLANZEN, T, WORLD_SIZE, WORLD_SIZES, generateWorld, rng } from './world';
 
-export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft';
+/** zuWeit = kein Marktkarren kommt hin (zu weit von Kontor/Marktplatz); aus = vom Spieler ruhen gelassen */
+export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft' | 'zuWeit' | 'aus';
 export type { Res } from './data';
 
 export interface Building {
@@ -51,6 +52,14 @@ export interface Building {
   cd?: number;
   /** von Piraten gerade geplündert: bis dahin in Ruhe gelassen */
   safeUntil?: number;
+  /** Betrieb vom Spieler ruhen gelassen: arbeitet nicht, zahlt nur den Ruhe-Unterhalt */
+  off?: boolean;
+  /** Kontor: Baumaterial (Holz, Werkzeug, Steine) nicht für Haus-Aufstiege hergeben */
+  matLock?: boolean;
+  /** Haus: so lange (Sekunden) schon sehr unzufrieden – nach 90 s steigt es eine Stufe ab */
+  downT?: number;
+  /** Haus: warum zuletzt Bewohner ausgezogen sind (für Meldungen und die Statistik) */
+  leave?: 'hunger' | 'steuern' | 'mangel';
 }
 
 /** Soldat auf dem Land (oder an Bord eines Schiffs) */
@@ -157,6 +166,17 @@ export interface Player {
   trader?: boolean;
   /** Ureinwohner (neutral, nur auf ausdrücklichen Befehl angreifbar) */
   natives?: boolean;
+  /** Steuersatz in Prozent je Stufe (Pioniere … Aristokraten); fehlt = Standardsatz (TierDef.taxStd).
+   *  Computergegner nutzen immer den Standardsatz. */
+  tax?: number[];
+  /** Schulden: so lange (Spielsekunden) schon unter −10 000 Taler */
+  debtT?: number;
+  /** Schulden: schon gewarnt bei −2 000 (1), −5 000 (2), −10 000 (3) */
+  debtWarn?: number;
+  /** wie oft die Schulden erlassen wurden (gibt später Punktabzug) */
+  erlass?: number;
+  /** warum das Spiel verloren ist (fehlt = alles verloren: keine Gebäude und Schiffe mehr) */
+  lost?: 'bankrott';
 }
 
 type Goods = Record<GoodId, number>;
@@ -189,8 +209,10 @@ export interface MsgAt { x: number; y: number }
 export type MsgKind = 'info' | 'good' | 'bad';
 
 export interface SaveData {
-  /** 3 = alt (Welt kam aus der Startzahl), 4 = Welt steht vollständig im Spielstand */
-  v: 3 | 4;
+  /** 3 = alt (Welt kam aus der Startzahl), 4 = Welt steht vollständig im Spielstand,
+   *  5 = Wirtschaft wie 1602 (Steuersätze, Betriebe ruhen, Baumaterial-Sperre, Schulden – alles neue Felder sind
+   *  freiwillig, ältere Stände laufen mit den Standardwerten weiter) */
+  v: 3 | 4 | 5;
   seed: number;
   tiles: string;
   roads: string;
@@ -253,7 +275,7 @@ const LAGER: BuildingId[] = ['kontor', 'markt'];
 const SAVE_KEY = 'neue-ufer-save-v4';
 /** hierhin wird ein unlesbarer Stand gesichert, bevor ein neues Spiel ihn überschreiben kann */
 const BROKEN_KEY = 'neue-ufer-save-sicherung';
-const SAVE_VERSION = 4;
+const SAVE_VERSION = 5;
 /** So lange (echte Sekunden) lässt sich ein Bau mit voller Erstattung zurücknehmen */
 export const UNDO_SECONDS = 10;
 export const HUMAN = 0;
@@ -262,7 +284,13 @@ const SHIP_SIGHT = 9;
 /** Nachwachsen je Sekunde (voller Bestand = 1): Baum ~5 min, Fischgrund ~2,5 min, Wild ~6,5 min, Weide ~1,5 min */
 const REGEN: Record<Res, number> = { baum: 1 / 300, fisch: 1 / 150, wild: 1 / 400, weide: 1 / 90, feld: 1 / 100 };
 const CART_SPEED = 1.8; // Felder pro Spielsekunde
-const CART_CAP = 6; // Tonnen pro Fahrt
+const CART_CAP = 10; // Tonnen pro Fahrt
+/** Pflasterwege: so viel schneller kommen Marktkarren voran (wie im Vorbild etwa ein Drittel) */
+const PFLASTER_TEMPO = 1.3;
+/** Steuerregler: höchster einstellbarer Satz in Prozent */
+export const TAX_MAX = 60;
+/** Bankrott: so tief im Minus (Taler) und so lange (Spielsekunden) – dann ist das Spiel verloren */
+export const BANKROTT = { grenze: -10000, zeit: 600, warnungen: [-2000, -5000] as const };
 export const DOCK_RANGE = 5; // so nah muss ein Schiff am Kontor/Bauplatz sein
 
 /** Computergegner (eigene Namen und Farben) */
@@ -361,6 +389,8 @@ export class Game {
   area: Uint8Array = new Uint8Array(0); // Baugebiet des menschlichen Spielers
   roadLinked: Uint8Array = new Uint8Array(0);
   linked = new Set<number>();
+  /** Betriebe, die ein Marktkarren erreicht (in Abholweite eines eigenen Kontors oder Marktplatzes) */
+  inReach = new Set<number>();
   coverage = new Map<number, Set<BuildingId>>();
   cap = new Map<string, number>();
   private seenDirty = false;
@@ -388,6 +418,11 @@ export class Game {
   /** frisch Gebautes für undoBuild: Bauzeit (echte Sekunden), bezahlte Kosten, gerodete Waldfelder */
   private recent = new Map<number, { t: number; paid: Cost; cleared: number[]; ship?: number }>();
   private recentRoads = new Map<number, { t: number; owner: number; prev: number; paid: Cost; cleared: boolean }>();
+  /** Verbrauch der Bewohner je Ware und Minute, je Besitzer und Insel (einmal je Spielsekunde neu gezählt) */
+  private useCache = new Map<string, Partial<Record<GoodId, number>>>();
+  private useT = -1;
+  /** letzte Meldung „Bewohner ziehen aus“ je Insel (Spielzeit), damit sie nicht ständig kommt */
+  private leaveMsgT = new Map<string, number>();
 
   ev: GameEvents = { added() {}, removed() {}, changed() {}, roads() {}, trees() {}, felled() {}, seen() {}, message() {}, shot() {}, sunk() {}, died() {} };
 
@@ -552,6 +587,8 @@ export class Game {
     g.nextId = d.nextId;
     g.time = d.time;
     g.quest = d.quest;
+    // ab v5 steht „Wehrhaft“ hinter „Eisen und Werkzeug“ (vorher vor „Bürger“): laufende Aufgabe beibehalten
+    if (d.v < 5 && (g.quest === 14 || g.quest === 15)) g.quest--;
     // alter Stand: verbleibendes Erz je Insel (ab v4 steht es in den Inseln selbst)
     if (d.v < 4) (d.ore ?? []).forEach((v, i) => { if (g.islands[i]) g.islands[i].erz = v; });
     for (const b of d.buildings) {
@@ -605,7 +642,7 @@ export class Game {
   }
 
   /**
-   * Spielstand laden. Versionen 3 und 4 werden gelesen. Ist der Stand unlesbar (kaputt oder aus einer
+   * Spielstand laden. Versionen 3 bis 5 werden gelesen. Ist der Stand unlesbar (kaputt oder aus einer
    * neueren Version), wird er unter eigenem Schlüssel gesichert, bevor ein neues Spiel ihn überschreibt.
    */
   static load(): Game | null {
@@ -615,7 +652,7 @@ export class Game {
     if (!raw) return null;
     try {
       const d = JSON.parse(raw) as SaveData;
-      if (!d || typeof d !== 'object' || (d.v !== 3 && d.v !== 4)) throw new Error(`unbekannte Version ${String((d as { v?: unknown } | null)?.v)}`);
+      if (!d || typeof d !== 'object' || (d.v !== 3 && d.v !== 4 && d.v !== 5)) throw new Error(`unbekannte Version ${String((d as { v?: unknown } | null)?.v)}`);
       return Game.fromSave(d);
     } catch (e) {
       try {
@@ -880,6 +917,13 @@ export class Game {
       for (const k of this.workTiles(o.type, o.x, o.y)) if (arr[k] < 255) arr[k]++;
     }
     for (const b of this.buildings) b.eff = this.siteEfficiency(b.type, b.x, b.y, b.id);
+    // Abholweite der Marktkarren (Kontor 8, Marktplatz 12 Felder) – wie assignCart rechnet
+    this.inReach.clear();
+    for (const b of this.buildings) {
+      if (!BUILDINGS[b.type].prod) continue;
+      const [bx, by] = this.center(b);
+      if (claimers.some((h) => h.owner === b.owner && h.island === b.island && Math.hypot(this.center(h)[0] - bx, this.center(h)[1] - by) <= this.pickupOf(h) + 1)) this.inReach.add(b.id);
+    }
     // Marktkarren: Kontor 2, Marktplatz 1
     this.carts = this.carts.filter((c) => this.byId.has(c.home));
     for (const b of claimers) {
@@ -920,12 +964,16 @@ export class Game {
     return null;
   }
 
+  /** Abholweite der Marktkarren eines Kontors oder Marktplatzes (Felder) */
+  pickupOf(home: { type: BuildingId }): number { const d = BUILDINGS[home.type]; return d.pickup ?? d.work ?? 9; }
+
   private assignCart(c: Cart, home: Building) {
     const [hx, hy] = this.center(home);
-    const reach = this.def(home).work ?? 9;
+    const reach = this.pickupOf(home);
     const taken = new Set(this.carts.filter((o) => o.state === 'hin').map((o) => o.target));
     const cands = this.buildings
-      .filter((b) => b.owner === home.owner && b.island === home.island && this.def(b).prod && b.stock >= 1 && !taken.has(b.id))
+      // ruhende Betriebe (off) werden nicht angefahren
+      .filter((b) => b.owner === home.owner && b.island === home.island && this.def(b).prod && b.stock >= 1 && !b.off && !taken.has(b.id))
       // ist die Ware im Inselllager schon am Limit, bleibt sie im Betrieb (er meldet dann selbst „Lager voll“)
       .filter((b) => this.cartRoom(home, this.def(b).prod!.output) >= 1)
       .filter((b) => { const [bx, by] = this.center(b); return Math.hypot(bx - hx, by - hy) <= reach + 1; })
@@ -984,7 +1032,7 @@ export class Game {
         continue;
       }
       const here = this.roads[this.idx(Math.floor(c.x), Math.floor(c.y))];
-      let step = CART_SPEED * (here === 2 ? 1.5 : 1) * dt;
+      let step = CART_SPEED * (here === 2 ? PFLASTER_TEMPO : 1) * dt;
       while (step > 0 && c.path.length) {
         const [tx, ty] = c.path[0];
         const dx = tx - c.x, dy = ty - c.y, d = Math.hypot(dx, dy);
@@ -1639,9 +1687,36 @@ export class Game {
     if (!this.occ[k] && this.roads[k] && this.area[k]) { this.roads[k] = 0; this.recentRoads.delete(k); this.recompute(); this.ev.roads(); return true; }
     const b = this.buildingAt(x, y);
     if (!b || b.owner !== HUMAN) return false;
-    if (b.type === 'kontor') { this.ev.message('Das Kontor kann nicht abgerissen werden', 'bad', this.at(b)); return false; }
+    if (b.type === 'kontor') {
+      const r = this.demolishKontor(b);
+      if (!r.ok) this.ev.message(r.reason ?? '', 'bad', this.at(b));
+      return r.ok;
+    }
     this.removeBuilding(b);
     return true;
+  }
+
+  /** Darf das Kontor weg? Nur, wenn auf der Insel sonst nichts mehr von seinem Besitzer steht (wie im Vorbild) */
+  canDemolishKontor(k: Building): Check {
+    if (k.type !== 'kontor') return { ok: false, reason: 'Kein Kontor' };
+    if (this.buildings.some((o) => o !== k && o.owner === k.owner && o.island === k.island)) return { ok: false, reason: 'Erst alle anderen Gebäude auf der Insel abreißen' };
+    return { ok: true };
+  }
+
+  /** Kontor abreißen und die Insel aufgeben: das Lager verfällt, Wege und Gebiet werden frei */
+  demolishKontor(k: Building): Check {
+    const c = this.canDemolishKontor(k);
+    if (!c.ok) return c;
+    this.takeDown(k, false);
+    delete this.lager[`${k.owner}:${k.island}`];
+    let roads = false;
+    for (let k2 = 0; k2 < this.roads.length; k2++) if (this.roads[k2] && this.own[k2] === k.owner && this.islandOf[k2] === k.island) { this.roads[k2] = 0; this.recentRoads.delete(k2); roads = true; }
+    this.recompute();
+    if (this.focus === k.island && k.owner === HUMAN) this.focus = this.kontor(HUMAN)?.island ?? -1;
+    this.ev.removed(k);
+    if (roads) this.ev.roads();
+    if (k.owner === HUMAN) this.ev.message(`⚓ Kontor auf ${this.islands[k.island]?.name ?? 'der Insel'} abgerissen – die Insel ist wieder frei.`, 'info');
+    return { ok: true };
   }
 
   /** Gebäude ohne Rückgabe von Baumaterial entfernen (zerstört im Kampf; auch Kontore) */
@@ -1803,15 +1878,171 @@ export class Game {
 
   // ---------- Simulation ----------
 
-  incomePerMinute(owner = HUMAN): { tax: number; upkeep: number } {
-    let tax = 0, upkeep = 0;
+  /**
+   * Einnahmen und Ausgaben je Minute. tax = alle Steuern, upkeep = aller Unterhalt (Gebäude + Militär);
+   * dazu aufgeschlüsselt: army = Sold der Soldaten, buildings = Unterhalt der Gebäude, byTier = Steuern je Stufe.
+   */
+  incomePerMinute(owner = HUMAN): { tax: number; upkeep: number; army: number; buildings: number; byTier: number[] } {
+    let tax = 0, buildings = 0;
+    const byTier = TIERS.map(() => 0);
     for (const b of this.buildings) {
       if (b.owner !== owner) continue;
-      upkeep += this.def(b).upkeep;
-      if (b.type === 'haus') tax += b.residents * TIERS[b.tier].tax * (0.4 + 0.6 * b.happy);
+      buildings += this.upkeepOf(b);
+      if (b.type === 'haus') { const t = this.houseTax(b); tax += t; byTier[b.tier] += t; }
     }
-    upkeep += unitUpkeep(this, owner);
-    return { tax, upkeep };
+    const army = unitUpkeep(this, owner);
+    return { tax, upkeep: buildings + army, army, buildings, byTier };
+  }
+
+  // ---------- Unterhalt, Steuern, Zufriedenheit ----------
+
+  /** Ruht der Betrieb gerade? (abgeschaltet, Stillstand, oder er kann nicht arbeiten) */
+  isIdle(b: Building): boolean {
+    const d = this.def(b);
+    if (d.id === 'werft' || d.id === 'grosswerft') return !b.job;
+    if (!d.prod) return false;
+    return !!b.off || b.status !== 'ok' || b.active < 0.2;
+  }
+
+  /** Unterhalt eines Gebäudes je Minute: im Betrieb voll, in Ruhe der Ruhewert (Werften nur mit Auftrag voll) */
+  upkeepOf(b: Building): number {
+    const d = this.def(b);
+    return d.upkeepIdle !== undefined && this.isIdle(b) ? d.upkeepIdle : d.upkeep;
+  }
+
+  /** Steuersatz (%) einer Stufe; Computergegner zahlen immer den Standardsatz */
+  taxRate(tier: number, owner = HUMAN): number {
+    const p = this.players[owner];
+    const v = p && !p.ai ? p.tax?.[tier] : undefined;
+    return typeof v === 'number' && Number.isFinite(v) ? v : TIERS[tier].taxStd;
+  }
+
+  /** Steuersatz einer Stufe einstellen (0 … TAX_MAX %, ganze Prozent); gibt den neuen Satz zurück */
+  setTaxRate(tier: number, rate: number, owner = HUMAN): number {
+    const p = this.players[owner];
+    if (!p || !TIERS[tier]) return 0;
+    const v = Math.max(0, Math.min(TAX_MAX, Math.round(rate)));
+    p.tax = TIERS.map((_, i) => this.taxRate(i, owner));
+    p.tax[tier] = v;
+    return v;
+  }
+
+  /** Wie gut ein Haus mit Waren versorgt ist (0..1): Grundbedarf zählt doppelt */
+  supplyShare(h: Building): number {
+    const tier = TIERS[h.tier];
+    let sum = 0, n = 0;
+    for (const g of Object.keys(tier.consumes) as GoodId[]) {
+      const w = tier.core.includes(g) ? 2 : 1;
+      sum += w * Math.max(0, Math.min(1, h.need[g] ?? 1));
+      n += w;
+    }
+    return n ? sum / n : 1;
+  }
+
+  /** Höchster Steuersatz (%), den die Bewohner dieses Hauses klaglos zahlen: voll versorgt der Höchstsatz der
+   *  Stufe, mit fehlenden Waren deutlich weniger (z. B. Bürger mit der Hälfte ihrer Waren etwa 20 %) */
+  bearableTax(h: Building): number {
+    const s = this.supplyShare(h);
+    return TIERS[h.tier].maxTax * (0.25 + 0.75 * s * s);
+  }
+
+  /** Hungert das Haus? (Nahrung fehlt schon eine Weile) */
+  hungry(h: Building): boolean { return (h.need.nahrung ?? 1) < 0.5; }
+
+  /** Steuer eines Hauses je Minute: Bewohner × Steuer der Stufe × (Satz ÷ Standardsatz) × Zufriedenheit^1,3 */
+  houseTax(h: Building): number {
+    const t = TIERS[h.tier];
+    return h.residents * t.tax * (this.taxRate(h.tier, h.owner) / t.taxStd) * Math.pow(Math.max(0, Math.min(1, h.happy)), 1.3);
+  }
+
+  /** Verbrauch der Bewohner einer Insel je Ware und Minute (einmal je Spielsekunde neu gezählt) */
+  islandUse(owner: number, island: number): Partial<Record<GoodId, number>> {
+    const sec = Math.floor(this.time);
+    if (sec !== this.useT) {
+      this.useT = sec;
+      this.useCache.clear();
+      for (const h of this.buildings) {
+        if (h.type !== 'haus') continue;
+        const key = `${h.owner}:${h.island}`;
+        let u = this.useCache.get(key);
+        if (!u) { u = {}; this.useCache.set(key, u); }
+        for (const [g, r] of Object.entries(TIERS[h.tier].consumes) as [GoodId, number][]) u[g] = (u[g] ?? 0) + h.residents * r;
+      }
+    }
+    return this.useCache.get(`${owner}:${island}`) ?? {};
+  }
+
+  /**
+   * Waren für den Aufstieg eines Hauses: je Gruppe (z. B. Tabakwaren oder Gewürze) die Ware mit dem größten
+   * Vorrat, wie viel da ist und wie viel da sein muss – der Vorrat muss die Insel samt dem aufsteigenden Haus
+   * mindestens 2 Minuten versorgen (mindestens 1 t). So steigen nicht viele Häuser auf einmal auf und hungern dann.
+   */
+  upgradeGoods(h: Building): { group: GoodId[]; good: GoodId; have: number; need: number; ok: boolean }[] {
+    const tier = TIERS[h.tier], next = TIERS[h.tier + 1];
+    if (!next) return [];
+    const l = this.lagerOf(h.owner, h.island) ?? EMPTY;
+    const use = this.islandUse(h.owner, h.island);
+    return (tier.next?.goods ?? []).map((group) => {
+      const rows = group.map((g) => {
+        const need = Math.max(1, 2 * ((use[g] ?? 0) + h.residents * (next.consumes[g] ?? 0)));
+        return { good: g, have: l[g], need };
+      });
+      const best = rows.find((r) => r.have >= r.need) ?? rows.reduce((a, r) => (r.have / r.need > a.have / a.need ? r : a));
+      return { group, ...best, ok: best.have >= best.need };
+    });
+  }
+
+  /** Baumaterial für Haus-Aufstiege auf dieser Insel gesperrt? (Schalter am Kontor) */
+  matLocked(owner: number, island: number): boolean { return !!this.kontor(owner, island)?.matLock; }
+
+  /** Schalter am Kontor: Baumaterial an Bewohner sperren (true) oder freigeben */
+  setMatLock(k: Building, lock: boolean) { if (k.type === 'kontor') k.matLock = lock || undefined; }
+
+  /** Betrieb ruhen lassen (off = true) oder wieder arbeiten lassen */
+  setOff(b: Building, off: boolean): Check {
+    const d = this.def(b);
+    if (!d.prod) return { ok: false, reason: 'Nur Betriebe können ruhen' };
+    b.off = off || undefined;
+    if (off) b.status = 'aus';
+    return { ok: true };
+  }
+
+  /** Schulden erlassen: Kasse auf 0, das Spiel geht weiter (zählt später als Punktabzug) */
+  forgiveDebt(owner = HUMAN) {
+    const p = this.players[owner];
+    if (!p) return;
+    if (p.money < 0) p.money = 0;
+    p.erlass = (p.erlass ?? 0) + 1;
+    p.debtT = 0; p.debtWarn = 0;
+    if (p.lost === 'bankrott') { p.lost = undefined; p.defeated = false; }
+  }
+
+  /** Schulden wie im Vorbild: Warnungen, und wer zu lange tief im Minus steht, ist bankrott.
+   *  Computergegner verlieren dadurch nicht – im Minus können sie nur nichts bauen. */
+  private tickDebt(p: Player, dt: number) {
+    if (p.ai || p.pirate || p.trader || p.natives || p.defeated) return;
+    const m = p.money, B = BANKROTT;
+    if (m >= 0) { p.debtWarn = 0; p.debtT = 0; return; }
+    const lvl = m < B.grenze ? 3 : m < B.warnungen[1] ? 2 : m < B.warnungen[0] ? 1 : 0;
+    if (lvl > (p.debtWarn ?? 0)) {
+      p.debtWarn = lvl;
+      if (p.id === HUMAN) this.ev.message([
+        '',
+        '💸 Deine Kasse ist über 2 000 Taler im Minus. Erhöhe die Steuern, lass teure Betriebe ruhen oder verkaufe Waren am Kontor.',
+        '💸 Schon 5 000 Taler Schulden! Steuern erhöhen, Betriebe ohne Arbeit ruhen lassen, Überschüsse verkaufen.',
+        '🚨 Über 10 000 Taler Schulden! Bleibt es 10 Minuten so, bist du bankrott und hast verloren.',
+      ][lvl], 'bad');
+    }
+    if (m < B.grenze) {
+      const before = p.debtT ?? 0;
+      p.debtT = before + dt;
+      if (p.id === HUMAN && before < B.zeit - 120 && p.debtT >= B.zeit - 120) this.ev.message('🚨 Noch 2 Minuten bis zum Bankrott – bring die Kasse über −10 000 Taler!', 'bad');
+      if (p.debtT >= B.zeit) {
+        p.defeated = true;
+        p.lost = 'bankrott';
+        if (p.id === HUMAN) this.ev.message('🏳️ Bankrott – zu lange zu hohe Schulden.', 'bad');
+      }
+    } else p.debtT = 0;
   }
 
   /** Darstellungsort zwischen zwei Rechenschritten (Schiffe, Soldaten, Karren gleiten statt zu springen) */
@@ -1872,6 +2103,7 @@ export class Game {
     for (const p of this.players) {
       const { tax, upkeep } = this.incomePerMinute(p.id);
       p.money += ((tax - upkeep) / 60) * dt;
+      this.tickDebt(p, dt);
     }
     this.unlockT += dt;
     if (this.unlockT > 1) { this.unlockT = 0; this.checkUnlocks(); }
@@ -1946,7 +2178,9 @@ export class Game {
     let working = false;
     b.missing = [];
     const hv = this.def(b).harvest;
-    if (!l || !this.linked.has(b.id)) b.status = 'keinWeg';
+    if (b.off) b.status = 'aus';
+    else if (!l || !this.linked.has(b.id)) b.status = 'keinWeg';
+    else if (!this.inReach.has(b.id)) b.status = 'zuWeit';
     else if (b.eff <= 0 && !hv) b.status = this.def(b).deposit ? 'erschoepft' : this.def(b).needs === 'wasser' ? 'keinWasser' : 'keinWald';
     else if (b.stock >= (this.def(b).stock ?? 4)) b.status = 'lagerVoll';
     else if (hv && !b.loaded && !this.startHarvest(b)) b.status = 'erschoepft';
@@ -1994,11 +2228,16 @@ export class Game {
     b.active += ((working ? 1 : 0) - b.active) * Math.min(1, dt * 0.1);
   }
 
+  /**
+   * Haus: Waren verbrauchen, Zufriedenheit, Ein- und Auszug, Auf- und Abstieg.
+   * Zufriedenheit = 70 % Waren (Grundbedarf doppelt) + 30 % öffentliche Gebäude, dazu die Steuern:
+   * jeder Prozentpunkt über dem tragbaren Satz kostet 3 Punkte Zufriedenheit, ab 5 Punkten darüber 6 Punkte
+   * (gut 10 Punkte zu viel = Auszug); ein niedrigerer Satz bringt bis zu 10 Punkte. Ohne Nahrung herrscht Hunger: höchstens 30 % – die Bewohner ziehen aus.
+   */
   private tickHouse(h: Building, dt: number) {
     const tier = TIERS[h.tier];
     const l = this.lagerOf(h.owner, h.island);
     h.status = 'wohnen';
-    let goodsSum = 0, goodsN = 0;
     for (const [g, rate] of Object.entries(tier.consumes) as [GoodId, number][]) {
       h.demand[g] = Math.min(2, (h.demand[g] ?? 0) + (h.residents * rate * dt) / 60);
       while ((h.demand[g] ?? 0) >= 1) {
@@ -2008,13 +2247,17 @@ export class Game {
       const target = h.short[g] ? 0 : 1;
       const cur = h.need[g] ?? 1;
       h.need[g] = cur + (target - cur) * Math.min(1, dt / 25);
-      goodsSum += h.need[g]!;
-      goodsN++;
     }
     const cov = this.coverage.get(h.id) ?? new Set();
     const svcFrac = tier.services.filter((s) => cov.has(s)).length / tier.services.length;
-    const goodsAvg = goodsN ? goodsSum / goodsN : 1;
-    const target = goodsAvg * 0.7 + svcFrac * 0.3;
+    const supply = this.supplyShare(h);
+    let target = supply * 0.7 + svcFrac * 0.3;
+    const over = this.taxRate(h.tier, h.owner) - this.bearableTax(h);
+    if (over > 0) target -= over * 0.03 + Math.max(0, over - 5) * 0.03;
+    else target += Math.min(0.1, -over * 0.01);
+    const hunger = this.hungry(h);
+    if (hunger) target = Math.min(target, 0.3);
+    target = Math.max(0, Math.min(1, target));
     h.happy += (target - h.happy) * Math.min(1, dt / 8);
 
     if (h.happy > 0.85 && h.residents < tier.maxResidents) {
@@ -2022,22 +2265,69 @@ export class Game {
       if (h.growT >= 6) { h.residents++; h.growT = 0; this.popCache.clear(); }
     } else if (h.happy < 0.45 && h.residents > 1) {
       h.growT -= dt;
-      if (h.growT <= -12) { h.residents--; h.growT = 0; this.popCache.clear(); }
+      if (h.growT <= -12) {
+        h.residents--; h.growT = 0; this.popCache.clear();
+        h.leave = hunger || (h.need.nahrung ?? 1) < 0.6 ? 'hunger' : over > 3 && supply > 0.6 ? 'steuern' : 'mangel';
+        this.leaveMessage(h);
+      }
     } else h.growT *= 0.98;
+
+    // Abstieg: lange sehr unzufrieden und nur noch so viele Bewohner, wie in die Stufe darunter passen
+    if (h.happy < 0.25) h.downT = (h.downT ?? 0) + dt;
+    else if (h.downT) h.downT = Math.max(0, h.downT - dt * 2);
+    if (h.tier > 0 && (h.downT ?? 0) >= 90 && h.residents <= TIERS[h.tier - 1].maxResidents) {
+      const why = this.houseLack(h);
+      h.tier--;
+      h.downT = 0; h.upT = 0;
+      this.popCache.clear();
+      this.ev.changed(h);
+      if (h.owner === HUMAN) this.ev.message(`🏚️ Haus verfällt zu ${TIERS[h.tier].name}: ${why}`, 'bad', this.at(h));
+      return;
+    }
 
     const block = this.upgradeBlocker(h);
     if (!block) {
       h.upT += dt;
       if (h.upT >= 10) {
-        this.pay(TIERS[h.tier + 1].upgradeCost, h.owner, h.island);
+        // erst jetzt bezahlen – und nur, wenn das Material noch da ist (das Lager fällt nie unter 0)
+        const cost = TIERS[h.tier + 1].upgradeCost;
+        if (!this.canAfford(cost, h.owner, h.island).ok) { h.upT = 0; return; }
+        this.pay(cost, h.owner, h.island);
         h.tier++;
         h.upT = 0;
+        h.downT = 0;
         this.popCache.clear();
         for (const g of Object.keys(TIERS[h.tier].consumes) as GoodId[]) if (h.need[g] === undefined) h.need[g] = 1;
         this.ev.changed(h);
         if (h.owner === HUMAN && this.housesByTier()[h.tier] === 1) this.ev.message(`Deine ersten ${TIERS[h.tier].name} sind eingezogen! 🎉`, 'good', this.at(h));
       }
     } else h.upT = 0;
+  }
+
+  /** Was dem Haus am meisten fehlt, in Worten (für Meldungen): Nahrung, sonst Waren, Gebäude, Steuern */
+  houseLack(h: Building): string {
+    const tier = TIERS[h.tier];
+    if (this.hungry(h)) return 'Nahrung fehlt';
+    const goods = (Object.keys(tier.consumes) as GoodId[]).filter((g) => (h.need[g] ?? 1) < 0.6);
+    if (goods.length) return `${goods.map((g) => GOOD[g].name).join(', ')} fehlt`;
+    const cov = this.coverage.get(h.id) ?? new Set();
+    const svc = tier.services.filter((s) => !cov.has(s));
+    if (svc.length) return `${svc.map((s) => BUILDINGS[s].name).join(', ')} in der Nähe fehlt`;
+    if (this.taxRate(h.tier, h.owner) > this.bearableTax(h)) return 'die Steuern sind zu hoch';
+    return 'die Bewohner sind unzufrieden';
+  }
+
+  /** Meldung „Bewohner ziehen aus“ – je Insel höchstens alle 2 Minuten */
+  private leaveMessage(h: Building) {
+    if (h.owner !== HUMAN || !h.leave) return;
+    const key = `${h.island}`;
+    if (this.time - (this.leaveMsgT.get(key) ?? -1e9) < 120) return;
+    this.leaveMsgT.set(key, this.time);
+    const isl = this.islands[h.island]?.name ?? 'deiner Insel';
+    const text = h.leave === 'hunger' ? `🍖 Hunger auf ${isl}: Bewohner ziehen aus. Baue mehr Fischer- oder Jagdhütten!`
+      : h.leave === 'steuern' ? `💰 Zu hohe Steuern für die ${TIERS[h.tier].name} auf ${isl}: Bewohner ziehen aus. Senke den Steuersatz.`
+      : `😠 Auf ${isl} ziehen ${TIERS[h.tier].name} aus: ${this.houseLack(h)}.`;
+    this.ev.message(text, 'bad', this.at(h));
   }
 
   upgradeBlocker(h: Building): string | null {
@@ -2048,10 +2338,12 @@ export class Game {
     if (h.happy < 0.85) return 'Bewohner noch nicht zufrieden genug';
     const cov = this.coverage.get(h.id) ?? new Set();
     for (const s of tier.next?.services ?? []) if (!cov.has(s)) return `${BUILDINGS[s].name} in der Nähe fehlt`;
-    const l = this.lagerOf(h.owner, h.island) ?? EMPTY;
-    for (const group of tier.next?.goods ?? []) {
-      if (!group.some((g) => l[g] >= 1)) return `${group.map((g) => GOOD[g].name).join(' oder ')} fehlt im Lager`;
+    for (const r of this.upgradeGoods(h)) {
+      if (r.ok) continue;
+      if (r.have < 1) return `${r.group.map((g) => GOOD[g].name).join(' oder ')} fehlt im Lager`;
+      return `Zu wenig ${GOOD[r.good].name} im Lager (${Math.floor(r.have)} von ${Math.ceil(r.need)} t – reicht keine 2 Minuten)`;
     }
+    if (BUILD_GOODS.some((k) => (next.upgradeCost[k] ?? 0) > 0) && this.matLocked(h.owner, h.island)) return 'Baumaterial gesperrt (Schalter am Kontor)';
     const c = this.canAfford(next.upgradeCost, h.owner, h.island);
     if (!c.ok) return `${c.reason} zum Ausbau`;
     return null;
@@ -2102,10 +2394,10 @@ export const QUESTS: Quest[] = [
   step('Tabak oder Gewürze', 'Für Bürger: Tabakplantage + Tabakwarenmanufaktur oder eine Gewürzplantage. Schau mit dem Schiff, welche Insel dafür fruchtbar ist.',
     (g) => any(g, ['tabakwaren', 'gewuerzplantage']), (g) => (any(g, ['tabakwaren', 'gewuerzplantage']) ? '1/1' : '0/1'), 700),
   step('Wirtshaus und Schule', 'Siedler brauchen Wirtshaus (ab 50 Siedlern) und Schule (ab 100 Siedlern), um Bürger zu werden.', ...Object.values(all(['wirtshaus', 'schule'], false)) as [Quest['done'], Quest['progress']], 800),
-  step('Wehrhaft', 'Ab 200 Siedlern bauen deine Rivalen Truppen auf: Baue eine Burg und bilde 3 Soldaten aus (Schwerter beim Händler am Kontor kaufen oder selbst schmieden). Wachtürme schützen die Küste.',
-    (g) => g.units.filter((u) => u.owner === HUMAN).length >= 3, (g) => `${Math.min(3, g.units.filter((u) => u.owner === HUMAN).length)}/3`, 1200),
   step('Bürger', 'Siedlerhäuser mit Alkohol, Tabakwaren oder Gewürzen, Wirtshaus und Schule werden zu Bürgern. Ziel: 6 Bürgerhäuser.', ...Object.values(tierGoal(2, 6)) as [Quest['done'], Quest['progress']], 1000),
   step('Eisen und Werkzeug', 'Erzmine am Berg einer Erz-Insel, Erzschmelze und Werkzeugschmiede: nie wieder Werkzeug kaufen!', ...Object.values(all(['erzmine', 'erzschmelze', 'schmiede'])) as [Quest['done'], Quest['progress']], 1200),
+  step('Wehrhaft', 'Deine Rivalen rüsten auf: Die Schwertschmiede macht aus Eisen Schwerter. Baue eine Burg und bilde 3 Soldaten aus. Wachtürme schützen die Küste.',
+    (g) => g.units.filter((u) => u.owner === HUMAN).length >= 3, (g) => `${Math.min(3, g.units.filter((u) => u.owner === HUMAN).length)}/3`, 1200),
   step('Kakao', 'Bürger werden zu Kaufleuten, wenn es Kakao gibt. Kakao wächst auf südlichen Inseln.', ...Object.values(all(['kakaoplantage'])) as [Quest['done'], Quest['progress']], 1000),
   step('Kirche und Badehaus', 'Kaufleute wollen Kirche (ab 150 Bürgern) und Badehaus (ab 210 Bürgern).', ...Object.values(all(['kirche', 'badehaus'], false)) as [Quest['done'], Quest['progress']], 1500),
   step('Kaufleute', 'Ziel: 6 Häuser der Kaufleute.', ...Object.values(tierGoal(3, 6)) as [Quest['done'], Quest['progress']], 2000),

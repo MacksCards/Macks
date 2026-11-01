@@ -219,7 +219,7 @@ Alles kostet einmalig Waffen und Taler und dann Unterhalt je Minute.
 
 ## 8. Sonstiges
 
-- **Steuersatz** einstellbar je Stufe (niedrig, normal, hoch). Hohe Steuern bringen Geld, senken aber die Zufriedenheit.
+- **Steuersatz** einstellbar je Stufe wie 1602 (seit Paket L2): Standardsatz 36/34/28/27/26 %, Höchstsätze, die voll versorgte Bewohner noch tragen, 48/45/38/36/35 %. Fehlen Waren, tragen sie weniger. Steuer je Bewohner und Minute beim Standardsatz: 2,3/2,5/2,9/3,0/3,2 Taler (flach wie im Vorbild, Aristokrat ≈ 1,4 × Pionier; die Werte oben in der Tabelle sind veraltet, gültig ist `src/data.ts`). Hohe Steuern bringen Geld, senken aber die Zufriedenheit bis zum Auszug. Bankrott nach 10 Minuten unter −10 000 Talern (Schulden lassen sich erlassen).
 - **Feuer:** kann in Häusern ausbrechen. Eine Feuerwache in Reichweite löscht, sonst brennt es weiter und greift über.
 - **Pest:** bricht in großen, dichten Städten aus. Ein Arzt in Reichweite heilt, später schützt das Badehaus.
 - **Ereignisse:** Sturm (Schiffe beschädigt), Piratenüberfall, Dürre (Ernte schlechter), Besuch freier Händler. Ereignisse lassen sich in den Einstellungen abmildern oder abschalten **(eigene Festlegung)**.

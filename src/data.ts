@@ -68,7 +68,12 @@ export interface BuildingDef {
   category: Category | null; // null = nicht baubar (Kontor)
   size: number; // quadratische Grundfläche in Kacheln
   cost: Cost;
-  upkeep: number; // Taler pro Minute
+  upkeep: number; // Taler pro Minute (im Betrieb)
+  /** Unterhalt in Ruhe (Taler pro Minute): wenn der Betrieb stillsteht, nichts zu tun hat oder abgeschaltet ist.
+   *  Fehlt = gleich wie upkeep (öffentliche Gebäude, Militär zahlen immer voll). */
+  upkeepIdle?: number;
+  /** Kontor/Marktplatz: so weit (Felder) fahren die Marktkarren zum Abholen */
+  pickup?: number;
   desc: string;
   /** Einflussradius (Kacheln) – Bauradius (Kontor/Markt) oder Versorgung (Kapelle ...) */
   radius?: number;
@@ -121,14 +126,14 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   steinweg: { id: 'steinweg', name: 'Pflasterweg', icon: '⬜', category: 'wege', size: 1, cost: { taler: 5, stein: 1 }, upkeep: 0, paint: true, unlock: S(15),
     desc: 'Gepflasterter Weg aus Steinen – Marktkarren kommen darauf schneller voran.' },
   // ---------- Lager & Wohnen ----------
-  kontor: { id: 'kontor', name: 'Kontor', icon: '⚓', category: null, size: 3, cost: { taler: 100, holz: 6, werkzeug: 3 }, upkeep: 15, radius: 16, storage: 30, work: 16,
+  kontor: { id: 'kontor', name: 'Kontor', icon: '⚓', category: null, size: 3, cost: { taler: 100, holz: 6, werkzeug: 3 }, upkeep: 15, radius: 16, storage: 30, work: 16, pickup: 8,
     desc: 'Lager und Hafen einer Insel. Wird vom Schiff aus an der Küste gebaut und beansprucht das Land ringsum. Kann ausgebaut werden (mehr Lagerplatz).' },
-  markt: { id: 'markt', name: 'Marktplatz', icon: '🏪', category: 'oeffentlich', size: 3, cost: { taler: 200, holz: 10, werkzeug: 4 }, upkeep: 10, radius: 15, storage: 10, work: 15,
-    desc: 'Erweitert dein Gebiet und das Lager. Wohnhäuser brauchen einen Markt in Reichweite.' },
+  markt: { id: 'markt', name: 'Marktplatz', icon: '🏪', category: 'oeffentlich', size: 3, cost: { taler: 200, holz: 10, werkzeug: 4 }, upkeep: 10, radius: 15, storage: 10, work: 15, pickup: 12,
+    desc: 'Erweitert dein Gebiet und das Lager. Wohnhäuser brauchen einen Markt in Reichweite. Sein Marktkarren holt Waren von Betrieben bis 12 Felder weit ab.' },
   haus: { id: 'haus', name: 'Wohnhaus', icon: '🏠', category: 'wohnen', size: 2, cost: { holz: 3 }, upkeep: 0,
     desc: 'Hier ziehen Pioniere ein. Sind ihre Bedürfnisse erfüllt, steigt das Haus Stufe um Stufe bis zu den Aristokraten auf.' },
   // ---------- Öffentliche Gebäude ----------
-  kapelle: { id: 'kapelle', name: 'Kapelle', icon: '⛪', category: 'oeffentlich', size: 2, cost: { taler: 100, holz: 5, werkzeug: 2 }, upkeep: 5, radius: 9,
+  kapelle: { id: 'kapelle', name: 'Kapelle', icon: '⛪', category: 'oeffentlich', size: 2, cost: { taler: 100, holz: 5, werkzeug: 2 }, upkeep: 5, radius: 8,
     desc: 'Glaube für Pioniere und Siedler. Nötig, damit Pioniere zu Siedlern werden.' },
   wirtshaus: { id: 'wirtshaus', name: 'Wirtshaus', icon: '🍻', category: 'oeffentlich', size: 2, cost: { taler: 250, holz: 4, werkzeug: 3, stein: 6 }, upkeep: 15, radius: 12, unlock: S(50),
     desc: 'Geselligkeit. Siedler brauchen es, um zu Bürgern zu werden.' },
@@ -143,77 +148,77 @@ export const BUILDINGS: Record<BuildingId, BuildingDef> = {
   theater: { id: 'theater', name: 'Theater', icon: '🎭', category: 'oeffentlich', size: 3, cost: { taler: 1200, holz: 5, werkzeug: 2, stein: 19 }, upkeep: 80, radius: 19, unlock: K(300),
     desc: 'Kultur. Kaufleute brauchen ein Theater, um Aristokraten zu werden.' },
   // ---------- Nahrung ----------
-  fischer: { id: 'fischer', name: 'Fischerhütte', icon: '🎣', category: 'nahrung', size: 2, cost: { taler: 100, holz: 5, werkzeug: 3 }, upkeep: 5,
+  fischer: { id: 'fischer', name: 'Fischerhütte', icon: '🎣', category: 'nahrung', size: 2, cost: { taler: 100, holz: 5, werkzeug: 3 }, upkeep: 5, upkeepIdle: 0,
     stock: 4, work: 4, harvest: { res: 'fisch', per: 1 }, prod: { time: 12, output: 'nahrung' }, needs: 'wasser',
     desc: 'Fängt Fisch als Nahrung. Muss direkt am Wasser stehen – je mehr Fischgründe, desto besser.' },
-  jagdhuette: { id: 'jagdhuette', name: 'Jagdhütte', icon: '🏹', category: 'nahrung', size: 2, cost: { taler: 50, holz: 2, werkzeug: 2 }, upkeep: 5,
-    stock: 3, work: 7, harvest: { res: 'wild', per: 1 }, prod: { time: 16, output: 'nahrung' }, needs: 'wald',
+  jagdhuette: { id: 'jagdhuette', name: 'Jagdhütte', icon: '🏹', category: 'nahrung', size: 2, cost: { taler: 50, holz: 2, werkzeug: 2 }, upkeep: 5, upkeepIdle: 0,
+    stock: 6, work: 8, harvest: { res: 'wild', per: 1 }, prod: { time: 5.5, output: 'nahrung' }, needs: 'wald',
     desc: 'Jäger erlegen Wild im Wald. Günstig, aber das Wild muss nachwachsen.' },
-  schweinezucht: { id: 'schweinezucht', name: 'Schweinezucht', icon: '🐖', category: 'nahrung', size: 3, cost: { taler: 100, holz: 4, werkzeug: 1 }, upkeep: 5, unlock: P(30),
+  schweinezucht: { id: 'schweinezucht', name: 'Schweinezucht', icon: '🐖', category: 'nahrung', size: 3, cost: { taler: 100, holz: 4, werkzeug: 1 }, upkeep: 5, upkeepIdle: 0, unlock: P(30),
     stock: 4, work: 4, harvest: { res: 'weide', per: 3 }, prod: { time: 14, output: 'schweine' }, desc: 'Züchtet Schweine auf der Weide für die Fleischerei.' },
-  fleischerei: { id: 'fleischerei', name: 'Fleischerei', icon: '🔪', category: 'nahrung', size: 2, cost: { taler: 150, holz: 4, werkzeug: 3 }, upkeep: 5, unlock: P(30),
+  fleischerei: { id: 'fleischerei', name: 'Fleischerei', icon: '🔪', category: 'nahrung', size: 2, cost: { taler: 150, holz: 4, werkzeug: 3, stein: 10 }, upkeep: 5, upkeepIdle: 0, unlock: P(30),
     stock: 4, prod: { time: 10, input: { schweine: 1 }, output: 'nahrung', amount: 2 }, desc: 'Macht aus einem Schwein zwei Ladungen Nahrung.' },
-  getreidefarm: { id: 'getreidefarm', name: 'Getreidefarm', icon: '🌾', category: 'nahrung', size: 3, cost: { taler: 100, holz: 5, werkzeug: 2 }, upkeep: 5, unlock: S(75),
+  getreidefarm: { id: 'getreidefarm', name: 'Getreidefarm', icon: '🌾', category: 'nahrung', size: 3, cost: { taler: 100, holz: 5, werkzeug: 2 }, upkeep: 5, upkeepIdle: 0, unlock: S(75),
     stock: 6, work: 3, harvest: { res: 'feld', per: 1 }, prod: { time: 10, output: 'getreide' }, desc: 'Baut Getreide auf den Feldern ringsum an – für Mühle oder Brauerei.' },
-  muehle: { id: 'muehle', name: 'Windmühle', icon: '🌬️', category: 'nahrung', size: 2, cost: { taler: 100, holz: 6, werkzeug: 3 }, upkeep: 5, unlock: S(75),
+  muehle: { id: 'muehle', name: 'Windmühle', icon: '🌬️', category: 'nahrung', size: 2, cost: { taler: 100, holz: 6, werkzeug: 3 }, upkeep: 5, upkeepIdle: 0, unlock: S(75),
     stock: 6, prod: { time: 10, input: { getreide: 2 }, output: 'mehl' }, desc: 'Mahlt zwei Getreide zu einem Sack Mehl.' },
-  baeckerei: { id: 'baeckerei', name: 'Bäckerei', icon: '🥖', category: 'nahrung', size: 2, cost: { taler: 150, holz: 6, werkzeug: 2 }, upkeep: 5, unlock: S(75),
-    stock: 4, prod: { time: 8, input: { mehl: 1 }, output: 'nahrung', amount: 2 }, desc: 'Backt aus Mehl Brot – sehr ergiebige Nahrung.' },
+  baeckerei: { id: 'baeckerei', name: 'Bäckerei', icon: '🥖', category: 'nahrung', size: 2, cost: { taler: 150, holz: 6, werkzeug: 2 }, upkeep: 5, upkeepIdle: 0, unlock: S(75),
+    stock: 4, prod: { time: 7.5, input: { mehl: 1 }, output: 'nahrung', amount: 2 }, desc: 'Backt aus Mehl Brot – sehr ergiebige Nahrung.' },
   // ---------- Rohstoffe ----------
-  holzfaeller: { id: 'holzfaeller', name: 'Holzfäller', icon: '🪓', category: 'rohstoffe', size: 2, cost: { taler: 50, werkzeug: 2 }, upkeep: 5,
+  holzfaeller: { id: 'holzfaeller', name: 'Holzfäller', icon: '🪓', category: 'rohstoffe', size: 2, cost: { taler: 50, werkzeug: 2 }, upkeep: 5, upkeepIdle: 0,
     stock: 10, work: 4, harvest: { res: 'baum', per: 1 }, prod: { time: 12, output: 'holz' }, needs: 'wald',
     desc: 'Fällt reife Bäume im Umkreis; neue wachsen nach. Je mehr Wald, desto besser.' },
-  steinbruch: { id: 'steinbruch', name: 'Steinbruch', icon: '⛰️', category: 'rohstoffe', size: 2, cost: { taler: 150, holz: 2, werkzeug: 6 }, upkeep: 5, unlock: S(15),
+  steinbruch: { id: 'steinbruch', name: 'Steinbruch', icon: '⛰️', category: 'rohstoffe', size: 2, cost: { taler: 150, holz: 2, werkzeug: 6 }, upkeep: 0, unlock: S(15),
     stock: 8, prod: { time: 12, output: 'stein' }, needs: 'berg', desc: 'Bricht Steine aus dem Berg – Baustoff für Pflasterwege, Mauern und große Gebäude.' },
-  schaffarm: { id: 'schaffarm', name: 'Schaffarm', icon: '🐑', category: 'rohstoffe', size: 3, cost: { taler: 200, holz: 4, werkzeug: 2 }, upkeep: 5,
-    stock: 8, work: 4, harvest: { res: 'weide', per: 4 }, prod: { time: 16, output: 'wolle' }, desc: 'Schafe grasen ringsum und liefern Wolle für die Weberei.' },
-  erzmine: { id: 'erzmine', name: 'Erzmine', icon: '⛏️', category: 'rohstoffe', size: 2, cost: { taler: 1000, holz: 20, werkzeug: 10, stein: 5 }, upkeep: 60, unlock: S(120),
+  schaffarm: { id: 'schaffarm', name: 'Schaffarm', icon: '🐑', category: 'rohstoffe', size: 3, cost: { taler: 200, holz: 4, werkzeug: 2 }, upkeep: 5, upkeepIdle: 0,
+    stock: 8, work: 4, harvest: { res: 'weide', per: 1.25 }, prod: { time: 5, output: 'wolle' }, desc: 'Schafe grasen ringsum und liefern Wolle für die Weberei.' },
+  erzmine: { id: 'erzmine', name: 'Erzmine', icon: '⛏️', category: 'rohstoffe', size: 2, cost: { taler: 1000, holz: 20, werkzeug: 10, stein: 5 }, upkeep: 60, upkeepIdle: 20, unlock: S(120),
     stock: 4, prod: { time: 18, output: 'erz' }, needs: 'berg', deposit: 'erz', desc: 'Fördert Erz – nur am Berg einer Insel mit Erzvorkommen. Das Vorkommen geht irgendwann zur Neige.' },
-  tiefeErzmine: { id: 'tiefeErzmine', name: 'Tiefe Erzmine', icon: '⛏️', category: 'rohstoffe', size: 2, cost: { taler: 1800, holz: 30, werkzeug: 15, stein: 7 }, upkeep: 60, unlock: K(400),
+  tiefeErzmine: { id: 'tiefeErzmine', name: 'Tiefe Erzmine', icon: '⛏️', category: 'rohstoffe', size: 2, cost: { taler: 1800, holz: 30, werkzeug: 15, stein: 7 }, upkeep: 60, upkeepIdle: 20, unlock: K(400),
     stock: 4, prod: { time: 18, output: 'erz' }, needs: 'berg', deposit: 'tiefErz', desc: 'Gräbt tief in einen Erz-Berg – auch wenn das Vorkommen oben schon erschöpft ist. Liefert dauerhaft Erz.' },
-  goldmine: { id: 'goldmine', name: 'Goldmine', icon: '🥇', category: 'rohstoffe', size: 2, cost: { taler: 1000, holz: 20, werkzeug: 10, stein: 5 }, upkeep: 60, unlock: B(150),
-    stock: 4, prod: { time: 30, output: 'gold' }, needs: 'berg', deposit: 'gold', desc: 'Fördert Gold – nur auf Inseln mit Goldvorkommen (selten, eher kleine Inseln).' },
+  goldmine: { id: 'goldmine', name: 'Goldmine', icon: '🥇', category: 'rohstoffe', size: 2, cost: { taler: 1000, holz: 20, werkzeug: 10, stein: 5 }, upkeep: 60, upkeepIdle: 20, unlock: B(150),
+    stock: 4, prod: { time: 12, output: 'gold' }, needs: 'berg', deposit: 'gold', desc: 'Fördert Gold – nur auf Inseln mit Goldvorkommen (selten, eher kleine Inseln).' },
   // ---------- Plantagen (nur auf fruchtbaren Inseln) ----------
-  tabakplantage: { id: 'tabakplantage', name: 'Tabakplantage', icon: '🍂', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 35, unlock: S(40),
-    stock: 6, work: 3, harvest: { res: 'feld', per: 1 }, pflanze: 'tabak', prod: { time: 14, output: 'tabak' }, desc: 'Tabak wächst nur, wo die Insel fruchtbar dafür ist (Norden).' },
-  zuckerrohrplantage: { id: 'zuckerrohrplantage', name: 'Zuckerrohrplantage', icon: '🎋', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 25, unlock: S(40),
-    stock: 6, work: 3, harvest: { res: 'feld', per: 1 }, pflanze: 'zuckerrohr', prod: { time: 12, output: 'zuckerrohr' }, desc: 'Zuckerrohr für die Rumbrennerei – nur auf fruchtbaren Inseln.' },
-  weingut: { id: 'weingut', name: 'Weingut', icon: '🍇', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 35, unlock: S(40),
-    stock: 6, work: 3, harvest: { res: 'feld', per: 1 }, pflanze: 'wein', prod: { time: 22, output: 'alkohol' }, desc: 'Weinberge mit Kelterei: liefert direkt Alkohol – nur auf fruchtbaren Inseln.' },
-  gewuerzplantage: { id: 'gewuerzplantage', name: 'Gewürzplantage', icon: '🌶️', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 35, unlock: S(40),
-    stock: 4, work: 3, harvest: { res: 'feld', per: 1 }, pflanze: 'gewuerze', prod: { time: 20, output: 'gewuerze' }, desc: 'Gewürze für Bürger und höher – wachsen eher im Süden.' },
-  kakaoplantage: { id: 'kakaoplantage', name: 'Kakaoplantage', icon: '🍫', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 35, unlock: B(200),
-    stock: 6, work: 3, harvest: { res: 'feld', per: 1 }, pflanze: 'kakao', prod: { time: 20, output: 'kakao' }, desc: 'Kakao für Kaufleute und Aristokraten – wächst im Süden.' },
-  baumwollplantage: { id: 'baumwollplantage', name: 'Baumwollplantage', icon: '☁️', category: 'plantagen', size: 3, cost: { taler: 200, holz: 3, werkzeug: 2, stein: 6 }, upkeep: 25, unlock: B(200),
-    stock: 9, work: 3, harvest: { res: 'feld', per: 1 }, pflanze: 'baumwolle', prod: { time: 10, output: 'wolle' }, desc: 'Baumwolle liefert mehr Wolle als Schafe – nur auf fruchtbaren Inseln.' },
+  tabakplantage: { id: 'tabakplantage', name: 'Tabakplantage', icon: '🍂', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 35, upkeepIdle: 15, unlock: S(40),
+    stock: 6, work: 3, harvest: { res: 'feld', per: 0.36 }, pflanze: 'tabak', prod: { time: 5, output: 'tabak' }, desc: 'Tabak wächst nur, wo die Insel fruchtbar dafür ist (Norden).' },
+  zuckerrohrplantage: { id: 'zuckerrohrplantage', name: 'Zuckerrohrplantage', icon: '🎋', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 25, upkeepIdle: 10, unlock: S(40),
+    stock: 6, work: 3, harvest: { res: 'feld', per: 0.33 }, pflanze: 'zuckerrohr', prod: { time: 4, output: 'zuckerrohr' }, desc: 'Zuckerrohr für die Rumbrennerei – nur auf fruchtbaren Inseln.' },
+  weingut: { id: 'weingut', name: 'Weingut', icon: '🍇', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 35, upkeepIdle: 15, unlock: S(40),
+    stock: 6, work: 3, harvest: { res: 'feld', per: 0.36 }, pflanze: 'wein', prod: { time: 8, output: 'alkohol' }, desc: 'Weinberge mit Kelterei: liefert direkt Alkohol – nur auf fruchtbaren Inseln.' },
+  gewuerzplantage: { id: 'gewuerzplantage', name: 'Gewürzplantage', icon: '🌶️', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 35, upkeepIdle: 15, unlock: S(40),
+    stock: 4, work: 3, harvest: { res: 'feld', per: 0.35 }, pflanze: 'gewuerze', prod: { time: 7, output: 'gewuerze' }, desc: 'Gewürze für Bürger und höher – wachsen eher im Süden.' },
+  kakaoplantage: { id: 'kakaoplantage', name: 'Kakaoplantage', icon: '🍫', category: 'plantagen', size: 3, cost: { taler: 300, holz: 3, werkzeug: 2, stein: 8 }, upkeep: 35, upkeepIdle: 15, unlock: B(200),
+    stock: 6, work: 3, harvest: { res: 'feld', per: 0.35 }, pflanze: 'kakao', prod: { time: 7, output: 'kakao' }, desc: 'Kakao für Kaufleute und Aristokraten – wächst im Süden.' },
+  baumwollplantage: { id: 'baumwollplantage', name: 'Baumwollplantage', icon: '☁️', category: 'plantagen', size: 3, cost: { taler: 200, holz: 3, werkzeug: 2, stein: 6 }, upkeep: 25, upkeepIdle: 10, unlock: B(200),
+    stock: 9, work: 3, harvest: { res: 'feld', per: 0.4 }, pflanze: 'baumwolle', prod: { time: 4, output: 'wolle' }, desc: 'Baumwolle liefert mehr Wolle als Schafe – nur auf fruchtbaren Inseln.' },
   // ---------- Werkstätten ----------
-  weberei: { id: 'weberei', name: 'Weberei', icon: '🪡', category: 'werkstatt', size: 2, cost: { taler: 200, holz: 6, werkzeug: 3 }, upkeep: 10,
-    stock: 4, prod: { time: 12, input: { wolle: 2 }, output: 'stoff' }, desc: 'Webt aus zwei Wolle einen Ballen Stoff.' },
-  schneiderei: { id: 'schneiderei', name: 'Schneiderei', icon: '👘', category: 'werkstatt', size: 2, cost: { taler: 150, holz: 6, werkzeug: 3, stein: 2 }, upkeep: 10, unlock: B(200),
-    stock: 4, prod: { time: 12, input: { stoff: 1 }, output: 'kleidung' }, desc: 'Näht aus Stoff feine Kleidung für Aristokraten.' },
-  rumbrennerei: { id: 'rumbrennerei', name: 'Rumbrennerei', icon: '🥃', category: 'werkstatt', size: 2, cost: { taler: 200, holz: 2, werkzeug: 3, stein: 5 }, upkeep: 25, unlock: S(40),
-    stock: 4, prod: { time: 12, input: { zuckerrohr: 2 }, output: 'alkohol' }, desc: 'Brennt aus Zuckerrohr Alkohol.' },
-  brauerei: { id: 'brauerei', name: 'Brauerei', icon: '🍺', category: 'werkstatt', size: 2, cost: { taler: 250, holz: 4, werkzeug: 2, stein: 3 }, upkeep: 15, unlock: S(75),
-    stock: 4, prod: { time: 16, input: { getreide: 2 }, output: 'alkohol' }, desc: 'Braut aus Getreide Bier (zählt als Alkohol) – für Inseln ohne Wein und Zuckerrohr.' },
-  tabakwaren: { id: 'tabakwaren', name: 'Tabakwarenmanufaktur', icon: '🚬', category: 'werkstatt', size: 2, cost: { taler: 200, holz: 2, werkzeug: 3, stein: 5 }, upkeep: 20, unlock: S(40),
-    stock: 4, prod: { time: 14, input: { tabak: 2 }, output: 'tabakwaren' }, desc: 'Dreht aus Tabak Zigarren und Pfeifentabak.' },
-  erzschmelze: { id: 'erzschmelze', name: 'Erzschmelze', icon: '🔥', category: 'werkstatt', size: 2, cost: { taler: 200, holz: 1, werkzeug: 3, stein: 4 }, upkeep: 25, unlock: S(120),
+  weberei: { id: 'weberei', name: 'Weberei', icon: '🪡', category: 'werkstatt', size: 2, cost: { taler: 200, holz: 6, werkzeug: 3 }, upkeep: 10, upkeepIdle: 5,
+    stock: 8, prod: { time: 5, input: { wolle: 2 }, output: 'stoff' }, desc: 'Webt aus zwei Wolle einen Ballen Stoff.' },
+  schneiderei: { id: 'schneiderei', name: 'Schneiderei', icon: '👘', category: 'werkstatt', size: 2, cost: { taler: 150, holz: 6, werkzeug: 3, stein: 2 }, upkeep: 10, upkeepIdle: 5, unlock: B(200),
+    stock: 8, prod: { time: 5, input: { stoff: 1 }, output: 'kleidung' }, desc: 'Näht aus Stoff feine Kleidung für Aristokraten.' },
+  rumbrennerei: { id: 'rumbrennerei', name: 'Rumbrennerei', icon: '🥃', category: 'werkstatt', size: 2, cost: { taler: 200, holz: 2, werkzeug: 3, stein: 5 }, upkeep: 25, upkeepIdle: 7, unlock: S(40),
+    stock: 8, prod: { time: 4, input: { zuckerrohr: 2 }, output: 'alkohol' }, desc: 'Brennt aus Zuckerrohr Alkohol.' },
+  brauerei: { id: 'brauerei', name: 'Brauerei', icon: '🍺', category: 'werkstatt', size: 2, cost: { taler: 250, holz: 4, werkzeug: 2, stein: 3 }, upkeep: 15, upkeepIdle: 5, unlock: S(75),
+    stock: 8, prod: { time: 6, input: { getreide: 2 }, output: 'alkohol' }, desc: 'Braut aus Getreide Bier (zählt als Alkohol) – für Inseln ohne Wein und Zuckerrohr.' },
+  tabakwaren: { id: 'tabakwaren', name: 'Tabakwarenmanufaktur', icon: '🚬', category: 'werkstatt', size: 2, cost: { taler: 200, holz: 2, werkzeug: 3, stein: 5 }, upkeep: 20, upkeepIdle: 10, unlock: S(40),
+    stock: 8, prod: { time: 5, input: { tabak: 2 }, output: 'tabakwaren' }, desc: 'Dreht aus Tabak Zigarren und Pfeifentabak.' },
+  erzschmelze: { id: 'erzschmelze', name: 'Erzschmelze', icon: '🔥', category: 'werkstatt', size: 2, cost: { taler: 200, holz: 1, werkzeug: 3, stein: 4 }, upkeep: 25, upkeepIdle: 10, unlock: S(120),
     stock: 5, prod: { time: 14, input: { erz: 1, holz: 1 }, output: 'eisen' }, desc: 'Schmilzt Erz mit Holz zu Eisen.' },
-  schmiede: { id: 'schmiede', name: 'Werkzeugschmiede', icon: '🔨', category: 'werkstatt', size: 2, cost: { taler: 150, holz: 2, werkzeug: 3, stein: 5 }, upkeep: 25, unlock: S(100),
+  schmiede: { id: 'schmiede', name: 'Werkzeugschmiede', icon: '🔨', category: 'werkstatt', size: 2, cost: { taler: 150, holz: 2, werkzeug: 3, stein: 5 }, upkeep: 25, upkeepIdle: 10, unlock: S(100),
     stock: 4, prod: { time: 14, input: { eisen: 1 }, output: 'werkzeug', amount: 2 }, desc: 'Schmiedet aus Eisen Werkzeug (1 Eisen → 2 Werkzeug).' },
-  schwertschmiede: { id: 'schwertschmiede', name: 'Schwertschmiede', icon: '🗡️', category: 'werkstatt', size: 2, cost: { taler: 450, holz: 4, werkzeug: 5, stein: 10 }, upkeep: 30, unlock: S(200),
+  schwertschmiede: { id: 'schwertschmiede', name: 'Schwertschmiede', icon: '🗡️', category: 'werkstatt', size: 2, cost: { taler: 450, holz: 4, werkzeug: 5, stein: 10 }, upkeep: 30, upkeepIdle: 14, unlock: S(200),
     stock: 4, prod: { time: 20, input: { eisen: 1 }, output: 'schwerter' }, desc: 'Schmiedet Schwerter für Infanterie und Reiter.' },
-  buechsenmacher: { id: 'buechsenmacher', name: 'Büchsenmacher', icon: '🔫', category: 'werkstatt', size: 2, cost: { taler: 600, holz: 4, werkzeug: 9, stein: 10 }, upkeep: 45, unlock: K(400),
+  buechsenmacher: { id: 'buechsenmacher', name: 'Büchsenmacher', icon: '🔫', category: 'werkstatt', size: 2, cost: { taler: 600, holz: 4, werkzeug: 9, stein: 10 }, upkeep: 45, upkeepIdle: 20, unlock: K(400),
     stock: 4, prod: { time: 24, input: { eisen: 2, holz: 1 }, output: 'musketen' }, desc: 'Baut Musketen für Musketiere.' },
   // ab 400 Bürgern – gleichzeitig mit dem Kanonier, damit man Kanonen nicht nur kaufen muss
-  kanonengiesserei: { id: 'kanonengiesserei', name: 'Kanonengießerei', icon: '💣', category: 'werkstatt', size: 3, cost: { taler: 750, holz: 5, werkzeug: 6, stein: 15 }, upkeep: 60, unlock: B(400),
+  kanonengiesserei: { id: 'kanonengiesserei', name: 'Kanonengießerei', icon: '💣', category: 'werkstatt', size: 3, cost: { taler: 750, holz: 5, werkzeug: 6, stein: 15 }, upkeep: 60, upkeepIdle: 25, unlock: B(400),
     stock: 4, prod: { time: 28, input: { eisen: 1, holz: 1 }, output: 'kanonen' }, desc: 'Gießt Kanonen für Kriegsschiffe, Wachtürme und Kanoniere.' },
-  goldschmied: { id: 'goldschmied', name: 'Goldschmied', icon: '💍', category: 'werkstatt', size: 2, cost: { taler: 1500, holz: 2, werkzeug: 7, stein: 10 }, upkeep: 45, unlock: K(250),
-    stock: 4, prod: { time: 20, input: { gold: 2 }, output: 'schmuck', amount: 4 }, desc: 'Fertigt aus Gold Schmuck für Aristokraten (2 Gold → 4 Schmuck).' },
+  goldschmied: { id: 'goldschmied', name: 'Goldschmied', icon: '💍', category: 'werkstatt', size: 2, cost: { taler: 1500, holz: 2, werkzeug: 7, stein: 10 }, upkeep: 45, upkeepIdle: 20, unlock: K(250),
+    stock: 8, prod: { time: 24, input: { gold: 2 }, output: 'schmuck', amount: 4 }, desc: 'Fertigt aus Gold Schmuck für Aristokraten (2 Gold → 4 Schmuck).' },
   // ---------- Hafen ----------
-  werft: { id: 'werft', name: 'Kleine Werft', icon: '🛠️', category: 'hafen', size: 3, cost: { taler: 1100, holz: 12, werkzeug: 8, stein: 3 }, upkeep: 20, unlock: S(120), needs: 'kueste',
+  werft: { id: 'werft', name: 'Kleine Werft', icon: '🛠️', category: 'hafen', size: 3, cost: { taler: 1100, holz: 12, werkzeug: 8, stein: 3 }, upkeep: 100, upkeepIdle: 20, unlock: S(120), needs: 'kueste',
     desc: 'Baut kleine Handels- und Kriegsschiffe. Muss an der Küste stehen.' },
-  grosswerft: { id: 'grosswerft', name: 'Große Werft', icon: '⚓', category: 'hafen', size: 3, cost: { taler: 2800, holz: 25, werkzeug: 10, stein: 63 }, upkeep: 30, unlock: K(500), needs: 'kueste',
+  grosswerft: { id: 'grosswerft', name: 'Große Werft', icon: '⚓', category: 'hafen', size: 3, cost: { taler: 2800, holz: 25, werkzeug: 10, stein: 63 }, upkeep: 150, upkeepIdle: 30, unlock: K(500), needs: 'kueste',
     desc: 'Baut auch große Handels- und Kriegsschiffe – schneller als die kleine Werft.' },
   // ---------- Militär ----------
   palisade: { id: 'palisade', name: 'Palisade', icon: '🪵', category: 'militaer', size: 1, cost: { taler: 10, holz: 2 }, upkeep: 0, unlock: S(30), paint: true, hp: 20,
@@ -279,7 +284,17 @@ export interface TierDef {
   /** für „ab 30 Pionieren“ */
   dat: string;
   maxResidents: number;
-  tax: number; // Taler pro Bewohner und Minute bei voller Zufriedenheit
+  /** Steuer: Taler pro Bewohner und Minute beim Standardsatz und voller Zufriedenheit.
+   *  Flache Kurve wie im Vorbild (Aristokrat ≈ 1,4 × Pionier), gleichmäßig etwa × 1,2 angehoben,
+   *  damit das Spiel trotz der flacheren Kurve nicht schwerer wird (Nachweis: scripts/wirtschaft-sim.ts). */
+  tax: number;
+  /** Standard-Steuersatz in Prozent (damit startet jedes Spiel; die Computergegner bleiben dabei) */
+  taxStd: number;
+  /** höchster Steuersatz in Prozent, den voll versorgte Bewohner noch klaglos zahlen (wie im Vorbild) */
+  maxTax: number;
+  /** Grundbedarf: fehlt eine dieser Waren, ärgert das doppelt so sehr wie fehlender Luxus.
+   *  Nahrung ist immer dabei und Pflicht: ohne Nahrung herrscht Hunger, die Bewohner ziehen aus. */
+  core: GoodId[];
   /** Verbrauch pro Bewohner und Minute */
   consumes: Partial<Record<GoodId, number>>;
   /** Öffentliche Gebäude, die diese Stufe in der Nähe haben will */
@@ -292,15 +307,15 @@ export interface TierDef {
 
 /** Fünf Stufen wie im Vorbild. Verbrauch ≈ Original × 8 (das Spiel läuft schneller). */
 export const TIERS: TierDef[] = [
-  { name: 'Pioniere', dat: 'Pionieren', maxResidents: 3, tax: 1.0, consumes: { nahrung: 0.1 }, services: ['markt'], upgradeCost: {},
+  { name: 'Pioniere', dat: 'Pionieren', maxResidents: 3, tax: 2.3, taxStd: 36, maxTax: 48, core: ['nahrung'], consumes: { nahrung: 0.1 }, services: ['markt'], upgradeCost: {},
     next: { goods: [['stoff']], services: ['kapelle'] } },
-  { name: 'Siedler', dat: 'Siedlern', maxResidents: 7, tax: 1.8, consumes: { nahrung: 0.1, stoff: 0.045, alkohol: 0.035 }, services: ['markt', 'kapelle'], upgradeCost: { holz: 3, werkzeug: 1 },
+  { name: 'Siedler', dat: 'Siedlern', maxResidents: 7, tax: 2.5, taxStd: 34, maxTax: 45, core: ['nahrung', 'stoff'], consumes: { nahrung: 0.1, stoff: 0.045, alkohol: 0.035 }, services: ['markt', 'kapelle'], upgradeCost: { holz: 3, werkzeug: 1 },
     next: { goods: [['alkohol'], ['tabakwaren', 'gewuerze']], services: ['wirtshaus', 'schule'] } },
-  { name: 'Bürger', dat: 'Bürgern', maxResidents: 15, tax: 2.8, consumes: { nahrung: 0.1, stoff: 0.05, alkohol: 0.045, gewuerze: 0.035, tabakwaren: 0.035 }, services: ['markt', 'kapelle', 'wirtshaus', 'schule'], upgradeCost: { holz: 2, werkzeug: 2, stein: 6 },
+  { name: 'Bürger', dat: 'Bürgern', maxResidents: 15, tax: 2.9, taxStd: 28, maxTax: 38, core: ['nahrung', 'stoff', 'alkohol'], consumes: { nahrung: 0.1, stoff: 0.05, alkohol: 0.045, gewuerze: 0.035, tabakwaren: 0.035 }, services: ['markt', 'kapelle', 'wirtshaus', 'schule'], upgradeCost: { holz: 2, werkzeug: 2, stein: 6 },
     next: { goods: [['kakao']], services: ['kirche', 'badehaus'] } },
-  { name: 'Kaufleute', dat: 'Kaufleuten', maxResidents: 25, tax: 4.2, consumes: { nahrung: 0.1, stoff: 0.055, alkohol: 0.05, gewuerze: 0.045, tabakwaren: 0.045, kakao: 0.05 }, services: ['markt', 'kirche', 'wirtshaus', 'schule', 'badehaus'], upgradeCost: { holz: 3, werkzeug: 3, stein: 9 },
+  { name: 'Kaufleute', dat: 'Kaufleuten', maxResidents: 25, tax: 3.0, taxStd: 27, maxTax: 36, core: ['nahrung', 'stoff', 'alkohol'], consumes: { nahrung: 0.1, stoff: 0.055, alkohol: 0.05, gewuerze: 0.045, tabakwaren: 0.045, kakao: 0.05 }, services: ['markt', 'kirche', 'wirtshaus', 'schule', 'badehaus'], upgradeCost: { holz: 3, werkzeug: 3, stein: 9 },
     next: { goods: [['schmuck'], ['kleidung']], services: ['hochschule', 'theater'] } },
-  { name: 'Aristokraten', dat: 'Aristokraten', maxResidents: 40, tax: 6.0, consumes: { nahrung: 0.1, alkohol: 0.055, gewuerze: 0.045, tabakwaren: 0.045, kakao: 0.045, kleidung: 0.035, schmuck: 0.012 }, services: ['markt', 'kirche', 'wirtshaus', 'badehaus', 'hochschule', 'theater'], upgradeCost: { holz: 3, werkzeug: 3, stein: 12 } },
+  { name: 'Aristokraten', dat: 'Aristokraten', maxResidents: 40, tax: 3.2, taxStd: 26, maxTax: 35, core: ['nahrung', 'alkohol', 'kleidung'], consumes: { nahrung: 0.1, alkohol: 0.055, gewuerze: 0.045, tabakwaren: 0.045, kakao: 0.045, kleidung: 0.035, schmuck: 0.012 }, services: ['markt', 'kirche', 'wirtshaus', 'badehaus', 'hochschule', 'theater'], upgradeCost: { holz: 3, werkzeug: 3, stein: 12 } },
 ];
 
 /** Schiffstypen (Werte nach dem Vorbild): Laderäume à 50 t, Tempo, höchstens ladbare Kanonen, Treffer, Truppen an Bord */

@@ -570,6 +570,8 @@ function decide(g: Game, p: Player, c: City): boolean {
     if (c.pop >= 20 && !n('kapelle') && place(g, p, c, 'kapelle')) return true;
     if (c.pop >= 35 && !n('schaffarm') && place(g, p, c, 'schaffarm')) return true;
     if (n('schaffarm') && !n('weberei') && place(g, p, c, 'weberei')) return true;
+    // Stoffe werden knapp (die Weide gibt nicht genug her): eine zweite Schaffarm – sonst ziehen die Siedler aus
+    if (n('schaffarm') === 1 && n('weberei') && c.lager.stoff < 6 && (c.n.haus ?? 0) >= 20 && place(g, p, c, 'schaffarm')) return true;
     // Karren: kommen viele Betriebe auf wenige Karren (oder staut es sich schon: Häuser hungern, oder die Nahrung
     // im Lager wird knapp, während Betriebe voll liegen), ein weiterer Marktplatz dort, wo er die Wege am meisten
     // verkürzt
@@ -694,11 +696,11 @@ function sitesFor(g: Game, p: Player, c: City, type: BuildingId): Cand[] {
   return fine.sort((a, b) => b.s - a.s);
 }
 
-/** Reichweite der Marktkarren: Sie holen nur Waren von Betrieben, die höchstens so weit (Arbeitsradius) vom
+/** Reichweite der Marktkarren: Sie holen nur Waren von Betrieben, die höchstens so weit (Abholweite) vom
  *  Kontor oder von einem angeschlossenen Marktplatz entfernt sind – weiter draußen bliebe alles liegen. */
 function cartReach(g: Game, c: City): (cx: number, cy: number) => boolean {
   const kern = kernOf(g, c);
-  const homes = c.claim.filter((m) => kern.hubs.has(m.id)).map((m) => ({ at: g.center(m), r: (BUILDINGS[m.type].work ?? 9) - 0.5 }));
+  const homes = c.claim.filter((m) => kern.hubs.has(m.id)).map((m) => ({ at: g.center(m), r: g.pickupOf(m) - 0.5 }));
   return (cx, cy) => homes.some(({ at, r }) => (at[0] - cx) ** 2 + (at[1] - cy) ** 2 <= r * r);
 }
 
@@ -776,7 +778,7 @@ function marketSites(g: Game, p: Player, c: City, expand: boolean): Cand[] {
 function hubSites(g: Game, p: Player, c: City, minGain: number): Cand[] {
   const kern = kernOf(g, c);
   const hubs = c.claim.filter((m) => kern.hubs.has(m.id)).map((m) => g.center(m));
-  const reach = (BUILDINGS.markt.work ?? 15) - 0.5;
+  const reach = g.pickupOf({ type: 'markt' }) - 0.5;
   const prods = c.prod.map((o) => g.center(o));
   const base = prods.map(([px, py]) => Math.min(...hubs.map(([hx, hy]) => Math.hypot(hx - px, hy - py))));
   const net = netOf(g, p, c);

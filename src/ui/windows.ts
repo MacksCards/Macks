@@ -127,19 +127,34 @@ export class Windows {
   /** Niederlage: weiterspielen mit neuem Schiff – oder (nach Rückfrage) ein neues Spiel */
   showLost() {
     const ui = this.ui;
+    // Bankrott: die Schulden lassen sich erlassen (zählt später als Punktabzug), dann geht es weiter
+    if (ui.g.players[HUMAN].lost === 'bankrott') {
+      ui.dialog({
+        title: '🏳️ Bankrott', dismiss: false,
+        body: `<p class="sub">Du warst zu lange mit über 10 000 Talern verschuldet. Damit ist das Spiel verloren.</p><p class="sub">Du kannst dir die Schulden erlassen lassen und weiterspielen – die Kasse beginnt dann bei 0 Talern.</p>`,
+        foot: `<button class="btn wide ok" id="lostGo">💰 Schulden erlassen und weiterspielen</button><button class="btn wide danger" id="lostNew">🏝️ Neues Spiel</button>`,
+      });
+      $('#lostGo').addEventListener('click', () => { ui.g.forgiveDebt(HUMAN); ui.closeModal(); ui.toast('Die Schulden sind erlassen. Achte auf Steuern und Unterhalt!', 'info'); });
+      $('#lostNew').addEventListener('click', () => this.askNew());
+      return;
+    }
     ui.dialog({
       title: '🏳️ Spiel verloren', dismiss: false,
       body: `<p class="sub">Du hast keine Gebäude und keine Schiffe mehr.</p>`,
       foot: `<button class="btn wide ok" id="lostGo">⛵ Mit einem neuen Schiff weiterspielen</button><button class="btn wide danger" id="lostNew">🏝️ Neues Spiel</button>`,
     });
     $('#lostGo').addEventListener('click', () => { restart(ui.g); ui.closeModal(); });
-    $('#lostNew').addEventListener('click', () => {
-      const opp = Math.max(0, ui.g.players.filter((p) => p.ai).length);
-      ui.ask('🏝️ Wirklich ein neues Spiel?', 'Eine neue Inselwelt beginnt – dein bisheriges Spiel ist dann weg.', '🏝️ Neues Spiel', () => {
-        Game.clearSave();
-        ui.onNewGame(Game.create(newSeed(), opp));
-        ui.toast('Eine neue Inselwelt wartet auf dich!', 'good');
-      }, () => this.showLost());
-    });
+    $('#lostNew').addEventListener('click', () => this.askNew());
+  }
+
+  /** Rückfrage „Neues Spiel?“ aus dem Verloren-Fenster (Nein = zurück zum Verloren-Fenster) */
+  private askNew() {
+    const ui = this.ui;
+    const opp = Math.max(0, ui.g.players.filter((p) => p.ai).length);
+    ui.ask('🏝️ Wirklich ein neues Spiel?', 'Eine neue Inselwelt beginnt – dein bisheriges Spiel ist dann weg.', '🏝️ Neues Spiel', () => {
+      Game.clearSave();
+      ui.onNewGame(Game.create(newSeed(), opp));
+      ui.toast('Eine neue Inselwelt wartet auf dich!', 'good');
+    }, () => this.showLost());
   }
 }

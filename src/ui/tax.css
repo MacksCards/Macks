@@ -1,0 +1,10 @@
+/* Steuerregler: Name und Stimmung links, dann − Satz + (Knöpfe 44 px) */
+.info .taxrow { display: grid; grid-template-columns: minmax(0, 1fr) var(--tap) 3.4em var(--tap); align-items: center; gap: 4px; padding: 3px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
+.info .taxrow .taxlbl { display: flex; flex-direction: column; min-width: 0; font-size: 14px; }
+.info .taxrow .taxlbl small { font-size: 12px; color: var(--pergament-2); line-height: 1.2; }
+.info .taxrow .taxval { text-align: center; font-size: 16px; font-variant-numeric: tabular-nums; }
+.info .taxrow .btn.sq { font-size: 22px; line-height: 1; }
+/* Schalter in einer Zeile (Baumaterial an Bewohner) */
+.info .switchrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 3px 0; font-size: 14px; border-bottom: 1px solid rgba(110, 84, 52, .35); }
+.info .switchrow small { display: block; font-size: 12px; color: var(--pergament-2); }
+.info .switchrow .btn { min-width: 96px; font-size: 14px; }

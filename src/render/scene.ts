@@ -1029,7 +1029,8 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       if (!v) continue;
       let key = '';
       if (b.owner === 0) switch (b.status) {
-        case 'keinWeg': key = '🚧'; break;
+        case 'keinWeg': case 'zuWeit': key = '🚧'; break;
+        case 'aus': key = '💤'; break;
         case 'rohstoff': key = b.missing[0] ? GOOD[b.missing[0]].icon : '📦'; break;
         case 'lagerVoll': key = '📦'; break;
         case 'keinWald': key = '🌲'; break;
