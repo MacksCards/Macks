@@ -5,53 +5,79 @@ import { UI } from './ui';
 import { sound } from './audio';
 import { T } from './world';
 import { DebugOverlay, QualityMode } from './render/quality';
+import { saves, slotName } from './saves';
+import { grafikWahl } from './ui/settings';
 
 const TICK = 0.25; // Sekunden Spielzeit pro Simulationsschritt
 
-function boot() {
+async function boot() {
   const canvas = document.getElementById('c') as HTMLCanvasElement;
-  const loaded = Game.load();
+  // Spielstände (src/saves.ts): großer Speicher des Browsers, alter Stand aus localStorage wird übernommen,
+  // sonst der zuletzt gespeicherte Stand; lässt er sich nicht laden, der nächstältere
+  const notes: [string, 'good' | 'bad'][] = [];
+  await saves.init();
+  const old = await saves.migrate();
+  if (old.note) notes.push([old.note, 'bad']);
+  let loaded: Game | null = old.game;
+  if (!loaded) {
+    const list = (await saves.list()).sort((a, b) => b.zeit - a.zeit);
+    for (const m of list) {
+      try { loaded = await saves.load(m.slot); break; } catch (e) {
+        notes.push([`„${slotName(m.slot)}“ ließ sich nicht laden: ${(e as Error).message}`, 'bad']);
+      }
+    }
+  }
   let game = loaded ?? Game.create(newSeed());
+  // Merkmal des Spielstands: hat sich seit dem letzten Speichern etwas getan?
+  let savedKey = '';
+  const stateKey = () => `${game.seed ?? ''}:${game.time.toFixed(2)}:${game.buildings.length}:${game.nextId}:${Math.round(game.players[0]?.money ?? 0)}`;
+  // Game.save() (z. B. „Speichern“ in Tests) schreibt in den laufenden Auto-Platz
+  Game.saveHook = (g) => { void saves.autosave(g); return true; };
   const view = new View(canvas, game);
   const ui = new UI(game, view, (g) => {
+    // neues oder geladenes Spiel: der bisherige Stand bleibt im anderen Auto-Platz erhalten
+    if (g !== game) saves.wechsel();
     game = g;
     view.setGame(g);
     ui.setGame(g);
-    g.save();
+    savedKey = '';
+    save();
   });
+  saves.onFail = (text) => ui.toast(text, 'bad');
 
   let firstRun = false;
   try { firstRun = !localStorage.getItem('neue-ufer-help-seen'); localStorage.setItem('neue-ufer-help-seen', '1'); } catch { firstRun = !loaded; }
   if (firstRun) ui.openHelp();
   else if (loaded) ui.toast('Willkommen zurück! Dein Spiel wurde geladen.', 'good');
+  for (const [t, k] of notes) ui.toast(t, k);
+  // Leisten gleich füllen (nicht erst nach dem ersten, langsamen Bild)
+  try { ui.updateHud(); } catch (e) { console.warn('HUD', e); }
 
   const resize = () => view.resize(window.innerWidth, window.innerHeight);
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', () => setTimeout(resize, 200));
   resize();
 
-  // Qualität: ?q=hoch|sparsam|auto in der Adresse (für Tests und das spätere Einstellungsmenü)
+  // Qualität: ?q=hoch|sparsam|auto in der Adresse (für Tests), sonst die Wahl aus den Einstellungen
   const params = new URLSearchParams(location.search);
-  const q = params.get('q');
+  const q = params.get('q') ?? grafikWahl();
   if (q === 'hoch' || q === 'sparsam' || q === 'auto') view.setQuality(q as QualityMode);
   const debug = params.has('debug') ? new DebugOverlay() : null;
 
-  // Speichern: regelmäßig und beim Verlassen – aber nur, wenn sich seit dem letzten Mal etwas getan hat
-  // (Spielzeit weitergelaufen oder gebaut/abgerissen). Klappt es zweimal hintereinander nicht, Bescheid geben.
-  let savedKey = '';
-  let fails = 0;
-  const stateKey = () => `${game.seed ?? ''}:${game.time.toFixed(2)}:${game.buildings.length}:${game.nextId}:${Math.round(game.players[0]?.money ?? 0)}`;
-  const save = () => {
+  // Selbstsicherung (Auto 1/Auto 2, siehe src/saves.ts): alle 20 Sekunden und beim Verlassen – aber nur,
+  // wenn sich seit dem letzten Mal etwas getan hat (Spielzeit weitergelaufen oder gebaut/abgerissen).
+  // Beim Verlassen ungepackt, damit das Schreiben sofort beginnt. Klappt es zweimal nicht, meldet saves.ts es.
+  function save(leaving = false) {
     const key = stateKey();
     if (key === savedKey) return;
-    if (game.save()) { savedKey = key; fails = 0; return; }
-    fails++;
-    if (fails === 2) ui.toast('💾 Speichern nicht möglich – der Speicher des Browsers ist voll oder gesperrt (z. B. privates Surfen).', 'bad');
-  };
-  if (loaded) savedKey = stateKey(); // ein neues Spiel wird beim ersten Mal auf jeden Fall gespeichert
-  setInterval(save, 20000);
-  document.addEventListener('visibilitychange', () => { if (document.hidden) save(); });
-  window.addEventListener('pagehide', save);
+    savedKey = key;
+    void saves.autosave(game, !leaving).then((ok) => { if (!ok && savedKey === key) savedKey = ''; });
+  }
+  if (loaded) savedKey = stateKey();
+  else save(); // ein neues Spiel gleich sichern, damit „Auto“ nicht leer bleibt
+  setInterval(() => save(), 20000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) save(true); });
+  window.addEventListener('pagehide', () => save(true));
 
   // Hochformat: Spiel hält an wie bei offenem Menü (Hinweis „Bitte drehen“ liegt darüber)
   const portraitMq = window.matchMedia('(orientation: portrait) and (max-width: 700px)');
@@ -136,4 +162,10 @@ function boot() {
   (window as unknown as { __sound: typeof sound }).__sound = sound;
 }
 
-boot();
+void boot().catch((e) => {
+  console.warn('Start', e);
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;background:#1d1610;color:#f3e6c8;font:17px system-ui;text-align:center;z-index:99';
+  d.textContent = 'Das Spiel konnte nicht starten. Bitte die Seite neu laden.';
+  document.body.appendChild(d);
+});

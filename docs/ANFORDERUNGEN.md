@@ -24,8 +24,9 @@ Quelle: Interview mit dem Nutzer am 30.10.2026; ergänzt am 31.10.2026 um die En
 
 ## Zeit & Speichern
 - C1 Echtzeit mit Pause und Tempo 1x / 2x / 4x.
-- C2 Automatisches Speichern (regelmäßig und beim Verlassen). Beim Öffnen geht es exakt dort weiter.
-- C3 „Neues Spiel“ erzeugt eine neue Inselwelt und fragt vorher nach. Ein unlesbarer Spielstand wird gesichert statt überschrieben.
+- C2 Automatisches Speichern (regelmäßig und beim Verlassen) in „Auto 1“ und „Auto 2“ (abwechselnd alle 5 Minuten), gepackt im großen Speicher des Browsers. Beim Öffnen geht es mit dem zuletzt gespeicherten Stand exakt dort weiter; der alte Stand aus früheren Fassungen wird übernommen.
+- C3 „Neues Spiel“ erzeugt eine neue Inselwelt mit den gewählten Einstellungen (Schwierigkeit, Konkurrenten 0–3, Piraten, Feuer/Pest/Dürre, Inselwelt-Nummer zum Teilen) und fragt vorher, ob das jetzige Spiel auf einen eigenen Platz gesichert werden soll. Ein unlesbarer Spielstand wird gesichert statt überschrieben.
+- C4 Einstellungen *(gilt, P1)*: Grafik Auto / Hoch / Sparsam (bleibt gespeichert), Ton und Musik; ohne Vollbild der Hinweis „Teilen → Zum Home-Bildschirm“.
 
 ## Wirtschaft (voller Umfang wie 1602, Details: docs/1602-INHALT.md)
 - D1 Jede Insel hat ihr eigenes Lager (Kontor + Marktplätze, Kontor in 4 Stufen ausbaubar: 30/50/75/100 t).
@@ -86,7 +87,7 @@ Quelle: `CLAUDE.md`, Abschnitt „Entscheidungen aus dem 1:1-Abgleich“; Hinter
 - Z3 Wirtschaftstempo wie 1602 *(geplant L2)*: Ein Betrieb versorgt 60 bis 100 % so viele Bewohner wie im Original (Verhältnisse wie 1602, bei Luxuswaren, Stoffen und Kleidung heute nur ¼ bis ⅓). Prüfbar mit einer Simulation (Aristokratenstadt ohne Dauer-Minus).
 - Z4 Felder *(geplant L4/G3b)*: Farm und Plantage legen beim Bau automatisch sichtbare Felder an (5 Taler je Feld). Die Felder reifen erst; ein Feld-Werkzeug dient zum Nachbessern. Es gibt keine unsichtbaren Felder mehr.
 - Z5 Grafik-Reihenfolge *(gilt)*: Sichtbare Fehler zuerst im Code beheben, dann eine Meshy-Probe mit 3 Modellen (Wohnhaus, Kontor, Schaf). Alle weiteren Modelle erst nach Freigabe der Probe durch den Nutzer; im Code wird nur nachgebaut, was Meshy nicht liefert. Der Schlüssel `MESHY_API_KEY` steht nie im Chat, im Code oder im Git.
-- Z6 Schwierigkeit *(geplant P1)*: Beim neuen Spiel wählbar: leicht / normal / schwer mit Startgeld 20 000 / 15 000 / 10 000. Standard „normal“: Gegner wachsen bis Kaufleute, besiedeln 2 bis 3 Inseln und greifen nach Vorwarnung an. Katastrophen standardmäßig „mild“ (abschaltbar).
+- Z6 Schwierigkeit *(gilt seit P1; Gegner-Wachstum geplant KI2, Katastrophen S3)*: Beim neuen Spiel wählbar: leicht / normal / schwer mit Startgeld 20 000 / 15 000 / 10 000 (Standard und erster Start: normal). Heute wirken außerdem: Kasse der Gegner (¾ / 1 / 1½ des bisherigen Startgelds), Belohnung der Aufgaben (schwer: die Hälfte), Piraten frühestens nach 60 / 30 / 30 Minuten. Standard „normal“: Gegner wachsen bis Kaufleute, besiedeln 2 bis 3 Inseln und greifen nach Vorwarnung an (Werte liegen in `src/schwierigkeit.ts` bereit, wirken mit KI2). Katastrophen standardmäßig „mild“ (abschaltbar; die Wahl wird gespeichert und wirkt mit S3).
 - Z7 Inselgrößen wie 1602 *(geplant L5, zuletzt)*: Fünf Größenklassen (etwa 100 × 90 bis 30 × 30 Felder), größere Welt, beim Start wählbar. Erst nach der Grafik-Leistungsarbeit (R1, R2) und einem Test auf dem iPhone des Nutzers. Auch große Inseln sind brauchbar groß; kleine nie unter einer echten Siedlung (Regel 9).
 
 ## Neue prüfbare Anforderungen aus dem Abgleich (Etappen 2 bis 4, siehe docs/OFFEN.md)
@@ -102,7 +103,7 @@ Alle *geplant* mit Paketname; ein Prüfer meldet sie erst als Mangel, wenn das P
 - N8 Ereignisse *(geplant S3)*: Feuer (Feuerwehr), Pest (Arzt), Kriminalität (Galgen), Dürre, Schatzfund; Standard „mild“. Feuerwehr, Arzt und Galgen erscheinen im Baumenü erst, wenn diese Ereignisse im Spiel sind (Regel 8).
 - N9 Ureinwohner *(geplant S4)*: Dörfer auf manchen Inseln, Tauschhandel Ware gegen Ware (etwa 1 : 1,5), bei Angriff endet der Handel für immer und ein Fluch bringt häufiger Feuer, Pest und Dürre; Angriff nur nach deutlicher Rückfrage.
 - N10 Endwertung *(geplant S5)*: Punkte für Einwohner, Kasse und Siege und eine Rangliste am Ende; wann das Spiel endet (heute beendet ein Sieg es nicht), legt Paket S5 fest und wird hier nachgetragen.
-- N11 Mehrere Spielstände *(geplant P1)*: mindestens zwei automatische und drei eigene Plätze mit Datum, Spielzeit, Einwohnern und Geld; Laden, Speichern, Löschen; Fehler beim Speichern werden gemeldet.
+- N11 Mehrere Spielstände *(gilt, P1)*: zwei automatische und drei eigene Plätze mit Datum, Spielzeit, Einwohnern, Geld und Schwierigkeit; Laden, Speichern, Löschen (Überschreiben und Löschen mit Rückfrage); Weitergeben als Text oder Datei und Einlesen; Fehler beim Speichern und Laden werden gemeldet.
 - N12 Rückgängig *(geplant U4)*: Nach jedem Bau und jeder Wegstrecke kurze Zeit „↩ Rückgängig“ mit voller Rückerstattung. Wohnblöcke und Abrissbereiche lassen sich per Rahmen (zwei Ecken) bauen bzw. abreißen, mit gemeinsamer Rückfrage.
 - N13 Unterhalt und Betrieb *(geplant L2)*: Unterhalt im Betrieb und in Ruhe, Betriebe lassen sich ruhen lassen; Baumaterial-Sperre für Bewohner am Kontor; Häuser steigen bei Hunger und Mangel ab.
 - N14 Computergegner *(Wirtschaft gilt seit KI1, Wachstum geplant KI2)*: Alle Betriebe der Gegner hängen am Wegenetz, kein Gegner bleibt dauerhaft im Minus; später wachsen sie bis Kaufleute und besiedeln 2 bis 3 Inseln.

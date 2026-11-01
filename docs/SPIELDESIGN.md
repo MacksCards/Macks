@@ -16,7 +16,7 @@
 > | Freischaltungen nach „eigenen Festlegungen“ | Schwellen des Vorbilds, siehe `1602-INHALT.md` Abschnitt 6 |
 > | Ureinwohner: nur Ansehensstrafe bei Angriff | wie im Vorbild: Tauschhandel, bei Angriff ein **Fluch** (Dürre, Brände, Seuchen); noch nicht umgesetzt (Paket S4) |
 > | Etappen 1 bis 4 | neue Etappen in `CLAUDE.md`: 1) Kernablauf, 2) fünf Stufen, Handel, Piraten, 3) Kampf, 4) Feinschliff, Szenarien, Endwertung. Kampf ist inzwischen weitgehend umgesetzt. |
-> | Computergegner einstellbar „leicht, mittel, schwer“ | Schwierigkeit wählbar (leicht/normal/schwer, Startgeld 20 000/15 000/10 000) ist entschieden, noch nicht umgesetzt (Paket P1) |
+> | Computergegner einstellbar „leicht, mittel, schwer“ | Schwierigkeit wählbar (leicht/normal/schwer, Startgeld 20 000/15 000/10 000) im Fenster „Neues Spiel“ (Paket P1); wie stark die Gegner wachsen, kommt mit KI2 |
 
 Dieses Dokument beschreibt, wie das Spiel sich anfühlen und funktionieren soll. Es orientiert sich inhaltlich eng am Klassiker „Anno 1602“ (1998) und übernimmt nur dessen allgemeine Spielregeln (die sind nicht geschützt). Alle Namen, Texte und Zahlen sind eigen. Wo ich mir beim Original nicht sicher bin, steht **(eigene Festlegung)**.
 

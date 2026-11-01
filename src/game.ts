@@ -9,6 +9,7 @@ import { thinkAI } from './ai';
 import { tickCombat, unitUpkeep } from './combat';
 import { SYSTEMS } from './systems';
 import { Island, PFLANZEN, T, WORLD_SIZE, WORLD_SIZES, generateWorld, rng } from './world';
+import { SCHWIERIGKEIT, stufe } from './schwierigkeit';
 
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft';
 export type { Res } from './data';
@@ -179,9 +180,9 @@ export interface GameOptions {
   weltgroesse: number;
 }
 
-/** Standard = das bisherige Spiel (8 000 Taler, Piraten, Endlosspiel, 240 × 240 Felder) */
+/** Standard = Schwierigkeit „normal“ (15 000 Taler, Piraten, Ereignisse mild, Endlosspiel, 240 × 240 Felder) */
 export const DEFAULT_OPTIONS: Readonly<GameOptions> = Object.freeze({
-  schwierigkeit: 'normal', startgeld: START_MONEY, piraten: true, ereignisse: 'mild', ziel: 'endlos', weltgroesse: WORLD_SIZE,
+  schwierigkeit: 'normal', startgeld: SCHWIERIGKEIT.normal.startgeld, piraten: true, ereignisse: 'mild', ziel: 'endlos', weltgroesse: WORLD_SIZE,
 });
 
 /** Ort einer Meldung (Feldkoordinaten wie x/y der Gebäude) */
@@ -253,7 +254,7 @@ const LAGER: BuildingId[] = ['kontor', 'markt'];
 const SAVE_KEY = 'neue-ufer-save-v4';
 /** hierhin wird ein unlesbarer Stand gesichert, bevor ein neues Spiel ihn überschreiben kann */
 const BROKEN_KEY = 'neue-ufer-save-sicherung';
-const SAVE_VERSION = 4;
+export const SAVE_VERSION = 4;
 /** So lange (echte Sekunden) lässt sich ein Bau mit voller Erstattung zurücknehmen */
 export const UNDO_SECONDS = 10;
 export const HUMAN = 0;
@@ -453,20 +454,22 @@ export class Game {
 
   /**
    * Neues Spiel. opts: Einstellungen (fehlende Werte = DEFAULT_OPTIONS, also das bisherige Spiel).
-   * Das Startgeld gilt für den Spieler; die Computergegner starten wie bisher mit START_MONEY.
+   * Das Startgeld gilt für den Spieler (ohne Angabe: das der Schwierigkeit); die Computergegner starten
+   * mit START_MONEY mal dem Faktor der Schwierigkeit (src/schwierigkeit.ts).
    */
   static create(seed: number, opponents = 2, opts: Partial<GameOptions> = {}): Game {
     const g = new Game();
+    const w = stufe(opts.schwierigkeit);
     g.optsSet = { ...opts };
-    g.opts = { ...DEFAULT_OPTIONS, ...opts };
+    g.opts = { ...DEFAULT_OPTIONS, startgeld: w.startgeld, ...opts };
     if (!WORLD_SIZES.includes(g.opts.weltgroesse)) g.opts.weltgroesse = WORLD_SIZE;
-    if (!(g.opts.startgeld >= 0)) g.opts.startgeld = START_MONEY;
+    if (!(g.opts.startgeld >= 0)) g.opts.startgeld = w.startgeld;
     g.setupWorld(seed, g.opts.weltgroesse);
     g.rngState = (seed ^ 0x9e3779b9) >>> 0 || 1;
     g.players = [{ id: HUMAN, name: 'Du', color: 0x2f6fd0, ai: false, money: g.opts.startgeld }];
     for (let i = 0; i < Math.min(3, opponents); i++) {
       const o = OPPONENTS[i];
-      g.players.push({ id: i + 1, name: o.name, color: o.color, ai: true, money: START_MONEY, brain: { phase: 'suchen', island: -1, t: 0, tries: 0, grid: false } });
+      g.players.push({ id: i + 1, name: o.name, color: o.color, ai: true, money: Math.round(START_MONEY * w.kiKasse), brain: { phase: 'suchen', island: -1, t: 0, tries: 0, grid: false } });
     }
     const shipNames = ['Morgenstern', 'Seeadler', 'Goldene Gans', 'Nordlicht'];
     for (const p of g.players) {
@@ -497,6 +500,7 @@ export class Game {
         me.dir = Math.atan2(cx - me.x, cy - me.y);
       }
     }
+    g.pirateT = w.piratenAb; // Schonzeit vor den Piraten (wirkt ab der Schonzeit des Kampfteils)
     g.reveal(me.x, me.y, SHIP_SIGHT + 2);
     // ein Stück Küste der Heimatinsel aufdecken, damit beim Start Land in Sicht ist
     if (coast) g.reveal(coast[0] + 0.5, coast[1] + 0.5, 6);
@@ -543,7 +547,7 @@ export class Game {
     g.roads = dec(d.roads, NN, 'Wege');
     g.seen = dec(d.seen, NN, 'Erkundung');
     g.optsSet = d.opts ?? {};
-    g.opts = { ...DEFAULT_OPTIONS, ...g.optsSet, weltgroesse: g.size };
+    g.opts = { ...DEFAULT_OPTIONS, startgeld: stufe(g.optsSet.schwierigkeit).startgeld, ...g.optsSet, weltgroesse: g.size };
     g.rngState = (d.rng ?? ((d.seed ^ Math.floor(d.time * 1000)) >>> 0)) || 1;
     g.players = d.players;
     g.ships = d.ships;
@@ -599,7 +603,12 @@ export class Game {
   /** true, wenn ein unlesbarer Stand nicht gesichert werden konnte: dann wird er nicht überschrieben */
   private static protectSave = false;
 
+  /** Speicherort der Spielstände (main.ts setzt ihn auf src/saves.ts); fehlt er, wie früher in localStorage */
+  static saveHook: ((g: Game) => boolean) | null = null;
+
   save(): boolean {
+    // mit Spielständen (src/saves.ts) wird der alte Stand in localStorage nie überschrieben
+    if (Game.saveHook) return Game.saveHook(this);
     if (Game.protectSave) return false;
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(this.serialize())); return true; } catch { return false; }
   }
@@ -2062,8 +2071,10 @@ export class Game {
   checkQuest() {
     const q = QUESTS[this.quest];
     if (!q || !q.done(this)) return;
-    this.money += q.reward;
-    this.ev.message(`Aufgabe erledigt: ${q.title} (+${q.reward} Taler)`, 'good');
+    // Belohnung je nach Schwierigkeit (schwer: die Hälfte)
+    const reward = Math.round(q.reward * stufe(this.opts.schwierigkeit).belohnung);
+    this.money += reward;
+    this.ev.message(`Aufgabe erledigt: ${q.title} (+${reward} Taler)`, 'good');
     this.quest++;
   }
 }

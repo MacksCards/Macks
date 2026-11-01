@@ -2,7 +2,7 @@
 // Den Rahmen (Kopf mit ✕, scrollender Inhalt, Hauptknopf fest unten) baut ui.dialog() im Kern.
 import './windows.css';
 import { atWar, pirateAdvice, restart } from '../combat';
-import { Game, HUMAN, newSeed } from '../game';
+import { HUMAN } from '../game';
 import { sound } from '../audio';
 import type { UI } from '../ui';
 import { $ } from './util';
@@ -17,28 +17,25 @@ export class Windows {
     ui.dialog({
       title: '⚓ Neue Ufer', cls: 'menu',
       body: `<div class="mgrid">
-        <button class="btn" id="mSave">💾 Speichern</button>
+        <button class="btn" id="mSave">💾 Spielstände</button>
         <button class="btn" id="mHelp">❓ Anleitung</button>
-        <button class="btn" id="mTon">${sound.soundOn ? '🔊 Ton an' : '🔇 Ton aus'}</button>
-        <button class="btn" id="mMusik">${sound.musicOn ? '🎵 Musik an' : '🔕 Musik aus'}</button>
+        <button class="btn" id="mSet">⚙️ Einstellungen</button>
+        <button class="btn" id="mTon" aria-label="Ton an oder aus">${sound.soundOn ? '🔊 Ton an' : '🔇 Ton aus'}</button>
         ${dipl ? '<button class="btn" id="mDipl">🤝 Krieg &amp; Frieden</button>' : ''}
         ${ui.score.ready ? '<button class="btn" id="mScore">🏆 Punkte</button>' : ''}
         <button class="btn danger" id="mNew">🏝️ Neues Spiel</button>
       </div>
-      <p class="sub">Das Spiel speichert automatisch.</p>`,
+      <p class="sub">Das Spiel speichert automatisch (Auto 1 und Auto 2).</p>`,
       foot: `<button class="btn wide ok" id="mResume">▶️ Weiterspielen</button>`,
     });
     $('#mResume').addEventListener('click', () => ui.closeModal());
-    $('#mSave').addEventListener('click', () => {
-      const ok = g.save();
-      ui.toast(ok ? 'Gespeichert ✔' : 'Speichern nicht möglich (privater Modus?)', ok ? 'good' : 'bad');
-      ui.closeModal();
-    });
+    // Spielstände, Einstellungen (ui/settings.ts) – „Zurück“ führt ins Menü
+    $('#mSave').addEventListener('click', () => void ui.settings.openSaves(() => this.openMenu()));
+    $('#mSet').addEventListener('click', () => ui.settings.openOptions(() => this.openMenu()));
     $('#mHelp').addEventListener('click', () => this.openHelp());
     document.getElementById('mDipl')?.addEventListener('click', () => ui.openDiplomacy());
     document.getElementById('mScore')?.addEventListener('click', () => ui.score.open());
     $('#mTon').addEventListener('click', () => { sound.setSound(!sound.soundOn); this.openMenu(); });
-    $('#mMusik').addEventListener('click', () => { sound.setMusic(!sound.musicOn); this.openMenu(); });
     // „Neues Spiel“: Einstellungen (ui/settings.ts) – Abbrechen führt zurück ins Menü
     $('#mNew').addEventListener('click', () => ui.settings.open(() => this.openMenu()));
   }
@@ -111,6 +108,7 @@ export class Windows {
           <li><b>Seeschlacht:</b> Kanonen am Kontor aufs Schiff laden („Bewaffnen“), dann ein feindliches Schiff antippen. Beschädigte Schiffe werden an deiner Werft ausgebessert.</li>
           <li><b>Krieg &amp; Frieden:</b> im Menü ☰.</li>` : ''}
           ${g.pirateSeen ? `<li><b>Piraten 🏴‍☠️</b> überfallen Schiffe – ${pirateAdvice(g)}</li>` : ''}
+          <li><b>Spielstände und neues Spiel:</b> im Menü ☰. Das Spiel sichert sich selbst; auf drei eigenen Plätzen hebst du Stände auf. Bei „Neues Spiel“ wählst du Schwierigkeit, Gegner und Piraten.</li>
           <li>🔇 Kein Ton? Den Stummschalter am iPhone prüfen.</li></ul></div>`,
       foot: `<div class="row2"><button class="btn" id="hMore" aria-expanded="false">❓ Mehr Hilfe</button><button class="btn ok" id="hClose">Los geht's!</button></div>`,
     });
@@ -133,13 +131,7 @@ export class Windows {
       foot: `<button class="btn wide ok" id="lostGo">⛵ Mit einem neuen Schiff weiterspielen</button><button class="btn wide danger" id="lostNew">🏝️ Neues Spiel</button>`,
     });
     $('#lostGo').addEventListener('click', () => { restart(ui.g); ui.closeModal(); });
-    $('#lostNew').addEventListener('click', () => {
-      const opp = Math.max(0, ui.g.players.filter((p) => p.ai).length);
-      ui.ask('🏝️ Wirklich ein neues Spiel?', 'Eine neue Inselwelt beginnt – dein bisheriges Spiel ist dann weg.', '🏝️ Neues Spiel', () => {
-        Game.clearSave();
-        ui.onNewGame(Game.create(newSeed(), opp));
-        ui.toast('Eine neue Inselwelt wartet auf dich!', 'good');
-      }, () => this.showLost());
-    });
+    // Neues Spiel mit Einstellungen (ui/settings.ts); Abbrechen führt hierher zurück
+    $('#lostNew').addEventListener('click', () => ui.settings.open(() => this.showLost()));
   }
 }
