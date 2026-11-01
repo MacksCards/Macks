@@ -250,5 +250,12 @@
   "building": "grosseburg",
   "tier": 0,
   "size": 3
+ },
+ "hochschule": {
+  "file": "hochschule.glb",
+  "art": "gebaeude",
+  "building": "hochschule",
+  "tier": 0,
+  "size": 3
  }
 }
