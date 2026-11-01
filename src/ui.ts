@@ -171,7 +171,7 @@ export class UI {
     this.hud.build(hud);
     this.build.buildPanel(hud);
     // Infofenster: feste Kopfknöpfe (▾ einklappen, ✕ schließen), darunter der wechselnde Inhalt
-    const info = el('div', 'info hidden', `<div class="ibar"><button class="btn sq" id="infoFold" aria-label="Einklappen">▾</button><button class="btn sq close" id="infoX" aria-label="Schließen">✕</button></div><div class="ibody" id="infoBody"></div><div class="ifoot hidden" id="infoFoot"></div>`);
+    const info = el('div', 'info hidden', `<div class="ibar"><div class="ititle" id="infoTitle"></div><button class="btn sq" id="infoFold" aria-label="Einklappen">▾</button><button class="btn sq close" id="infoX" aria-label="Schließen">✕</button></div><div class="ibody" id="infoBody"></div><div class="ifoot hidden" id="infoFoot"></div>`);
     info.id = 'info';
     hud.appendChild(info);
     $('#infoX').addEventListener('click', () => this.select(null));
@@ -461,6 +461,10 @@ export class UI {
     if (body._h === key) return false;
     body._h = key;
     body.innerHTML = html;
+    // Titel (erste Überschrift) in die feste Kopfzeile neben ▾ ✕ – so liegt beim Wischen nichts unter den Kopfknöpfen
+    const title = $('#infoTitle');
+    const first = body.firstElementChild;
+    if (first?.tagName === 'H3') title.replaceChildren(first); else title.replaceChildren();
     // Fußleiste: Hauptknöpfe (Abreißen, Bewaffnen, Ausbilden, Bestellen …) bleiben beim Wischen stehen
     const f = $('#infoFoot');
     f.innerHTML = foot;
@@ -483,7 +487,10 @@ export class UI {
     if (key !== this.infoKey) {
       this.infoKey = key;
       this.infoFolded = false;
-      ($('#infoBody') as HTMLElement & { _h?: string })._h = undefined;
+      const body = $('#infoBody') as HTMLElement & { _h?: string };
+      body._h = undefined;
+      // neues Fenster beginnt oben (nicht dort, wohin man im vorigen gewischt hatte)
+      body.scrollTop = 0;
     }
     box.classList.remove('hidden');
     box.classList.toggle('folded', this.infoFolded);

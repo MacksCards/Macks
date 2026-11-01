@@ -126,11 +126,11 @@ Die Prozente sind eine grobe Schätzung: Wie viel vom Spielgefühl von 1602 ist 
 | Kanonen setzen in Brand, Feuerwehr | ja | Flammen gibt es nur als Bild, ohne Wirkung | ❌ |
 | Arzt heilt Verwundete | ja | Soldaten heilen überall im eigenen Gebiet von selbst | ❌ |
 | Piraten | Nest auf einer Insel (lässt sich zerstören), Bestechung gegen andere, Nahrung als Geschenk | Schiffe tauchen per Zufall auf und haben keine Heimat; man kann Schutz kaufen oder sie mit Kriegsschiffen und Türmen bekämpfen (3 versenkte Piratenschiffe bringen einen Triumphbogen), aber kein Nest zerstören und sie nicht bestechen | 🟡 |
-| Weiße Flagge | friedliche Fahrt | fehlt | ❌ |
+| Weiße Flagge | friedliche Fahrt | Knopf im Schiffsfenster; Piraten und Gegner lassen das Schiff in Ruhe (M1) | ✅ behoben (M1) |
 | Beschädigte Schiffe | fahren langsamer | fahren langsamer (bis zur halben Fahrt, L1) | ✅ behoben (L1) |
-| Bäume fällen, Aufstellung | Soldaten roden die Schusslinie frei und stellen sich in einer Reihe auf | fehlt | ❌ |
+| Bäume fällen, Aufstellung | Soldaten roden die Schusslinie frei und stellen sich in einer Reihe auf | Spielregeln da (M1: fällen, Reihe/Block), Knöpfe kommen mit U4 | 🟡 |
 | Mehrere Einheiten wählen | Rahmen aufziehen, Gruppen, Patrouille | nur der Knopf „+N in der Nähe“; Schiffe nur einzeln | 🟡 |
-| Ausmustern | per Knopf | fehlt; der Sold läuft ewig weiter | ❌ |
+| Ausmustern | per Knopf | Spielregel da (M1, ohne Sold), Knopf kommt mit U4 | 🟡 |
 | Diplomatie | Handels- und Friedensvertrag; Krieg aus einem Anlass (Siedeln auf fremder Insel, Blockade) | nur Krieg und Frieden; die Gegner erklären Krieg nach Zeit, Stärke und Zufall | 🟡 |
 | Krieg und Handel | Blockaden stören den Handel | kein Einfluss; Waffen sind sofort beim Händler zu kaufen | 🟡 |
 | Heer in der Bilanz | sichtbar | im „Unterhalt“ versteckt | 🟡 |

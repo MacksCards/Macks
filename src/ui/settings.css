@@ -49,3 +49,10 @@
   width: 100%; min-height: 72px; resize: none; font: 16px/1.3 ui-monospace, Menlo, monospace; word-break: break-all;
   color: var(--pergament); background: #1d1610; border: 1px solid var(--rand); border-radius: 8px; padding: 6px 8px;
 }
+
+/* niedrige Bildschirme (iPhone SE quer, 375 px): enger setzen, damit „Neues Spiel“ ohne Wischen ganz zu sehen ist */
+@media (max-height: 380px) {
+  .ngrid { gap: 2px 12px; }
+  .ncell { gap: 1px; }
+  .ndesc { line-height: 1.15; }
+}

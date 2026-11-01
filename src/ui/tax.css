@@ -8,3 +8,5 @@
 .info .switchrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 3px 0; font-size: 14px; border-bottom: 1px solid rgba(110, 84, 52, .35); }
 .info .switchrow small { display: block; font-size: 12px; color: var(--pergament-2); }
 .info .switchrow .btn { min-width: 96px; font-size: 14px; }
+/* Gesicht und Stufenname bleiben in einer Zeile (sonst rutscht 😊 bei „Pioniere“ über den Namen) */
+.info .taxrow .taxlbl b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

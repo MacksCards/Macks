@@ -7,15 +7,16 @@
   background: rgba(43, 33, 24, .95); border: 1px solid var(--rand); border-radius: 10px;
   font-variant-numeric: tabular-nums;
 }
-.info .ibar { position: absolute; top: 0; right: 0; display: flex; z-index: 1; background: rgba(43, 33, 24, .97); border-radius: 0 10px 0 10px; }
-/* Platzhalter oben rechts: die Titelzeile läuft um die Kopfknöpfe herum, weitere Zeilen nutzen die ganze Breite */
-.info .ibody::before { content: ''; float: right; width: 80px; height: 30px; }
+/* feste Kopfzeile: Titel links, ▾ ✕ rechts; der Inhalt darunter wischt nie unter die Kopfknöpfe */
+.info .ibar { flex: none; display: flex; align-items: center; border-bottom: 1px solid rgba(110, 84, 52, .45); }
+.info .ititle { flex: 1 1 auto; min-width: 0; padding: 2px 2px 2px 12px; }
+.info .ititle h3 { margin: 0; overflow-wrap: break-word; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* 44 px Tippfläche, sichtbar etwas kleiner */
 .info .ibar .btn {
   width: var(--tap); height: var(--tap); min-height: var(--tap); padding: 4px; border: 0; border-radius: 12px;
   background-clip: content-box; font-size: 17px;
 }
-.info .ibody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 10px 12px; }
+.info .ibody { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 6px 12px 10px; }
 /* feste Fußleiste: Hauptknöpfe bleiben sichtbar, auch wenn der Inhalt darüber gewischt wird.
    Zwei Spalten; ein einzelner Knopf (oder der letzte bei ungerader Zahl) nimmt die ganze Breite */
 .info .ifoot {
@@ -29,8 +30,8 @@
 /* eingeklappt: nur noch die Titelzeile */
 #info.folded { bottom: auto; }
 .info.folded .ifoot { display: none; }
-.info.folded .ibody { overflow: hidden; padding-bottom: 4px; }
-.info.folded .ibody > :not(:first-child) { display: none; }
+.info.folded .ibody { display: none; }
+.info.folded .ibar { border-bottom: 0; }
 /* Soldatenfenster: schmaler und nur so hoch wie nötig */
 #info.slim { bottom: auto; max-height: calc(100% - var(--top) - 12px - var(--in-b)); width: 220px; }
 .info h3 { font: 18px/1.2 var(--display); margin: 3px 0 6px; color: var(--gold); }

@@ -529,8 +529,8 @@ export function problems(g: Game): Problem[] {
         const mk = makers(g, gd);
         const hint = mk.length ? ` Mehr liefert: ${mk.join(' oder ')}.` : PRICES[gd] && kontor ? ' Nachkaufen geht am Kontor.' : '';
         // leer: nur wenn nicht mehr nachkommt, als verbraucht wird (sonst ist es gleich wieder da)
-        if (f.stock < 1 && short && f.net <= 0) {
-          out.push({ key: `${gd}:${isl}`, island: isl, at: placeOf(g, short),
+        if (f.stock < 1 && f.net <= 0) {
+          out.push({ key: `${gd}:${isl}`, island: isl, at: placeOf(g, short ?? kontor),
             text: `⚠️ Auf ${name} ${verb([gn], 'fehlt', 'fehlen')} ${gn} – die Bewohner werden unzufrieden.${hint}` });
         } else if (f.minutes !== null && f.minutes <= 2) {
           out.push({ key: `${gd}:${isl}`, island: isl, at: placeOf(g, kontor),
