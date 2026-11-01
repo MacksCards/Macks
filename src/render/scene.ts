@@ -271,6 +271,7 @@ export class View {
     this.areaShown = false;
     this.buildWater();
     this.veg = new Vegetation(g, this.terrain);
+    this.veg.setDetail(this.quality.mode === 'sparsam');
     this.scene.add(this.veg.group);
     // Ausgangsstand merken: spätere Änderungen werden damit verglichen (nur Geändertes wird neu gebaut)
     this.takeSnapshot();
@@ -297,7 +298,19 @@ export class View {
     const grp = new THREE.Group();
     const geo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
     const mats: THREE.Material[] = [this.ghostMatOk, this.ghostMatBad, this.mat, this.veg.material, this.flagMat(0xffffff), ...this.ships.warmMaterials()];
-    for (const m of mats) { const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false; grp.add(mesh); }
+    for (const m of mats) {
+      const mesh = new THREE.Mesh(geo, m); mesh.castShadow = true; mesh.receiveShadow = true; mesh.frustumCulled = false;
+      // fallende Bäume werfen Schatten mit dem Baum-Schattenmaterial
+      if (m === this.veg.material) mesh.customDepthMaterial = this.veg.depthMaterial;
+      grp.add(mesh);
+    }
+    // Schatten von Instanz-Gruppen mit dem gewöhnlichen Schattenmaterial (Soldaten, Tiere …): Bäume haben ein eigenes
+    for (const colored of [false, true]) {
+      const inst = new THREE.InstancedMesh(geo, this.mat, 1);
+      if (colored) inst.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array([1, 1, 1]), 3);
+      inst.castShadow = true; inst.frustumCulled = false;
+      grp.add(inst);
+    }
     this.warmSprite.map = this.iconTexture('🚧');
     const spr = new THREE.Sprite(this.warmSprite);
     spr.frustumCulled = false;
@@ -319,6 +332,7 @@ export class View {
     } finally {
       this.scene.remove(grp);
       geo.dispose();
+      for (const c of grp.children) if (c instanceof THREE.InstancedMesh) c.dispose();
       if (token === this.prepToken) { this.preparing = false; this.showPrepHint(false); this.dirty = true; }
     }
   }
@@ -361,7 +375,7 @@ export class View {
   }
 
   /** Qualität wählen: 'auto' (passt sich an), 'hoch' (immer schönste Stufe) oder 'sparsam' (30 Bilder/s, schont den Akku) */
-  setQuality(mode: QualityMode) { this.quality.setMode(mode); }
+  setQuality(mode: QualityMode) { this.quality.setMode(mode); this.veg?.setDetail(mode === 'sparsam'); this.dirty = true; }
 
   /** Stufe anwenden: Pixelverhältnis und Schattenkarte */
   private applyLevel(l: Level) {
@@ -661,6 +675,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
       mesh.quaternion.copy(base);
       mesh.scale.set(t.s * 0.9, t.sy * 0.9, t.s * 0.9);
       mesh.castShadow = true;
+      mesh.customDepthMaterial = this.veg.depthMaterial;
       const a = Math.random() * Math.PI * 2;
       this.scene.add(mesh);
       this.falling.push({ mesh, t: 0, axis: new THREE.Vector3(Math.cos(a), 0, Math.sin(a)), base });

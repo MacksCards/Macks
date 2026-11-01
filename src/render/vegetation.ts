@@ -11,6 +11,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Game } from '../game';
 import { T } from '../world';
 import { LAND_Y, Terrain } from './terrain';
+import { laubbaum, nadelbaum, palme, treeMaterials, Lod } from './trees';
 
 export const windTime = { value: 0 };
 
@@ -18,8 +19,11 @@ export const windTime = { value: 0 };
 const B = 16;
 /** Fern-Blöcke fassen 2 × 2 Blöcke zusammen (32 × 32 Felder): weniger Zeichenaufrufe in der Ferne */
 const FB = 2;
-/** Abstände (wie Kamera-Zoom): ab hier kein Gras, ab hier jeder zweite Baum, ab hier einfache Formen; Schatten bis hier */
-export const VEG_LOD = { gras: 25, halb: 45, fern: 70, schatten: 35 };
+/**
+ * Abstände (wie Kamera-Zoom): bis hier Bäume in voller Schönheit (sonst mittlere Detailstufe), ab hier kein Gras,
+ * ab hier jeder zweite Baum, ab hier einfache Formen; Schatten bis hier
+ */
+export const VEG_LOD = { nah: 18, gras: 25, halb: 45, fern: 70, schatten: 35 };
 /** Bäume der halben Dichte etwas größer, damit der Wald gleich dicht wirkt */
 const HALF_SCALE = 1.3;
 /** Ferne Blöcke zählen etwas weiter weg, als sie sind (Bäume dort sind klein und verdecken sich gegenseitig) */
@@ -35,72 +39,7 @@ function paint(g: THREE.BufferGeometry, fn: (x: number, y: number, z: number) =>
   return geo;
 }
 
-function jitter(g: THREE.BufferGeometry, amt: number, seed: number) {
-  const p = g.attributes.position;
-  for (let i = 0; i < p.count; i++) {
-    const x = p.getX(i), y = p.getY(i), z = p.getZ(i);
-    const n = Math.sin(x * 12.9 + y * 7.1 + z * 5.3 + seed) * 43758.5453;
-    const r = (n - Math.floor(n) - 0.5) * amt;
-    p.setXYZ(i, x * (1 + r), y + r * 0.3, z * (1 + r));
-  }
-  g.computeVertexNormals();
-  return g;
-}
-
 const lin = (hex: number) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b] as [number, number, number]; };
-
-function conifer(seed: number): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  const bark = lin(0x4a3424);
-  const trunk = new THREE.CylinderGeometry(0.035, 0.06, 0.5, 6).translate(0, 0.25, 0);
-  parts.push(paint(trunk, () => bark));
-  const dark = lin(0x1c3a1c), light = lin(0x3f6a2c);
-  const layers = 3;
-  for (let i = 0; i < layers; i++) {
-    const r = 0.36 - i * 0.09, h = 0.48 - i * 0.05, y = 0.22 + i * 0.24;
-    const c = jitter(new THREE.ConeGeometry(r, h, 8, 1, true), 0.25, seed + i).translate(0, y + h / 2, 0);
-    parts.push(paint(c, (_x, yy) => {
-      const t = Math.min(1, Math.max(0, (yy - y) / h));
-      return [dark[0] + (light[0] - dark[0]) * (1 - t) * 0.9, dark[1] + (light[1] - dark[1]) * (1 - t) * 0.9, dark[2] + (light[2] - dark[2]) * (1 - t) * 0.9];
-    }));
-  }
-  return mergeGeometries(parts)!;
-}
-
-function broadleaf(seed: number): THREE.BufferGeometry {
-  const parts: THREE.BufferGeometry[] = [];
-  const bark = lin(0x5a412c);
-  parts.push(paint(new THREE.CylinderGeometry(0.035, 0.055, 0.45, 6).translate(0, 0.22, 0), () => bark));
-  const r = (k: number) => { const n = Math.sin(seed * 91.7 + k * 13.3) * 43758.5; return n - Math.floor(n); };
-  const greens = [lin(0x2f5a1f), lin(0x46782c), lin(0x3a6624)];
-  for (let i = 0; i < 5; i++) {
-    const s = 0.16 + r(i) * 0.1;
-    const x = (r(i + 10) - 0.5) * 0.28, z = (r(i + 20) - 0.5) * 0.28, y = 0.5 + r(i + 30) * 0.28;
-    const blob = jitter(new THREE.IcosahedronGeometry(s, 0), 0.3, seed + i * 3).translate(x, y, z);
-    const base = greens[i % 3];
-    parts.push(paint(blob, (_x, yy) => { const t = 0.75 + (yy - y + s) / (2 * s) * 0.5; return [base[0] * t, base[1] * t, base[2] * t]; }));
-  }
-  return mergeGeometries(parts)!;
-}
-
-/** Nadelbaum für die Ferne: ein schlanker Kegel (14 statt 48 Dreiecke) mit weicher Beleuchtung, gleiche Höhe und Farben */
-function coniferFar(): THREE.BufferGeometry {
-  const dark = lin(0x1c3a1c), light = lin(0x3f6a2c);
-  const y0 = 0.22, h = 0.86;
-  // ConeGeometry bringt runde (weiche) Normalen mit – nicht neu berechnen, sonst wirkt der Kegel kantig
-  const c = new THREE.ConeGeometry(0.37, h, 7, 1, true).translate(0, y0 + h / 2, 0);
-  return paint(c, (_x, yy) => { const t = Math.min(1, Math.max(0, (yy - y0) / h)); const k = (1 - t) * 0.6; return [dark[0] + (light[0] - dark[0]) * k, dark[1] + (light[1] - dark[1]) * k, dark[2] + (light[2] - dark[2]) * k]; });
-}
-
-/** Laubbaum für die Ferne: eine runde Krone aus 8 Flächen statt 124, wie eine Kugel beleuchtet */
-function broadleafFar(): THREE.BufferGeometry {
-  const base = lin(0x3a6624);
-  const cy = 0.66, sy = 0.85;
-  const g = paint(new THREE.OctahedronGeometry(0.32, 0).scale(1, sy, 1).translate(0, cy, 0), (_x, yy) => { const t = 0.75 + (yy - 0.4) / 0.52 * 0.5; return [base[0] * t, base[1] * t, base[2] * t]; });
-  const p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3();
-  for (let i = 0; i < p.count; i++) { v.set(p.getX(i), (p.getY(i) - cy) / sy, p.getZ(i)).normalize(); n.setXYZ(i, v.x, v.y, v.z); }
-  return g;
-}
 
 function tuft(): THREE.BufferGeometry {
   const parts: THREE.BufferGeometry[] = [];
@@ -152,14 +91,19 @@ export interface TreeSlot {
   hm: THREE.InstancedMesh | null; hi: number; sm: THREE.InstancedMesh | null; si: number;
 }
 
-/** Baum im Aufbau: Art (0/1 Nadel, 2 Laub), Farbton, zählt in halber Dichte mit? */
-interface Plant { kind: 0 | 1 | 2; x: number; y: number; z: number; rot: number; s: number; sy: number; m: number; r: number; g: number; b: number; half: boolean; tile: number; solo: boolean; slot?: TreeSlot }
+/** Baumart: 0/1 Nadelbaum (zwei Formen), 2 Laubbaum, 3 Palme */
+type Kind = 0 | 1 | 2 | 3;
+/** Gruppe in halber Dichte und in der Ferne: Nadel, Laub, Palme */
+const HK = [0, 0, 1, 2] as const;
+
+/** Baum im Aufbau: Art, Farbton, zählt in halber Dichte mit? */
+interface Plant { kind: Kind; x: number; y: number; z: number; rot: number; s: number; sy: number; m: number; r: number; g: number; b: number; half: boolean; tile: number; solo: boolean; slot?: TreeSlot }
 
 interface Block {
   bx: number; by: number; cx: number; cz: number;
-  /** volle Dichte, schöne Form: Nadelbaum 1, Nadelbaum 2, Laubbaum */
+  /** volle Dichte: Nadelbaum 1, Nadelbaum 2, Laubbaum, Palme (nah schön, sonst mittlere Detailstufe) */
   trees: (THREE.InstancedMesh | null)[];
-  /** halbe Dichte, schöne Form: Nadel, Laub */
+  /** halbe Dichte, sparsamere Detailstufe: Nadel, Laub, Palme */
   half: (THREE.InstancedMesh | null)[];
   grass: THREE.InstancedMesh | null;
   plants: Plant[];
@@ -169,7 +113,7 @@ interface Block {
 interface FarBlock {
   fx: number; fy: number; cx: number; cz: number;
   blocks: Block[];
-  /** halbe Dichte, einfache Form für die Ferne: Nadel, Laub */
+  /** halbe Dichte, einfache Form für die Ferne: Nadel, Laub, Palme */
   simple: (THREE.InstancedMesh | null)[];
   dirty: boolean;
 }
@@ -181,12 +125,13 @@ const TMP = { m: new THREE.Matrix4(), q: new THREE.Quaternion(), v: new THREE.Ve
 
 export class Vegetation {
   group = new THREE.Group();
-  private geoC = [conifer(1), conifer(8)];
-  private geoB = broadleaf(3);
+  /** Formen je Detailstufe (0 nah, 1 mittel, 2 halbe Dichte, 3 fern) und Art (Nadel 1, Nadel 2, Laub, Palme) */
+  private geo: THREE.BufferGeometry[][] = ([0, 1, 2, 3] as Lod[]).map((l) => [nadelbaum(1, l), nadelbaum(8, l), laubbaum(3, l), palme(5, l)]);
   private geoG = tuft();
-  private geoCF = coniferFar();
-  private geoBF = broadleafFar();
-  private treeMat = windMaterial({}, 0.06, 'baum-wind');
+  private trees = treeMaterials(windTime, 0.06, 'baum-wind');
+  private treeMat = this.trees.mat;
+  /** sparsame Qualität: auch nah nur die mittlere Detailstufe */
+  private sparsam = false;
   private grassMat = windMaterial({ side: THREE.DoubleSide }, 3.5, 'gras-wind');
   /** Bäume je Feld (für Wachsen/Fällen) */
   slots = new Map<number, TreeSlot[]>();
@@ -200,6 +145,11 @@ export class Vegetation {
   /** Messhilfe: wie viele Blöcke zuletzt neu aufgebaut wurden */
   rebuilt = 0;
   get material() { return this.treeMat; }
+  /** Schattenmaterial der Bäume (Blätter ausgeschnitten, gleicher Wind) */
+  get depthMaterial() { return this.trees.depth; }
+
+  /** Detail wählen: sparsam = auch nahe Bäume in der mittleren Detailstufe */
+  setDetail(sparsam: boolean) { this.sparsam = sparsam; }
 
   constructor(private g: Game, private terrain: Terrain) {
     this.nb = Math.ceil(g.size / B);
@@ -216,12 +166,12 @@ export class Vegetation {
     const key = by * this.nb + bx;
     let b = this.blocks.get(key);
     if (b) return b;
-    b = { bx, by, cx: bx * B + B / 2, cz: by * B + B / 2, trees: [null, null, null], half: [null, null], grass: null, plants: [], dirty: true };
+    b = { bx, by, cx: bx * B + B / 2, cz: by * B + B / 2, trees: [null, null, null, null], half: [null, null, null], grass: null, plants: [], dirty: true };
     this.blocks.set(key, b);
     const fx = Math.floor(bx / FB), fy = Math.floor(by / FB), fk = fy * this.nf + fx;
     let f = this.far.get(fk);
     if (!f) {
-      f = { fx, fy, cx: fx * B * FB + (B * FB) / 2, cz: fy * B * FB + (B * FB) / 2, blocks: [], simple: [null, null], dirty: true };
+      f = { fx, fy, cx: fx * B * FB + (B * FB) / 2, cz: fy * B * FB + (B * FB) / 2, blocks: [], simple: [null, null, null], dirty: true };
       this.far.set(fk, f);
     }
     f.blocks.push(b);
@@ -253,6 +203,7 @@ export class Vegetation {
     const m = new THREE.InstancedMesh(geo, mat, cap);
     m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
     m.castShadow = shadow; m.receiveShadow = true; m.count = 0; m.visible = false;
+    if (mat === this.treeMat) m.customDepthMaterial = this.trees.depth;
     m.boundingSphere = sphere.clone();
     this.group.add(m);
     return m;
@@ -287,16 +238,23 @@ export class Vegetation {
       const free = !g.occ[i] && !g.roads[i];
       let a = Math.sin(i * 12.9898 + g.seed) * 43758.5453;
       const rnd = () => { a = Math.sin(a) * 43758.5453; return a - Math.floor(a); };
+      const sued = g.islands[g.islandOf[i]]?.klima === 'sued';
       if (t === T.Wald) {
-        const n = 2 + (rnd() < 0.5 ? 1 : 0);
+        // Süden: Palmen (am Strand fast nur Palmen) und üppige Laubbäume; Norden: Nadel- und Laubwald
+        let coast = false;
+        if (sued) for (const d of [-1, 1, -N, N]) { const tt = g.tiles[i + d]; if (tt === T.Sand || tt === T.Wasser) coast = true; }
+        // Palmenwald lichter: 1–2 Bäume je Feld statt 2–3
+        const n = (sued ? 1 : 2) + (rnd() < 0.5 ? 1 : 0);
         for (let k = 0; k < n; k++) {
           const px = x + 0.15 + rnd() * 0.7, pz = y + 0.15 + rnd() * 0.7;
           const s = 1.1 + rnd() * 0.9;
           const rot = rnd() * 6.28;
           const sy = s * (0.9 + rnd() * 0.4);
           const py = this.terrain.heightAt(px, pz) - 0.02;
-          const r = 0.85 + rnd() * 0.3, gg = 0.85 + rnd() * 0.3, b = 0.8 + rnd() * 0.3;
-          const kind: 0 | 1 | 2 = rnd() < 0.78 ? (rnd() < 0.5 ? 0 : 1) : 2;
+          const kind: Kind = sued ? (rnd() < (coast ? 0.8 : 0.4) ? 3 : 2) : rnd() < 0.68 ? (rnd() < 0.5 ? 0 : 1) : 2;
+          // Farbton je Baum: Laub mal gelblicher, mal kühler; Süden kräftiger grün
+          const warm = rnd();
+          const r = (0.86 + warm * 0.26) * (sued ? 0.92 : 1), gg = 0.88 + rnd() * 0.22, b = (0.82 + (1 - warm) * 0.26) * (sued ? 0.9 : 1);
           // jeder zweite Baum zählt auch in der halben Dichte (Ferne)
           plants.push({ kind, x: px, y: py, z: pz, rot, s, sy, m: g.trees[i], r, g: gg, b, half: k % 2 === 0, tile: i, solo: false });
         }
@@ -304,7 +262,7 @@ export class Vegetation {
         if (t === T.Gras && rnd() < 0.035) {
           const px = x + 0.5, pz = y + 0.5, s = 1.0 + rnd() * 0.6;
           const rot = rnd() * 6.28;
-          plants.push({ kind: 2, x: px, y: this.terrain.heightAt(px, pz) - 0.02, z: pz, rot, s, sy: s, m: 1, r: 1, g: 1, b: 1, half: true, tile: i, solo: true });
+          plants.push({ kind: sued && rnd() < 0.6 ? 3 : 2, x: px, y: this.terrain.heightAt(px, pz) - 0.02, z: pz, rot, s, sy: s, m: 1, r: 1, g: 1, b: 1, half: true, tile: i, solo: true });
         }
         const tufts = t === T.Sand ? (rnd() < 0.3 ? 1 : 0) : 3;
         for (let k = 0; k < tufts; k++) {
@@ -323,22 +281,20 @@ export class Vegetation {
       }
     }
     // Instanzzahl je Art vorher zählen → Gruppen passend anlegen
-    const counts = [0, 0, 0], hc = [0, 0];
-    for (const p of plants) { counts[p.kind]++; if (p.half) hc[p.kind === 2 ? 1 : 0]++; }
+    const counts = [0, 0, 0, 0], hc = [0, 0, 0];
+    for (const p of plants) { counts[p.kind]++; if (p.half) hc[HK[p.kind]]++; }
     const sph = this.sphere(bk.cx, bk.cz, B);
-    const geos = [this.geoC[0], this.geoC[1], this.geoB];
-    for (let k = 0; k < 3; k++) bk.trees[k] = this.fit(bk.trees[k], geos[k], this.treeMat, counts[k], true, sph);
+    for (let k = 0; k < 4; k++) bk.trees[k] = this.fit(bk.trees[k], this.geo[1][k], this.treeMat, counts[k], true, sph);
     // halbe Dichte: Nadelbäume beider Formen in einer Gruppe (aus der Entfernung sieht man den Unterschied nicht)
-    bk.half[0] = this.fit(bk.half[0], this.geoC[1], this.treeMat, hc[0], true, sph);
-    bk.half[1] = this.fit(bk.half[1], this.geoB, this.treeMat, hc[1], true, sph);
+    for (let k = 0; k < 3; k++) bk.half[k] = this.fit(bk.half[k], this.geo[2][[1, 2, 3][k]], this.treeMat, hc[k], true, sph);
     bk.grass = this.fit(bk.grass, this.geoG, this.grassMat, ng, false, sph);
-    const idx = [0, 0, 0], hidx = [0, 0];
+    const idx = [0, 0, 0, 0], hidx = [0, 0, 0];
     for (const p of plants) {
       p.slot = undefined;
       const mesh = bk.trees[p.kind]!;
       const i = idx[p.kind]++;
       let hm: THREE.InstancedMesh | null = null, hi = -1;
-      if (p.half) { const hk = p.kind === 2 ? 1 : 0; hm = bk.half[hk]!; hi = hidx[hk]++; }
+      if (p.half) { const hk = HK[p.kind]; hm = bk.half[hk]!; hi = hidx[hk]++; }
       if (!p.solo) {
         const slot: TreeSlot = { mesh, i, x: p.x, y: p.y, z: p.z, rot: p.rot, s: p.s, sy: p.sy, m: p.m, hm, hi, sm: null, si: -1 };
         const list = this.slots.get(p.tile);
@@ -348,8 +304,8 @@ export class Vegetation {
       this.put(mesh, i, p, 1);
       if (hm) this.put(hm, hi, p, HALF_SCALE);
     }
-    for (let k = 0; k < 3; k++) this.finish(bk.trees[k], counts[k]);
-    for (let k = 0; k < 2; k++) this.finish(bk.half[k], hc[k]);
+    for (let k = 0; k < 4; k++) this.finish(bk.trees[k], counts[k]);
+    for (let k = 0; k < 3; k++) this.finish(bk.half[k], hc[k]);
     if (bk.grass) {
       (bk.grass.instanceMatrix.array as Float32Array).set(this.gm.subarray(0, ng * 16));
       (bk.grass.instanceColor!.array as Float32Array).set(this.gc.subarray(0, ng * 3));
@@ -362,20 +318,19 @@ export class Vegetation {
   /** Fern-Block (2 × 2 Blöcke): halbe Dichte mit einfachen Formen für große Entfernung */
   private buildFar(f: FarBlock) {
     f.dirty = false;
-    const counts = [0, 0];
-    for (const bk of f.blocks) for (const p of bk.plants) if (p.half) counts[p.kind === 2 ? 1 : 0]++;
+    const counts = [0, 0, 0];
+    for (const bk of f.blocks) for (const p of bk.plants) if (p.half) counts[HK[p.kind]]++;
     const sph = this.sphere(f.cx, f.cz, B * FB);
-    f.simple[0] = this.fit(f.simple[0], this.geoCF, this.treeMat, counts[0], true, sph);
-    f.simple[1] = this.fit(f.simple[1], this.geoBF, this.treeMat, counts[1], true, sph);
-    const idx = [0, 0];
+    for (let k = 0; k < 3; k++) f.simple[k] = this.fit(f.simple[k], this.geo[3][[1, 2, 3][k]], this.treeMat, counts[k], true, sph);
+    const idx = [0, 0, 0];
     for (const bk of f.blocks) for (const p of bk.plants) {
       if (!p.half) continue;
-      const k = p.kind === 2 ? 1 : 0;
+      const k = HK[p.kind];
       const mesh = f.simple[k]!, i = idx[k]++;
       this.put(mesh, i, p, HALF_SCALE);
       if (p.slot) { p.slot.sm = mesh; p.slot.si = i; }
     }
-    for (let k = 0; k < 2; k++) this.finish(f.simple[k], counts[k]);
+    for (let k = 0; k < 3; k++) this.finish(f.simple[k], counts[k]);
   }
 
   private finish(mesh: THREE.InstancedMesh | null, n: number) {
@@ -407,7 +362,14 @@ export class Vegetation {
         const eff = effOf(near3(bk.cx, bk.cz, B / 2));
         const level = farLevel ? 2 : eff < L.halb ? 0 : 1;
         const sh = boxDist(tx, tz, bk.cx, bk.cz, B / 2) <= L.schatten;
-        for (const m of bk.trees) if (m) { m.visible = level === 0 && m.count > 0; m.castShadow = sh; }
+        // nah: schönste Form; etwas weiter (oder sparsam): mittlere Detailstufe
+        const geos = this.geo[!this.sparsam && eff < L.nah ? 0 : 1];
+        for (let k = 0; k < 4; k++) {
+          const m = bk.trees[k];
+          if (!m) continue;
+          m.visible = level === 0 && m.count > 0; m.castShadow = sh;
+          if (m.visible && m.geometry !== geos[k]) m.geometry = geos[k];
+        }
         for (const m of bk.half) if (m) { m.visible = level === 1 && m.count > 0; m.castShadow = sh; }
         if (bk.grass) bk.grass.visible = level === 0 && eff < L.gras && bk.grass.count > 0;
       }
@@ -475,8 +437,9 @@ export class Vegetation {
     this.blocks.clear();
     this.far.clear();
     this.slots.clear();
-    for (const geo of [...this.geoC, this.geoB, this.geoG, this.geoCF, this.geoBF]) geo.dispose();
+    for (const geo of [...this.geo.flat(), this.geoG]) geo.dispose();
     this.treeMat.dispose();
+    this.trees.depth.dispose();
     this.grassMat.dispose();
   }
 }
