@@ -11,7 +11,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import { Game } from '../game';
 import { T } from '../world';
 import { LAND_Y, Terrain } from './terrain';
-import { laubbaum, nadelbaum, palme, treeMaterials, Lod } from './trees';
+import { laubbaum, nadelbaum, palme, treeMaterials, placeClear, Lod } from './trees';
 
 export const windTime = { value: 0 };
 
@@ -65,9 +65,11 @@ function windMaterial(opts: THREE.MeshStandardMaterialParameters, strength: numb
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.88, metalness: 0, ...opts });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uWind = windTime;
+    sh.uniforms.uClearBox = placeClear.uClearBox;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
-uniform float uWind;`)
+uniform float uWind;
+uniform vec4 uClearBox;`)
       .replace('#include <begin_vertex>', `#include <begin_vertex>
 {
   vec3 ip = vec3(0.0);
@@ -78,6 +80,9 @@ uniform float uWind;`)
   float k = max(0.0, position.y) * max(0.0, position.y) * ${strength.toFixed(3)};
   transformed.x += sway * k;
   transformed.z += sway * k * 0.5;
+  // Bau-Vorschau: Grasbüschel auf der Grundfläche ausblenden (dort liegt der farbige Rahmen)
+  float inBox = step(uClearBox.x, ip.x) * step(ip.x, uClearBox.z) * step(uClearBox.y, ip.z) * step(ip.z, uClearBox.w);
+  transformed *= 1.0 - inBox;
 }`);
   };
   m.customProgramCacheKey = () => key;

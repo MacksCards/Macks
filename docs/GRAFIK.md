@@ -61,6 +61,9 @@ Die Aufträge (Beschreibungen) stehen in `assets/meshy-batch.json`, die fertigen
   - Größe aller Modelldateien ≈ 18 MB (vorher 22 MB); das Spiel selbst ≈ 1,2 MB.
 - Wenige hundert Zeichenaufrufe pro Bild. Viele gleiche Dinge (Bäume, Gras, Tiere) als „Instanzen“ zeichnen (ein Aufruf für alle).
 
+## Bauen im Wald (`src/render/placehelp.ts`)
+Beim Platzieren eines Gebäudes werden Bäume und Gras auf der Grundfläche nicht gezeichnet (beim Bau werden sie dort ohnehin gefällt); Bäume davor (zwischen Kamera und Vorschau) und direkt am Rand werden fein gerastert durchsichtig. Die Grundfläche zeigt eine farbige Fläche mit klarem Rahmen (grün = geht, rot = geht nicht), verdeckte Teile der Vorschau scheinen als zarter Umriss durch. Dafür ändern sich nur zwei Werte im gemeinsamen Bäume-Material – die Bäume werden nicht neu aufgebaut, es bleibt flüssig.
+
 ## Nächste Grafik-Schritte
 - Die 16 noch fehlenden Modelle neu erzeugen (Liste in `docs/OFFEN.md`), wenn wieder Meshy-Guthaben da ist.
 - Figuren mit Animationen (Träger auf Wegen, Arbeiter, Soldaten), Tiere auf Weiden.
