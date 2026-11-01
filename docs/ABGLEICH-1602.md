@@ -110,7 +110,7 @@ Die Prozente sind eine grobe Schätzung: Wie viel vom Spielgefühl von 1602 ist 
 | Händlerpreise | Preistabelle | etwa 90 % davon, Kauf zu Verkauf etwa 3 : 2 | ✅ |
 | Preis für Frieden und für Schutz vor Piraten (im Original nur beim Piraten-Schutz belegt) | richtet sich nach dem Vermögen | gleich | ✅ |
 | Gewinn einer Aristokratenstadt | rechnerisch etwa ein Drittel | rechnerisch etwa ein Drittel | ✅ |
-| Startgeld | 20 000 (leicht) bis 10 000 (schwer) | 8 000, dazu 25 800 aus den Belohnungen der Aufgaben. Entschieden: wählbare Schwierigkeit mit Startgeld 20 000 / 15 000 / 10 000 (Paket P1) | 🟡 entschieden, noch offen |
+| Startgeld | 20 000 (leicht) bis 10 000 (schwer) | wählbar im Fenster „Neues Spiel“: 20 000 / 15 000 / 10 000 Taler (Standard normal), dazu die Belohnungen der Aufgaben (bei „schwer“ halbiert) (P1) | ✅ behoben (P1) |
 
 ### 2.3 Krieg und seine Auswirkungen
 
@@ -133,7 +133,7 @@ Die Prozente sind eine grobe Schätzung: Wie viel vom Spielgefühl von 1602 ist 
 | Ausmustern | per Knopf | Spielregel da (M1, ohne Sold), Knopf kommt mit U4 | 🟡 |
 | Diplomatie | Handels- und Friedensvertrag; Krieg aus einem Anlass (Siedeln auf fremder Insel, Blockade) | nur Krieg und Frieden; die Gegner erklären Krieg nach Zeit, Stärke und Zufall | 🟡 |
 | Krieg und Handel | Blockaden stören den Handel | kein Einfluss; Waffen sind sofort beim Händler zu kaufen | 🟡 |
-| Heer in der Bilanz | sichtbar | im „Unterhalt“ versteckt | 🟡 |
+| Heer in der Bilanz | sichtbar | eigene Zeile „Sold der Soldaten“ in der Bilanz am Kontor, im Kassenbuch als Militär (L2, S1) | ✅ behoben (L2) |
 | Gegner ohne Land | wird zum Piraten | sitzt für immer still herum und gilt nicht als besiegt | 🟡 |
 | Vorwarnung vor Krieg | keine | 3 Minuten Vorwarnung mit Rat, was man bauen sollte | ⭐ |
 | Nach dem Verlust von allem | Spiel verloren | neues Schiff und 40 Minuten Ruhe | ⭐ |
@@ -144,12 +144,12 @@ Die Prozente sind eine grobe Schätzung: Wie viel vom Spielgefühl von 1602 ist 
 |---|---|---|---|
 | Baumenü | alle Kategorien und der Abriss-Hammer sind immer sichtbar | zeigt nur Nutzbares ⭐. Die Spalte war zu lang; seit U1 ist sie ab 8 Knöpfen zweispaltig (44 × 44, nur Symbol, Name oben im Baumenü), „Abreißen“ ist ein fester Knopf 💥 oben | ✅ behoben (U1) |
 | Steuerfenster | Tipp auf ein Haus zeigt die Steuer der Stufe | Tipp auf ein Haus zeigt den Steuerregler der Stufe (L2) | ✅ behoben (L2) |
-| Kontor- und Lagerfenster | getrennte Ansichten | eine sehr lange Spalte; die Händlerliste steht vor Lager und Bilanz | 🟡 |
+| Kontor- und Lagerfenster | getrennte Ansichten | Lager, Bilanz und Steuern zuerst, der Handel in einem eigenen Reiter „⚖️ Handel“ (L2, S2); feste Kopfzeile und Fußleiste | ✅ behoben (L2, S2) |
 | Warenleiste oben | zeigt die wichtigen Werte | bis zu 23 Symbole (am Anfang nur die gerade nötigen) ohne Namen, nur 5–10 gleichzeitig sichtbar; seit U1 zeigt ein Verlauf am Rand das Weiterwischen an; leere Waren werden nicht rot | 🟡 |
 | Schiff beladen | Laden je Ware, Routen | Einladen mit +10 / +50 / Max (U1), Ausladen nur „alles“ (jetzt ganz oben im Schiffsfenster) | 🟡 |
 | Wohnhäuser bauen | ganze Wohnblöcke zügig | jedes Haus einzeln, 2 Tipps je Haus | 🟡 |
 | Abreißen | einen Bereich aufziehen | Feld für Feld, Rückfrage bei jedem Gebäude | 🟡 |
-| Kontor abreißen, Insel aufgeben | geht, wenn sonst nichts mehr auf der Insel steht | geht nie | 🟡 |
+| Kontor abreißen, Insel aufgeben | geht, wenn sonst nichts mehr auf der Insel steht | Knopf „💥 Kontor abreißen“, sobald sonst nichts mehr auf der Insel steht (L2) | ✅ behoben (L2) |
 | Wege und Mauern | mit der Maus ziehen | Start, Ziel, ✓; mit automatischem Umweg und Kostenanzeige. Start und Ziel sind gelb markiert. Ist das Ziel nicht erreichbar, endet die Strecke am nächsten erreichbaren Feld; gibt es gar keinen Durchgang, wird nichts gebaut (keine Bruchstücke). Mauern lassen sich nicht über Wege setzen | ⭐ |
 | Haus- und Betriebs-Info | Gesichter und Fragezeichen | sagt im Klartext, was fehlt und warum | ⭐ |
 | Hinweis auf Freischaltungen | (im Handbuch) | Karte mit Vorhängeschloss 🔒 „ab N …“ ⭐, aber ohne deinen Stand („du hast 23“) und ohne „NEU“-Marke | 🟡 |
@@ -332,11 +332,11 @@ Die sechs Fragen aus dem Abgleich hat der Nutzer am 31.10.2026 beantwortet (fest
 
 | Nr. | Entscheidung | Was das heißt | Paket | Stand |
 |---|---|---|---|---|
-| 1 | **Steuern wie 1602** | Ein Regler je Stufe mit den Höchstsätzen des Originals (Pioniere 48 %, Siedler 45 %, Bürger 38 %, Kaufleute 36 %, Aristokraten 35 %). Zu hohe Steuern machen unzufrieden bis zum Auszug. Flache Steuerkurve (Aristokrat etwa 1,4 × Pionier statt 6 ×). Die Gesamteinnahmen werden so eingestellt, dass das Spiel nicht schwerer wird. | L2, U2 | offen |
-| 2 | **Wirtschaftstempo wie 1602** | Betriebe werden so beschleunigt, dass einer wieder 60 bis 100 % so viele Bewohner versorgt wie im Original (heute bei Luxuswaren nur ¼ bis ⅓). | L2 | offen |
+| 1 | **Steuern wie 1602** | Ein Regler je Stufe mit den Höchstsätzen des Originals (Pioniere 48 %, Siedler 45 %, Bürger 38 %, Kaufleute 36 %, Aristokraten 35 %). Zu hohe Steuern machen unzufrieden bis zum Auszug. Flache Steuerkurve (Aristokrat etwa 1,4 × Pionier statt 6 ×). Die Gesamteinnahmen werden so eingestellt, dass das Spiel nicht schwerer wird. | L2, U2 | erledigt (L2) |
+| 2 | **Wirtschaftstempo wie 1602** | Betriebe werden so beschleunigt, dass einer wieder 60 bis 100 % so viele Bewohner versorgt wie im Original (heute bei Luxuswaren nur ¼ bis ⅓). | L2 | erledigt (L2, 60–83 %) |
 | 3 | **Felder automatisch** | Eine Farm oder Plantage legt beim Bau automatisch sichtbare Felder an (5 Taler je Feld); sie reifen erst. Ein Feld-Werkzeug dient zum Nachbessern. | L4, G3b | offen |
-| 4 | **Grafik** | Zuerst sichtbare Fehler im Code beheben (G1), dann eine Meshy-Probe mit 3 Modellen (Wohnhaus, Kontor, Schaf). Nach Freigabe werden alle Modelle mit Meshy erzeugt; im Code wird nur nachgebaut, was Meshy nicht liefert. Der Schlüssel `MESHY_API_KEY` kommt vom Nutzer in die Umgebungs-Einstellungen, nie in den Chat. | G1, G5a, G5b | Probe ist im Projekt (Haus, Kontor, Schaf); Freigabe und Einbau offen |
-| 5 | **Schwierigkeit wählbar** | leicht / normal / schwer mit Startgeld 20 000 / 15 000 / 10 000. Standard „normal“: Gegner wachsen bis Kaufleute, besiedeln 2 bis 3 Inseln und greifen nach Vorwarnung an. Katastrophen standardmäßig „mild“. | P1, KI2, S3 | offen |
+| 4 | **Grafik** | Zuerst sichtbare Fehler im Code beheben (G1), dann eine Meshy-Probe mit 3 Modellen (Wohnhaus, Kontor, Schaf). Nach Freigabe werden alle Modelle mit Meshy erzeugt; im Code wird nur nachgebaut, was Meshy nicht liefert. Der Schlüssel `MESHY_API_KEY` kommt vom Nutzer in die Umgebungs-Einstellungen, nie in den Chat. | G1, G5a, G5b | Probe freigegeben; 34 Meshy-Modelle sind im Spiel, 16 Gebäude warten noch auf ein neues Modell (OFFEN.md, G5c) |
+| 5 | **Schwierigkeit wählbar** | leicht / normal / schwer mit Startgeld 20 000 / 15 000 / 10 000. Standard „normal“: Gegner wachsen bis Kaufleute, besiedeln 2 bis 3 Inseln und greifen nach Vorwarnung an. Katastrophen standardmäßig „mild“. | P1, KI2, S3 | Fenster und Startgeld erledigt (P1); Grenzen der Gegner wirken mit KI2, Katastrophen mit S3 |
 | 6 | **Inselgrößen wie 1602** | Fünf Größenklassen, größere Welt, beim Start wählbar. Erst nach der Arbeit an der Grafik-Leistung (R1, R2) und einem Test auf dem iPhone des Nutzers. | L5 | offen, zuletzt |
 
 Bis zum Test auf dem iPhone bleibt die heutige Weltgröße (eine Größe, `WORLD_SIZES` in `src/world.ts`).

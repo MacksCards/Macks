@@ -141,6 +141,8 @@ export class View {
   private selectRing: THREE.Mesh;
   private raycaster = new THREE.Raycaster();
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y);
+  /** Ebene für Wischen und Zoomen: liegt auf der Höhe des Blickziels (updateCamera) */
+  private panPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y);
   private sun: THREE.DirectionalLight;
   areaShown = false;
   /** Bildqualität (automatisch, hoch, sparsam) */
@@ -1292,11 +1294,20 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     // Blickziel: nah herangezoomt auf der Höhe des Geländes (über einem Berg schaut man auf den Berg, nicht
     // in den Fels darunter); weiter weg sanft zurück auf Meereshöhe, damit das Bild beim Verschieben ruhig bleibt
     const near = Math.min(1, Math.max(0, (25 - r.dist) / 18));
-    const ty = this.terrain ? LAND_Y + Math.max(0, this.terrain.heightAt(r.tx, r.tz) - LAND_Y) * near : LAND_Y;
+    // (Mittel über die Umgebung, nicht der Punkt allein: so hebt und senkt sich das Ziel beim Verschieben sanft
+    // statt jeder Felskante zu folgen, und das Gelände bleibt unter dem Finger)
+    let ty = LAND_Y;
+    if (this.terrain && near > 0) {
+      let sum = 0;
+      for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) sum += Math.max(LAND_Y, this.terrain.heightAt(r.tx + i * 1.5, r.tz + j * 1.5));
+      ty = LAND_Y + (sum / 25 - LAND_Y) * near;
+    }
     // nah am Hang nie in den Berg tauchen: Kamera bleibt mindestens 1,5 über dem Gelände unter ihr
     const ground = this.terrain ? Math.max(this.terrain.heightAt(cx, cz), this.terrain.heightAt((cx + r.tx) / 2, (cz + r.tz) / 2) - 0.5) : 0;
     this.camera.position.set(cx, Math.max(ty + sp * r.dist, ground + 1.5), cz);
     this.camera.lookAt(r.tx, ty, r.tz);
+    // Wischen und Zoomen rechnen auf der Höhe des Blickziels – so bleibt auch über einem Berg das Gelände unter dem Finger
+    this.panPlane.constant = -ty;
     this.sky.position.set(r.tx, 0, r.tz);
     // Schattenausschnitt nur in festen Stufen ändern (sonst flimmern die Schatten beim Zoomen)
     const want = Math.min(45, 12 + r.dist * 0.9);
@@ -1345,7 +1356,7 @@ diffuseColor.a = mix(1.0, diffuseColor.a, smoothstep(0.0, 1.0, seenV));`);
     const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
     const p = new THREE.Vector3();
-    return this.raycaster.ray.intersectPlane(this.groundPlane, p) ? p : null;
+    return this.raycaster.ray.intersectPlane(this.panPlane, p) ? p : null;
   }
 
   /** Schiff unter dem Finger */

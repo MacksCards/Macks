@@ -49,7 +49,7 @@
 .info .chips > span { display: flex; justify-content: space-between; gap: 2px; font-size: 13px; padding: 2px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); white-space: nowrap; }
 .info .chips > span i { font-style: normal; overflow: hidden; text-overflow: ellipsis; }
 .info .ok.wide { margin-top: 8px; }
-.info .grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 12px; }
+.info .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 10px; }
 .bar { height: 7px; background: rgba(0, 0, 0, .35); border-radius: 4px; overflow: hidden; margin: 4px 0; }
 .bar i { display: block; height: 100%; background: var(--gold); }
 /* Freier Händler am Kontor */
