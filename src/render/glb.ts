@@ -11,7 +11,10 @@ import { BuildingId } from '../data';
 
 declare const __MODELLE__: boolean;
 
-type Loader = { loadAsync(url: string): Promise<{ scene: THREE.Object3D }> };
+type Loader = {
+  loadAsync(url: string): Promise<{ scene: THREE.Object3D }>;
+  parseAsync(data: ArrayBuffer, path: string): Promise<{ scene: THREE.Object3D }>;
+};
 
 /** Lader nur einbauen, wenn es beim Bauen Modelle gab (sonst entfernt das Bauwerkzeug diesen Teil ganz) */
 // (typeof-Prüfung: in Tests ohne Bauwerkzeug ist __MODELLE__ nicht gesetzt)
@@ -175,7 +178,11 @@ export class ModelLibrary {
       p = (async () => {
         try {
           if (!this.loader) this.loader = loadLoader!();
-          const gltf = await (await this.loader).loadAsync(this.base + name);
+          const loader = await this.loader;
+          // Vorschau-Seite auf claude.ai liefert keine .glb-Dateien aus: dort liegen die Modelle als Text (base64, *.glb.txt)
+          const gltf = name.endsWith('.txt')
+            ? await loader.parseAsync(await base64File(this.base + name), '')
+            : await loader.loadAsync(this.base + name);
           gltf.scene.traverse((o) => {
             const m = o as THREE.Mesh;
             if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; }
@@ -190,6 +197,16 @@ export class ModelLibrary {
     }
     return p;
   }
+}
+
+/** Liest eine Textdatei mit base64-Inhalt und gibt die Bytes zurück */
+async function base64File(url: string): Promise<ArrayBuffer> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const bin = atob((await res.text()).trim());
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
 }
 
 /** Zu flache oder zu dünne Modelle (Hüllquader) sind meist nur Bruchstücke: nicht verwenden */
