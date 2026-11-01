@@ -4,17 +4,14 @@
 // (mit Schatten vier). Die Besitzerfarbe steht je Kopie; ein gemeinsames Material für alle Farben.
 import * as THREE from 'three';
 import { Builder, M } from './kit';
-import { buildingMaterial } from './materials';
+import { clothGeometry, clothMaterial } from './cloth';
 import { ensureCapacity, flushInstances } from './instances';
 
-/** Fahnentuch: hängt am Mast (Kante bei z = 0, Oberkante bei y = 0) und weht nach +z. Weiß, die Farbe kommt je Kopie. */
-const FLAG_GEO = new Builder().box(0.008, 0.12, 0.2, 0xffffff, 0, -0.12, 0.1).geometry();
+/** Fahnentuch: hängt am Mast (Kante bei z = 0, Oberkante bei y = 0) und weht nach +z. Weiß, die Farbe kommt je Kopie.
+ *  Echtes, fein unterteiltes Tuch, das im Grafikprogramm Wellen schlägt (cloth.ts). */
+const FLAG_GEO = clothGeometry(0.22, 0.14, 0, 8, 3);
 /** kleiner dreieckiger Wimpel (für Meshy-Gebäude ohne große Fahne) */
-const PENNANT_GEO = (() => {
-  const tri = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, -0.04, 0.13), new THREE.Vector3(0, -0.08, 0)]);
-  tri.setIndex([0, 1, 2, 2, 1, 0]);
-  return new Builder().add(tri, 0xffffff).geometry();
-})();
+const PENNANT_GEO = clothGeometry(0.16, 0.08, 1, 6, 2);
 /** Fahnenmast für Meshy-Gebäude: hoch (Fahne) und kurz (Wimpel); Fuß bei y = 0 */
 export const POLE_H = 0.42, POLE_H_SMALL = 0.2;
 const POLE_GEO = new Builder().cyl(0.011, 0.015, POLE_H, 6, M.dunkelholz, 0, 0, 0).sphere(0.02, M.gold, 0, POLE_H + 0.01, 0).geometry();
@@ -47,7 +44,7 @@ export class OwnerMarks {
   private entries = new Map<number, Entry>();
   private cloth: THREE.InstancedMesh[];
   private poles: THREE.InstancedMesh[];
-  private clothMat = buildingMaterial({ side: THREE.DoubleSide });
+  private clothMat = clothMaterial();
   /** Masten nur neu schreiben, wenn sich etwas geändert hat (sie bewegen sich nicht) */
   private polesDirty = true;
   private lastVisible = -1;
@@ -107,7 +104,8 @@ export class OwnerMarks {
         const im = this.cloth[k.cloth];
         const i = n[k.cloth]++;
         if (i >= im.instanceMatrix.count && ensureCapacity(im, i + 1, MAX) <= i) { n[k.cloth]--; continue; }
-        m.makeRotationY(Math.PI / 2 + Math.sin(t * 4.3 + k.phase) * 0.22);
+        // (das Tuch selbst schlägt Wellen im Grafikprogramm; hier dreht es nur leicht mit dem Wind)
+        m.makeRotationY(Math.PI / 2 + Math.sin(t * 0.9 + k.phase) * 0.12);
         if (k.scale !== 1) m.scale(s.setScalar(k.scale));
         m.setPosition(k.x, k.y, k.z);
         im.setMatrixAt(i, m);
