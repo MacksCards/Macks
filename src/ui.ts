@@ -116,9 +116,11 @@ export class UI {
       paintStart: (x, y) => this.build.dragStart(x, y),
       paintMove: (x, y) => this.build.dragMove(x, y),
       paintEnd: (cancel, tap) => this.build.dragEnd(cancel, tap),
+      // Doppeltipp = nur zoomen: ein zurückgehaltener Tipp im Wege-Werkzeug (Knick weg, neues Ziel) entfällt
+      doubleTap: () => { this.build.cancelPendingTap(); return false; },
     });
     // Kompassnadel folgt jeder Drehung sofort
-    this.input.onCamera = () => this.hud.needle();
+    this.input.onCamera = () => { this.hud.needle(); this.build.cameraMoved(); };
     this.bindGame();
   }
 

@@ -39,6 +39,8 @@ export class BuildTool {
   roadTooLong = false;
   /** frühere Stände der Planung (Knicke + Ziel) für ↶ */
   private roadHist: { vias: [number, number][]; target: [number, number] }[] = [];
+  /** Tipp, der etwas wegnimmt (Knick entfernen, neues Ziel): wartet kurz, ob ein Doppeltipp (Zoom) daraus wird */
+  private pending: number | null = null;
   /** schon erklärt: Tipp auf Mitte, Fähnchen, Start */
   private told = new Set<string>();
   /** Ziehpunkte auf der Vorschau: Mitte je Wegstück (seg = Nummer des Stücks), Knickpunkte (i), Ziel */
@@ -69,7 +71,12 @@ export class BuildTool {
     btns.id = 'hintBtns';
     hud.appendChild(btns);
     $('#hintOk').addEventListener('click', () => { if (this.ui.mode.kind === 'road') this.confirmRoad(); else this.confirmBuild(); });
-    $('#hintX').addEventListener('click', () => this.setMode({ kind: 'none' }));
+    // ✕ im Wege-Werkzeug mit angefangenem Plan: erst nur den Plan verwerfen (neuer Start), beim zweiten Mal beenden
+    $('#hintX').addEventListener('click', () => {
+      const m = this.ui.mode;
+      if (m.kind === 'road' && this.roadStart) { this.setMode({ kind: 'road', type: m.type }); sound.play('klick'); }
+      else this.setMode({ kind: 'none' });
+    });
     $('#roadUndo').addEventListener('click', () => this.undoRoad());
   }
 
@@ -77,6 +84,7 @@ export class BuildTool {
 
   setMode(m: Mode) {
     const ui = this.ui, v = ui.view;
+    this.cancelPendingTap();
     ui.mode = m;
     this.roadStart = null;
     this.roadCells = [];
@@ -154,16 +162,24 @@ export class BuildTool {
         ? `${build} ${build === 1 ? 'Feld' : 'Felder'} · ${costText(Object.fromEntries(Object.entries(d.cost).map(([k, v]) => [k, (v ?? 0) * build])))}`
         : `${costText(d.cost)} je Feld`;
       // Gebäude und Weg (oder zwei Wegstücke) hängen schon zusammen: das melden statt „geht nicht“
+      // sichtbare Zeichen (weit herausgezoomt fallen weiße Kreise weg bzw. liegen Zeichen aufeinander)
+      const rh = ui.view.roadHandles;
+      const mids = rh.shownMids > 0, crowded = rh.crowded;
+      this.hintState = `${mids}|${crowded}`;
       const linked = ok && isRoad && (this.roadNoWay || !build) ? this.alreadyLinked() : null;
       const msg = !this.roadStart ? `Tippe aufs Startfeld.${m.type === 'steinweg' ? ' Feldwege werden gepflastert.' : ''}`
         : !ok ? 'Tippe jetzt aufs Ziel.'
         : this.roadTooLong ? `Zu lang – höchstens ${MAX_CELLS} Felder auf einmal. Näheres Ziel tippen.`
         : linked ? (linked === 'haus' ? 'Schon mit dem Weg verbunden ✓ – anderes Ziel tippen.' : 'Hier liegt schon ein Weg ✓ – anderes Ziel tippen.')
-        : this.roadNoWay ? (this.handles.some((h) => h.kind === 'mid') ? 'Kein Durchgang – weißen Kreis ziehen führt drumherum.' : 'Kein Durchgang – tippe ein anderes Ziel.')
+        : this.roadNoWay ? (!this.roadTarget || !this.endOk(this.roadTarget) ? 'Hier kann der Weg nicht enden – anderes Ziel tippen.'
+          : crowded ? 'Kein Durchgang – näher heranzoomen und Kreis ziehen.'
+          : mids ? 'Kein Durchgang – weißen Kreis ziehen führt drumherum.' : 'Kein Durchgang – tippe ein anderes Ziel.')
         : build ? (this.roadPartial ? '✓ baut bis vors Hindernis – oder anderes Ziel.'
+          : crowded ? '✓ baut · zum Biegen näher heranzoomen.'
           : this.roadVias.length ? '✓ baut · Kreise ziehen biegt, goldenen antippen = Knick weg.'
-          : `✓ baut · weißen Kreis ziehen biegt ${isRoad ? 'den Weg' : 'die Reihe'}.`)
-        : why() ? `⚠️ ${why()} – anderes Ziel tippen.` : 'Hier liegt schon ein Weg ✓ – anderes Ziel tippen.';
+          : mids ? `✓ baut · weißen Kreis ziehen biegt ${isRoad ? 'den Weg' : 'die Reihe'}.`
+          : '✓ baut · Fähnchen ziehen verschiebt das Ziel.')
+        : why() ? (/^Zu wenig/.test(why()!) ? `⚠️ ${why()} – erst sammeln, dann ✓.` : `⚠️ ${why()} – anderes Ziel tippen.`) : 'Hier liegt schon ein Weg ✓ – anderes Ziel tippen.';
       // eine Zeile; die Kosten stehen hinten – wird es zu eng, werden sie zuerst gekürzt,
       // auf schmalen Bildschirmen fällt der Name weg (das Symbol bleibt), siehe build.css
       t.innerHTML = `<b>${d.icon}<span class="nm"> ${d.name}</span></b> <span class="msg">${msg}</span> <span class="cost">${cost}</span>`;
@@ -335,6 +351,13 @@ export class BuildTool {
     const t = this.ui.view.pick(x, y, false);
     if (!t) return;
     if (!this.roadStart) {
+      // nur dort anfangen, wo auch ein Weg liegen kann (oder an einem Gebäude mit freiem Rand)
+      if (!this.endOk(t)) {
+        const m = this.ui.mode, g = this.ui.g;
+        const c = m.kind === 'road' && (m.type === 'weg' || m.type === 'steinweg') ? g.canRoad(t[0], t[1], HUMAN, m.type) : g.canPlace(m.kind === 'road' ? m.type : 'weg', t[0], t[1]);
+        this.ui.toast(`Hier kann der Weg nicht anfangen${c.reason ? ` (${c.reason})` : ''}.`, 'bad');
+        return;
+      }
       this.roadStart = t;
       this.roadCells = [t];
       this.roadEndSet = false;
@@ -346,22 +369,48 @@ export class BuildTool {
     } else {
       const end = this.roadCells[this.roadCells.length - 1];
       // dasselbe Ziel nochmal: nichts ändern (gebaut wird nur mit ✓, Knicke bleiben)
-      const tg = this.roadTarget;
-      if (this.roadEndSet && ((end && end[0] === t[0] && end[1] === t[1]) || (tg && tg[0] === t[0] && tg[1] === t[1]))) {
+      const tg = this.roadTarget, g = this.ui.g;
+      const sameHouse = tg && g.occ[g.idx(t[0], t[1])] && g.buildingAt(t[0], t[1]) === g.buildingAt(tg[0], tg[1]);
+      if (this.roadEndSet && ((end && end[0] === t[0] && end[1] === t[1]) || (tg && tg[0] === t[0] && tg[1] === t[1]) || sameHouse)) {
         this.tell('end');
         return;
       }
-      // neues Ziel = neuer Weg (Knickpunkte fallen weg – mit ↶ kommt der alte Plan zurück)
-      this.remember();
-      this.roadVias = [];
-      this.roadTarget = t;
-      this.roadTo(t);
-      this.roadEndSet = true;
-      this.shownAt = performance.now();
-      sound.play('weg');
+      const apply = () => {
+        // neues Ziel = neuer Weg (Knickpunkte fallen weg – mit ↶ kommt der alte Plan zurück)
+        this.remember();
+        this.roadVias = [];
+        this.roadTarget = t;
+        this.roadTo(t);
+        this.roadEndSet = true;
+        this.shownAt = performance.now();
+        sound.play('weg');
+        this.previewRoad();
+        this.updateHint();
+      };
+      // liegt schon ein Plan, wartet der Tipp kurz: wird ein Doppeltipp (Zoom) daraus, bleibt der Plan
+      if (this.roadEndSet) this.later(apply); else apply();
+      return;
     }
     this.previewRoad();
     this.updateHint();
+  }
+
+  /** kann der Weg hier anfangen oder enden? (Feld begehbar oder Gebäude mit freiem Rand) */
+  private endOk(t: [number, number]): boolean {
+    const g = this.ui.g;
+    if (this.passable(t[0], t[1])) return true;
+    return !!g.occ[g.idx(t[0], t[1])] && this.freeAround(t[0], t[1], (a, b) => this.passable(a, b)).length > 0;
+  }
+
+  /** Tipp kurz zurückhalten (Doppeltipp-Zeit); ein Doppeltipp verwirft ihn */
+  private later(fn: () => void) {
+    this.cancelPendingTap();
+    this.pending = window.setTimeout(() => { this.pending = null; if (this.ui.mode.kind === 'road') fn(); }, 360);
+  }
+
+  /** zurückgehaltenen Tipp verwerfen (bei Doppeltipp, Moduswechsel, ✓) */
+  cancelPendingTap() {
+    if (this.pending !== null) { clearTimeout(this.pending); this.pending = null; }
   }
 
   /** Weg vom Start über die Knickpunkte zum Ziel; jedes Stück um Wasser und Gebäude herum, möglichst gerade */
@@ -520,6 +569,9 @@ export class BuildTool {
   private confirmRoad() {
     const ui = this.ui, g = ui.g;
     if (ui.mode.kind !== 'road' || !this.roadEndSet || !this.roadCells.length || this.roadNoWay || this.roadTooLong) return;
+    this.cancelPendingTap();
+    // ein laufendes Ziehen (zweiter Finger auf ✓) endet hier
+    this.drag = null;
     const type = ui.mode.type;
     const end = this.roadCells[this.roadCells.length - 1];
     const isRoad = type === 'weg' || type === 'steinweg';
@@ -531,6 +583,9 @@ export class BuildTool {
     this.roadCells = [end];
     this.roadEndSet = false;
     this.roadNoWay = false;
+    this.roadPartial = false;
+    this.roadTooLong = false;
+    this.roadTarget = null;
     this.roadVias = [];
     this.roadHist = [];
     this.previewRoad();
@@ -575,6 +630,17 @@ export class BuildTool {
     ui.view.setRoadHandles(hs, active);
   }
 
+  /** zuletzt im Hinweis berücksichtigte Sichtbarkeit der Zeichen */
+  private hintState = '';
+
+  /** nach jeder Kamerabewegung: hat sich geändert, welche Zeichen zu sehen sind? Dann Hinweis neu */
+  cameraMoved() {
+    if (this.ui.mode.kind !== 'road' || !this.roadEndSet) return;
+    this.ui.view.refreshRoadHandles();
+    const rh = this.ui.view.roadHandles;
+    if (`${rh.shownMids > 0}|${rh.crowded}` !== this.hintState) this.updateHint();
+  }
+
   /** einmal kurz erklären, was ein Zeichen tut (beim ersten Antippen) */
   private tell(what: 'mid' | 'end' | 'start') {
     if (this.told.has(what)) return;
@@ -582,7 +648,7 @@ export class BuildTool {
     this.ui.toast({
       mid: 'Halte den weißen Kreis fest und zieh ihn dorthin, wo der Weg langlaufen soll.',
       end: 'Das Fähnchen ist das Ziel – ziehen verschiebt es. Gebaut wird mit ✓.',
-      start: 'Hier beginnt der Weg. Neu anfangen: ✕',
+      start: 'Hier beginnt der Weg. Anderer Start: ✕ verwirft den Plan.',
     }[what], 'info');
   }
 
@@ -630,7 +696,7 @@ export class BuildTool {
 
   dragMove(x: number, y: number) {
     const d = this.drag;
-    if (!d || d.kind === 'start' || !this.roadStart || !this.roadTarget) return;
+    if (!d || d.kind === 'start' || !this.roadStart || !this.roadTarget || !this.roadEndSet) return;
     const t = this.ui.view.pick(x, y, false);
     if (!t || (t[0] === d.at[0] && t[1] === d.at[1])) return;
     // Knickpunkte nur auf Felder, über die der Weg laufen kann (sonst bleibt der Punkt stehen)
@@ -660,17 +726,25 @@ export class BuildTool {
     if (cancel) {
       if (d.moved) { this.roadVias = d.undo.vias; this.roadTarget = d.undo.target; if (this.roadTarget) this.roadTo(this.roadTarget); }
     } else if (d.moved) {
-      if (d.undo.target) this.roadHist.push({ vias: d.undo.vias, target: d.undo.target });
+      if (d.undo.target && this.roadEndSet) this.roadHist.push({ vias: d.undo.vias, target: d.undo.target });
       sound.play('weg');
       this.shownAt = performance.now();
     } else if (tap) {
       // ein Tipp zählt nach dem getroffenen Zeichen – nicht nach dem Feld darunter (der Kreis ist größer als ein Feld)
       if (d.kind === 'via' && d.via >= 0) {
-        // Knickpunkt antippen = genau diesen Knick entfernen
-        this.remember();
-        this.roadVias.splice(d.via, 1);
-        if (this.roadTarget) this.roadTo(this.roadTarget);
-        sound.play('klick');
+        // Knickpunkt antippen = genau diesen Knick entfernen (kurz gewartet: ein Doppeltipp zoomt nur)
+        const v = this.roadVias[d.via];
+        this.later(() => {
+          const i = this.roadVias.indexOf(v);
+          if (i < 0 || !this.roadEndSet) return;
+          this.remember();
+          this.roadVias.splice(i, 1);
+          if (this.roadTarget) this.roadTo(this.roadTarget);
+          sound.play('klick');
+          this.previewRoad();
+          this.updateHint();
+        });
+        return;
       } else {
         this.tell(d.kind === 'via' ? 'mid' : d.kind);
         return;

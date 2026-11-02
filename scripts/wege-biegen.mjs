@@ -231,6 +231,31 @@ check(s3.vias.length === 0 && s3.n === nBefore && s3.roads === s0.roads, 'zweite
   check(d1 < d0 * 0.9 && sd.roads === s0.roads && sd.vias.length === 1, `Doppeltipp aufs Fähnchen zoomt (${d0.toFixed(1)} → ${d1.toFixed(1)}) und ändert nichts`);
   await page.evaluate(([A]) => { const r = window.__view.rig; r.tx = A[0] + 5.5; r.tz = A[1] + 2.5; r.dist = 15; window.__view.updateCamera(); }, [A]);
   await page.waitForTimeout(500);
+  // Doppeltipp auf den goldenen Knick und auf freie Karte: nur Zoom, der Plan bleibt
+  const dbl = (p) => page.evaluate(([x, y]) => {
+    const c = document.querySelector('#c');
+    for (const type of ['pointerdown', 'pointerup', 'pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, { pointerId: 8, clientX: x, clientY: y, bubbles: true, pointerType: 'touch', isPrimary: true, button: 0 }));
+  }, p);
+  {
+    const before = await st();
+    const vk = before.vias[0].split(',').map(Number);
+    await page.waitForTimeout(500);
+    await dbl(await scr(...vk));
+    await page.waitForTimeout(900);
+    const a1 = await st();
+    check(a1.vias.length === 1 && a1.last === before.last, 'Doppeltipp auf den goldenen Knick zoomt nur (Knick bleibt)');
+    await page.evaluate(([A]) => { const r = window.__view.rig; r.tx = A[0] + 5.5; r.tz = A[1] + 2.5; r.dist = 15; window.__view.updateCamera(); }, [A]);
+    await page.waitForTimeout(600);
+    const free = await page.evaluate(() => { const b = window.__ui.build, s = b.roadStart; for (let d = 2; d < 8; d++) for (const [x, y] of [[s[0], s[1] + d], [s[0], s[1] - d], [s[0] + d, s[1]], [s[0] - d, s[1]]]) if (b.passable(x, y) && !b.roadCells.some((c) => c[0] === x && c[1] === y)) return [x, y]; return null; });
+    if (free) {
+      await dbl(await scr(...free));
+      await page.waitForTimeout(900);
+      const a2 = await st();
+      check(a2.vias.length === 1 && a2.last === before.last, 'Doppeltipp auf freie Karte zoomt nur (Plan bleibt)');
+    }
+    await page.evaluate(([A]) => { const r = window.__view.rig; r.tx = A[0] + 5.5; r.tz = A[1] + 2.5; r.dist = 15; window.__view.updateCamera(); }, [A]);
+    await page.waitForTimeout(600);
+  }
   // leere Kasse: Hinweis nennt den Grund, nicht „kein Durchgang“
   const hint = await page.evaluate(() => { const g = window.__game(), m = g.players[0].money; g.players[0].money = 0; const b = window.__ui.build; b.roadTo(b.roadTarget); b.updateHint(); const t = document.querySelector('#hintText').textContent; g.players[0].money = m; b.roadTo(b.roadTarget); b.updateHint(); return t; });
   check(/Taler|schon ein Weg/.test(hint) && !/Durchgang/.test(hint), `leere Kasse: Hinweis nennt den Grund („${hint.trim()}“)`);
@@ -254,6 +279,37 @@ const ms = await page.evaluate(() => {
   b.roadVias = keep; b.roadTo(t); return r;
 });
 check(ms < 15, `Neu-Rechnen beim Ziehen schnell genug (${ms.toFixed(1)} ms)`);
+// 6) ✓ während des Ziehens (zweiter Finger auf dem Knopf): sauber gebaut, kein Fehler, kein ↶ danach
+{
+  const mc = await page.evaluate(() => { const b = window.__ui.build; const h = b.handles.find((x) => x.kind === 'mid'); return h ? [h.x, h.y] : null; });
+  if (mc) {
+    const dy = await page.evaluate(([x, y]) => [2, -2, 3, -3].find((d) => window.__ui.build.passable(x, y + d)) ?? 2, mc);
+    const q0 = await scr(...mc), q1 = await scr(mc[0], mc[1] + dy), q2 = await scr(mc[0] + 2, mc[1] + dy);
+    await ptr('pointerdown', 1, q0);
+    for (let i = 1; i <= 5; i++) await ptr('pointermove', 1, [q0[0] + (q1[0] - q0[0]) * i / 5, q0[1] + (q1[1] - q0[1]) * i / 5]);
+    await page.evaluate(() => document.querySelector('#hintOk').click());
+    for (let i = 1; i <= 5; i++) await ptr('pointermove', 1, [q1[0] + (q2[0] - q1[0]) * i / 5, q1[1] + (q2[1] - q1[1]) * i / 5]);
+    await ptr('pointerup', 1, q2);
+    await page.waitForTimeout(500);
+    const sc = await page.evaluate(() => { const b = window.__ui.build; return { end: b.roadEndSet, n: b.roadCells.length, hist: b.roadHist.length, undo: !document.querySelector('#roadUndo').classList.contains('hidden') }; });
+    check(!sc.end && sc.n === 1 && sc.hist === 0 && !sc.undo, `✓ während des Ziehens: gebaut, Plan sauber zurückgesetzt (${JSON.stringify(sc)})`);
+    // ✕: erst nur den Plan verwerfen, dann das Werkzeug beenden
+    await page.evaluate(() => document.querySelector('#hintX').click());
+    const x1 = await page.evaluate(() => ({ mode: window.__ui.mode.kind, start: window.__ui.build.roadStart }));
+    check(x1.mode === 'road' && !x1.start, '✕ verwirft erst nur den Plan');
+    // Start im Wasser wird abgelehnt
+    const water = await page.evaluate(([A]) => { const g = window.__game(); for (let r = 1; r < 25; r++) for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { const x = A[0] + dx, y = A[1] + dy; if (g.inMap(x, y) && g.tiles[g.idx(x, y)] === 0) return [x, y]; } return null; }, [A]);
+    if (water) {
+      await page.evaluate(([x, y]) => { const r = window.__view.rig; r.tx = x + 0.5; r.tz = y + 0.5; window.__view.updateCamera(); }, water);
+      await page.waitForTimeout(500);
+      await tap(await scr(...water));
+      const w1 = await page.evaluate(() => window.__ui.build.roadStart);
+      check(!w1, 'Start im Wasser wird abgelehnt');
+    }
+    await page.evaluate(() => document.querySelector('#hintX').click());
+    check(await page.evaluate(() => window.__ui.mode.kind) === 'none', 'zweites ✕ beendet das Werkzeug');
+  }
+}
 console.log('Fehler im Browser:', errs.length ? errs.join(' | ') : 'keine');
 console.log(fails.length || errs.length ? `FEHLER: ${fails.length + errs.length}` : 'Alle Prüfungen bestanden');
 await browser.close(); server.close();

@@ -713,7 +713,16 @@ export class View {
   /** Ziehpunkte auf dem geplanten Weg setzen (Felder; leer = keine); active = gerade gezogener Griff */
   setRoadHandles(list: { kind: Handle['kind']; x: number; y: number }[], active = -1) {
     this.roadHandles.set(list.map((h) => ({ kind: h.kind, x: h.x + 0.5, y: this.groundY(h.x, h.y, 1) + 0.15, z: h.y + 0.5 })), active);
+    this.refreshRoadHandles();
     this.dirty = true;
+  }
+
+  /** Größe und Sichtbarkeit der Ziehpunkte sofort neu (nicht erst beim nächsten Bild) – z. B. für den Hinweistext */
+  refreshRoadHandles() {
+    if (!this.roadHandles.count) return;
+    this.updateCamera();
+    this.camera.updateMatrixWorld();
+    this.roadHandles.update(this.camera, this.renderer.domElement.clientHeight || 400);
   }
 
   /** Nummer des Ziehpunkts unter dem Finger oder -1 */

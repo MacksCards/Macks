@@ -91,6 +91,9 @@ export class RoadHandles {
   /** Griff, der gerade gezogen wird (wird größer gezeichnet) */
   private active = -1;
   private v = new THREE.Vector3();
+  /** wie viele weiße Kreise gerade zu sehen sind; crowded = Zeichen liegen aufeinander (weit herausgezoomt) */
+  shownMids = 0;
+  crowded = false;
   /** Griffe, die gerade ausgeblendet sind (weißer Kreis zu nah an einem anderen Zeichen) */
   private hidden: boolean[] = [];
   /** Bildschirmlage der Griffe im letzten Bild (Bildpunkte, Mitte = 0) */
@@ -158,6 +161,9 @@ export class RoadHandles {
       const near = this.list.some((o, j) => j !== i && !this.hidden[j] && Math.hypot(this.scr[j][0] - x, this.scr[j][1] - y) < (PX.mid + PX[o.kind]) * 0.75);
       if (near) this.hidden[i] = true;
     });
+    this.shownMids = this.list.filter((h, i) => h.kind === 'mid' && !this.hidden[i]).length;
+    this.crowded = this.list.some((h, i) => h.kind !== 'mid' && this.list.some((o, j) => j > i && o.kind !== 'mid'
+      && Math.hypot(this.scr[j][0] - this.scr[i][0], this.scr[j][1] - this.scr[i][1]) < (PX[h.kind] + PX[o.kind]) * 0.35));
     this.list.forEach((h, i) => {
       const px = PX[h.kind] * (i === this.active ? 1.3 : 1);
       this.sprites[i].scale.setScalar(px / (p11 * H / 2));
@@ -176,7 +182,7 @@ export class RoadHandles {
       const sx = rect.left + ((this.v.x + 1) / 2) * rect.width, sy = rect.top + ((1 - this.v.y) / 2) * rect.height;
       // bei gleich nahen Griffen gewinnen Knickpunkt und Ziel vor der Mitte
       const d = Math.hypot(sx - clientX, sy - clientY);
-      const rank = d + (h.kind === 'mid' ? 4 : 0);
+      const rank = d + (h.kind === 'mid' || h.kind === 'start' ? 4 : 0);
       if (d < PX[h.kind] / 2 + HIT_EXTRA && rank < bestD) { bestD = rank; best = i; }
     });
     return best;
