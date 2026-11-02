@@ -10,7 +10,7 @@ import { WALLS, WALL_LINKS, buildingModel } from './models';
 import { UnitLayer } from './units';
 import { Fx } from './fx';
 import { createWater } from './water';
-import { borderGeometry } from './border';
+import { borderGeometry, borderMaterial } from './border';
 import { LAND_Y, Terrain, TileRect } from './terrain';
 import { Vegetation, windTime } from './vegetation';
 import { ModelLibrary } from './glb';
@@ -160,7 +160,7 @@ export class View {
   /** etwas hat sich geändert, das im Bild sichtbar ist (für das gedrosselte Zeichnen in der Pause) */
   private dirty = true;
   private drawn = { tx: NaN, tz: NaN, dist: NaN, yaw: NaN, w: 0, h: 0, ship: null as number | null, units: -1 };
-  private borderMat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  private borderMat = borderMaterial();
   private cam = { x: 0, z: 0, dist: 0 };
 
   constructor(canvas: HTMLCanvasElement, g: Game) {
@@ -498,7 +498,7 @@ export class View {
     const g = this.g;
     if (this.border) { this.scene.remove(this.border); this.border.geometry.dispose(); }
     this.dirty = true;
-    const geo = borderGeometry(g, (x, z) => this.terrain.heightAt(x, z), (o) => (o === 0 ? 0x8fc0ff : g.players[o]?.color ?? 0xffffff));
+    const geo = borderGeometry(g, (x, z) => this.terrain.heightAt(x, z), (o) => this.ownerColor(o));
     // ein Material für alle Neuberechnungen (vorher bei jedem Aufruf ein neues, nie freigegeben)
     this.border = new THREE.Mesh(geo, this.borderMat);
     this.border.renderOrder = 3;

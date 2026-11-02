@@ -96,8 +96,103 @@ vec3 tBump(vec3 pos, vec3 nrm, vec2 dH) {
   vec3 grad = sign(det) * (dH.x * r1 + dH.y * r2);
   return normalize(abs(det) * nrm - grad);
 }
+// ---- Pflaster ----
+// Kopfsteinpflaster wie in alten Städten: Reihen QUER zur Fahrtrichtung, jede Reihe gegen die vorige versetzt,
+// Steine unterschiedlich lang, leicht gerundet, grau/beige/bräunlich, schmale dunkle Fugen. Die Richtung
+// kommt je Feld aus den Nachbarwegen (Datenbild, blau): gerade Wege waagerecht oder senkrecht, Kurven als
+// Fächer um die Innenecke, Kreuzungen und Einmündungen als Ringe um die Feldmitte. Am Rand wird das
+// Pflaster lückig (einzelne Steine fehlen, dazwischen Erde und Gras) statt mit harter Kante zu enden.
+const float PK = 6.0; // Steinreihen je Feld
+// Wegeverbindungen eines Feldes: 0 = kein Weg, sonst 16 + Ost 1 + West 2 + Süd 4 + Nord 8
+float tLink(vec2 tile) { return floor(texture2D(uRoad, (tile + 0.5) / uRN).b * 31.875 + 0.5); }
+// Grenze zwischen zwei Reihen bzw. zwei Steinen, leicht verschoben (n > 0: Ring mit n Steinen)
+float tJit(float i, float n, float salt, float amp) { return (th(vec2(n > 0.0 ? mod(i, n) : i, salt)) - 0.5) * amp; }
+vec3 tPave(vec2 q, float e, vec3 ground, float mid, float lo, float hi, float hi2, float pxq, out float hOut) {
+  vec2 tile = floor(q);
+  float v = tLink(tile);
+  if (v < 15.5) {
+    // Randstück auf einem Nachbarfeld ohne Weg: Muster des nächsten Wegfelds fortsetzen
+    vec2 dd = q - tile - 0.5;
+    tile += abs(dd.x) > abs(dd.y) ? vec2(sign(dd.x), 0.0) : vec2(0.0, sign(dd.y));
+    v = tLink(tile);
+  }
+  float m = max(v - 16.0, 0.0);
+  float bE = mod(m, 2.0), bW = mod(floor(m * 0.5), 2.0), bS = mod(floor(m * 0.25), 2.0), bN = floor(m * 0.125);
+  float hor = max(bE, bW), ver = max(bS, bN);
+  // U zählt die Reihen entlang der Fahrtrichtung, V läuft entlang einer Reihe (Maß: eine Reihe = 1)
+  float U, V, salt = 0.0, n = 0.0;
+  if (bE + bW + bS + bN > 2.5) {
+    // Kreuzung, Einmündung: Ringe um die Feldmitte (sie treffen die geraden Reihen der Nachbarfelder)
+    vec2 d = q - tile - 0.5;
+    U = length(d) * PK; V = atan(d.y, d.x) / 6.2831853 + 0.5; salt = dot(tile, vec2(1.7, 9.2));
+  } else if (hor > 0.5 && ver > 0.5) {
+    // Kurve: Reihen fächerförmig um einen Punkt knapp außerhalb der Innenecke
+    vec2 d = q - (tile + vec2(bE, bS) + vec2(bE * 2.0 - 1.0, bS * 2.0 - 1.0) * 0.3);
+    U = atan(abs(d.y), abs(d.x)) * 0.8 * PK; V = length(d) * PK; salt = dot(tile, vec2(3.1, 5.3));
+  } else if (ver > 0.5) {
+    U = q.y * PK; V = q.x * PK;
+  } else {
+    U = q.x * PK; V = q.y * PK;
+  }
+  bool ring = bE + bW + bS + bN > 2.5;
+  // Reihen leicht gewellt und unterschiedlich breit
+  U += (mid - 0.5) * 0.35;
+  float ri = floor(U);
+  float u0 = ri + tJit(ri, 0.0, 17.3 + salt, 0.3), u1 = ri + 1.0 + tJit(ri + 1.0, 0.0, 17.3 + salt, 0.3);
+  if (U < u0) { u1 = u0; ri -= 1.0; u0 = ri + tJit(ri, 0.0, 17.3 + salt, 0.3); }
+  else if (U >= u1) { u0 = u1; ri += 1.0; u1 = ri + 1.0 + tJit(ri + 1.0, 0.0, 17.3 + salt, 0.3); }
+  // entlang der Reihe: Steine unterschiedlich lang, jede Reihe gegen die vorige versetzt
+  float sv = 1.25; // Länge eines Steins (Rechenmaß) in Reihenbreiten
+  if (ring) { n = max(3.0, floor(6.2831853 * (ri + 0.5) * 0.8 + 0.5)); V *= n; sv = 6.2831853 * max(U, 0.3) / n; }
+  else V = V * 0.8 + th(vec2(ri, 5.1 + salt)) * 9.0;
+  float rs = ri * 7.31 + salt;
+  float j = floor(V);
+  float b0 = j + tJit(j, n, rs, 0.6), b1 = j + 1.0 + tJit(j + 1.0, n, rs, 0.6);
+  if (V < b0) { b1 = b0; j -= 1.0; b0 = j + tJit(j, n, rs, 0.6); }
+  else if (V >= b1) { b0 = b1; j += 1.0; b1 = j + 1.0 + tJit(j + 1.0, n, rs, 0.6); }
+  vec2 id = vec2(n > 0.0 ? mod(j, n) : j, ri) + salt;
+  // Stein: Rechteck mit stark gerundeten Ecken, Kante etwas unruhig (Naturstein)
+  float hu = (u1 - u0) * 0.5, hv = (b1 - b0) * 0.5 * sv;
+  vec2 lp = vec2(U - (u0 + u1) * 0.5, (V - (b0 + b1) * 0.5) * sv);
+  float rad = min(hu, hv) * 0.6;
+  vec2 dq = abs(lp) - vec2(hu, hv) + 0.07 + th(id + 2.0) * 0.05 + rad;
+  float sdf = length(max(dq, 0.0)) + min(max(dq.x, dq.y), 0.0) - rad;
+  sdf += (hi - 0.5) * 0.12 + (hi2 - 0.5) * 0.05;
+  // zum Rand hin werden die Steine kleiner und einzelne fehlen; dort liegt festgetretene Erde, die weich ins
+  // Gras (oder in den Sand) übergeht – kein Stein wird an einer Linie abgeschnitten
+  float edge = smoothstep(0.3, 0.72, e);
+  sdf += (1.0 - edge) * 0.6;
+  float keep = step(th(id + 11.1), edge * 2.2 - 0.1);
+  // Größe eines Bildpunkts in Reihenbreiten: glatte Kanten, aus der Ferne nur noch die Mischfarbe
+  float px = pxq * PK;
+  float st = 1.0 - smoothstep(-px * 0.6, px * 0.6, sdf);
+  float det = 1.0 - smoothstep(0.28, 0.65, px);
+  // festgetretener Boden: der Untergrund (Gras, Sand) dunkler und erdiger – auf Sand bleibt er sandfarben
+  vec3 soil = mix(ground, mix(ground * 0.6, vec3(0.17, 0.13, 0.085), 0.5), 0.25 + 0.45 * edge);
+  vec3 fuge = mix(vec3(0.085, 0.07, 0.05), vec3(0.06, 0.088, 0.032), smoothstep(0.5, 0.8, mid) * 0.7);
+  // dunkle Fugen nur um Steine, die da sind; wo einer fehlt, sieht man Erde
+  vec3 bed = keep > 0.5 ? mix(soil, fuge, smoothstep(0.05, 0.45, edge)) : soil;
+  // Farbe je Stein: grau, beige, bräunlich, ab und zu dunkel
+  float r1 = th(id + 7.0), r2 = th(id + 8.3), r3 = th(id + 9.9);
+  vec3 sc = mix(vec3(0.15, 0.14, 0.125), vec3(0.235, 0.198, 0.142), smoothstep(0.25, 0.8, r1));
+  sc = mix(sc, vec3(0.175, 0.125, 0.082), step(0.72, r2) * 0.85);
+  sc = mix(sc, vec3(0.105, 0.102, 0.098), step(0.9, r3) * 0.8);
+  sc *= (0.82 + 0.32 * th(id + 12.7)) * (0.9 + 0.2 * hi2);
+  // gewölbt: zum Rand hin dunkler; Schmutz am Wegrand und fleckig; in der Mitte etwas abgelaufen (heller)
+  float inner = smoothstep(0.0, 0.3, -sdf);
+  sc *= 0.7 + 0.3 * inner;
+  float dirt = (1.0 - smoothstep(0.55, 0.95, e)) * 0.45 + smoothstep(0.6, 0.85, lo * 0.5 + mid * 0.5) * 0.3;
+  sc = mix(sc, vec3(0.16, 0.12, 0.075), dirt * (1.0 - inner * 0.5));
+  sc *= 1.0 + smoothstep(0.85, 1.0, e) * 0.08;
+  vec3 near = mix(bed, sc, st * keep);
+  vec3 farC = mix(soil, mix(fuge, vec3(0.16, 0.142, 0.112) * (0.9 + 0.2 * lo), 0.8), min(1.0, edge * 1.2));
+  hOut = st * keep * (sqrt(inner) * 0.016 + (hi2 - 0.5) * 0.003) * det;
+  return mix(farC, near, det);
+}
 vec3 terrainColor(vec3 p, vec4 w) {
   vec2 q = p.xz;
+  // Größe eines Bildpunkts auf dem Boden (außerhalb aller Verzweigungen berechnet, für das Pflaster)
+  float pxq = length(fwidth(q));
   float cd = distance(p, cameraPosition);
   float nah = 1.0 - smoothstep(40.0, 50.0, cd);
   // feine Muster (Halme, Steine) verblassen mit der Entfernung, damit nichts flimmert
@@ -153,13 +248,18 @@ vec3 terrainColor(vec3 p, vec4 w) {
   vec2 rd = texture2D(uRoad, q / uRN).rg;
   float rr = min(1.0, rd.r + rd.g);
   if (rr > 0.03) {
-    float en = (mid - 0.5) * 0.24 + (hi - 0.5) * 0.08;
-    // Wege enden an der Wasserlinie (kein Pflaster unter Wasser)
-    float cover = smoothstep(0.40, 0.55, rr + en) * smoothstep(-0.04, 0.1, p.y);
-    // Rand: niedergetretenes, trockenes Gras mit Erde
-    float worn = smoothstep(0.12, 0.42, rr + en) * (1.0 - cover);
-    c = mix(c, mix(c, vec3(0.27, 0.22, 0.11), 0.55) * (0.85 + 0.3 * hi), worn * 0.8);
+    // Wege laufen vor der Wasserlinie aus: wo der Strand abfällt, wird der Weg schmaler und endet rund
+    // (kein abgeschnittener Fleck am Wasser, kein Pflaster unter Wasser)
+    float shore = 1.0 - smoothstep(0.07, 0.25, p.y);
+    float en = (mid - 0.5) * 0.24 + (hi - 0.5) * 0.08 - shore * 0.7;
+    float e = rr + en;
     float pave = clamp(rd.g / max(rr, 0.001), 0.0, 1.0);
+    // Pflaster: ruhigerer Rand (die Steine selbst machen ihn unregelmäßig), deckt bis etwas weiter nach außen
+    float ep = rr + (mid - 0.5) * 0.12 - shore * 0.7;
+    float cover = mix(smoothstep(0.40, 0.55, e), smoothstep(0.2, 0.42, ep), pave);
+    // Rand: niedergetretenes, trockenes Gras mit Erde
+    float worn = smoothstep(0.12, 0.42, mix(e, ep, pave)) * (1.0 - cover);
+    c = mix(c, mix(c, vec3(0.27, 0.22, 0.11), 0.55) * (0.85 + 0.3 * hi), worn * 0.8);
     // Erdweg: festgefahrene Erde, Kies, zwei Fahrspuren, in der Mitte ein Grasstreifen
     vec3 dirt = mix(vec3(0.21, 0.135, 0.07), vec3(0.33, 0.23, 0.12), lo * 0.7 + mid * 0.3);
     dirt *= 0.85 + 0.25 * mix(0.5, hi2, fein);
@@ -171,33 +271,10 @@ vec3 terrainColor(vec3 p, vec4 w) {
     float streifen = smoothstep(0.93, 0.995, rr) * smoothstep(0.35, 0.65, mid + hi * 0.3);
     dirt = mix(dirt, vec3(0.12, 0.19, 0.045) * (0.8 + 0.4 * hi), streifen * 0.5);
     float hDirt = -spur * 0.025 + kies * 0.006 + hi2 * 0.004 * fein + streifen * 0.01;
-    // Pflaster: einzelne, leicht gewölbte Steine im Verband, jeder etwas anders gefärbt, Fugen dunkel
-    vec3 stone = vec3(0.36, 0.34, 0.31);
+    // Pflaster: Kopfsteine in Reihen quer zur Wegrichtung (tPave)
+    vec3 stone = c;
     float hStone = 0.0;
-    if (pave > 0.01) {
-      vec2 s = q * vec2(5.6, 7.2);
-      float row = floor(s.y);
-      s.x += row * 0.5 + th(vec2(row, 3.0)) * 0.35;
-      vec2 id = vec2(floor(s.x), row);
-      vec2 cell = fract(s) - 0.5;
-      float rnd = th(id);
-      // jeder Stein etwas anders groß und leicht verschoben (Natursteine statt Fliesen)
-      cell -= (vec2(th(id + 1.3), th(id + 2.7)) - 0.5) * 0.08;
-      vec2 hs = vec2(0.25 + th(id + 4.1) * 0.06, 0.22 + th(id + 5.9) * 0.05);
-      float sdf = length(max(abs(cell) - hs, 0.0)) - 0.14 - (hi2 - 0.5) * 0.04;
-      float st = 1.0 - smoothstep(-0.03, 0.025, sdf);
-      vec3 sc = mix(vec3(0.15, 0.14, 0.12), vec3(0.30, 0.27, 0.225), rnd);
-      sc = mix(sc, sc * vec3(1.12, 0.97, 0.82), th(id + 7.0) * 0.6);
-      sc *= 0.85 + 0.25 * hi2;
-      // Fugen: Erde, stellenweise Moos
-      vec3 fuge = mix(vec3(0.10, 0.08, 0.06), vec3(0.08, 0.12, 0.04), smoothstep(0.5, 0.8, mid));
-      vec3 near = mix(fuge, sc, st);
-      vec3 farC = mix(vec3(0.20, 0.185, 0.165), vec3(0.25, 0.23, 0.20), lo);
-      stone = mix(farC, near, fein);
-      hStone = (st * (0.012 - dot(cell, cell) * 0.03)) * fein;
-      // Randsteine etwas dunkler, damit der Weg eine klare Kante hat
-      stone *= 1.0 - (1.0 - smoothstep(0.55, 0.66, rr + en)) * 0.25;
-    }
+    if (pave > 0.01) stone = tPave(q, ep, c, mid, lo, hi, hi2, pxq, hStone);
     vec3 road = mix(dirt, stone, pave);
     c = mix(c, road, cover);
     tH = mix(tH, mix(hDirt, hStone, pave), cover);
@@ -340,7 +417,7 @@ if (vFog < 0.999) {
   gl_FragColor.rgb = mix(mist, gl_FragColor.rgb, smoothstep(0.0, 1.0, vFog));
 }`);
     };
-    this.mat.customProgramCacheKey = () => 'terrain-welt-v3';
+    this.mat.customProgramCacheKey = () => 'terrain-welt-v4';
 
     // Gelände in Blöcken zu 32 × 32 Feldern; Blöcke mit nur tiefem Meer entfallen
     const nc = (this.nc = Math.ceil(N / CT));
@@ -510,18 +587,46 @@ if (vFog < 0.999) {
     const g = this.g, N = this.N, data = this.roadTex.image.data as Uint8Array, shown = this.roadShown;
     const all = !tiles;
     let y0 = N, y1 = -1;
+    const mark = (i: number) => {
+      const y = (i / N) | 0;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    };
+    const changed: number[] = [];
     const put = (i: number) => {
       const v = g.seen[i] ? g.roads[i] : 0;
       if (v === shown[i] && !all) return;
       shown[i] = v;
       data[i * 4] = v === 1 ? 255 : 0;
       data[i * 4 + 1] = v === 2 ? 255 : 0;
-      const y = (i / N) | 0;
-      if (y < y0) y0 = y;
-      if (y > y1) y1 = y;
+      changed.push(i);
+      mark(i);
     };
-    if (all) for (let i = 0; i < N * N; i++) put(i);
-    else for (const i of tiles) put(i);
+    // blau: Verbindungen zu Nachbarwegen (Ost 1, West 2, Süd 4, Nord 8) + 16 = „hier ist ein Weg“, mal 8.
+    // Daraus legt das Farbprogramm die Pflastersteine quer zur Wegrichtung (Kurven als Fächer, Kreuzungen als Ringe).
+    const link = (i: number) => {
+      let v = 0;
+      if (shown[i]) {
+        const x = i % N, y = (i / N) | 0;
+        v = 16;
+        if (x < N - 1 && shown[i + 1]) v |= 1;
+        if (x > 0 && shown[i - 1]) v |= 2;
+        if (y < N - 1 && shown[i + N]) v |= 4;
+        if (y > 0 && shown[i - N]) v |= 8;
+      }
+      if (data[i * 4 + 2] !== v * 8) { data[i * 4 + 2] = v * 8; mark(i); }
+    };
+    if (all) { for (let i = 0; i < N * N; i++) put(i); for (let i = 0; i < N * N; i++) link(i); }
+    else {
+      for (const i of tiles) put(i);
+      for (const i of changed) {
+        link(i);
+        if (i % N < N - 1) link(i + 1);
+        if (i % N > 0) link(i - 1);
+        if (i + N < N * N) link(i + N);
+        if (i - N >= 0) link(i - N);
+      }
+    }
     if (y1 < 0) return false;
     // Teil-Uploads erst, wenn das Bild einmal ganz auf der Grafikkarte ist; je Zeile ein Bereich
     if (all || this.roadFresh) { this.roadFresh = true; this.roadTex.clearUpdateRanges(); }

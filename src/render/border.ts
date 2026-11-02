@@ -1,21 +1,24 @@
-// Gebietsgrenze als saubere, weiche Linie in Besitzerfarbe.
+// Gebietsgrenze als gestrichelte Linie in Besitzerfarbe (wie eine Grenze auf einer Landkarte).
 //
 // Früher lief die Grenze als Band genau auf den Feldkanten: eckige Treppen, und an der Küste lag sie als
-// Zickzack auf dem Wasser. Jetzt:
+// Zickzack auf dem Wasser. Danach war sie ein weiches, hellblaues Band – das sah aus wie ein Bach. Jetzt:
 // - Für jeden Besitzer wird „gehört ihm“ (1) / „gehört ihm nicht“ (0) je Feld leicht weichgezeichnet und
-//   die Linie bei 0,5 nachgezogen (Höhenlinie). Danach werden die Ecken zweimal abgerundet.
+//   die Linie etwas innerhalb der Feldkante nachgezogen (Höhenlinie). Danach werden die Ecken zweimal
+//   abgerundet. Die Grenzen zweier Nachbarn liegen so nebeneinander statt übereinander.
 // - Wasser übernimmt den Wert des nächsten Landfelds: entlang der Küste entsteht so keine Grenze, und eine
-//   Grenze, die zum Meer läuft, blendet am Strand weich aus (über Wasser ist die Linie unsichtbar).
-// - Die Linie ist innen kräftig und läuft zu beiden Seiten durchsichtig aus (keine harten Kanten).
+//   Grenze, die zum Meer läuft, endet auf dem Strand vor der Wasserlinie.
+// - Gezeichnet wird ein schmales Band, auf das das Grafikprogramm (borderMaterial) schmale Striche mit runden
+//   Enden malt: in der Besitzerfarbe, mit dunklem Rand. So ist die Linie auf Gras,
+//   Wald, Sand und Fels gleich gut zu sehen und kann nicht mit Wasser verwechselt werden.
 import * as THREE from 'three';
 import { Game } from '../game';
 import { T } from '../world';
 
 const FAR = 3; // so viele Felder weit übernimmt das Wasser den Besitz des nächsten Landfelds
-const CORE = 0.05; // halbe Breite des kräftigen Teils (Felder)
-const SOFT = 0.15; // halbe Breite bis ganz durchsichtig
-
-/** Höhenlinien bei 0,5 eines Feldes f (Werte an den Feldmitten), als Linienzüge in Weltkoordinaten */
+const LEVEL = 0.58; // Höhenlinie: etwas über 0,5, damit die Linie knapp im eigenen Gebiet liegt
+const HALF = 0.26; // halbe Breite des Bandes (Felder) – die Striche selbst sind schmaler
+const DASH = 0.55; // Abstand von Strich zu Strich (Felder)
+/** Höhenlinien bei LEVEL eines Feldes f (Werte an den Feldmitten), als Linienzüge in Weltkoordinaten */
 function contours(f: Float32Array, N: number, x0: number, y0: number, x1: number, y1: number): number[][] {
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= N || y >= N ? 0 : f[y * N + x]);
   // Schnittpunkte auf Gitterkanten: Schlüssel → Punkt
@@ -25,7 +28,7 @@ function contours(f: Float32Array, N: number, x0: number, y0: number, x1: number
     const k = edgeKey(xa, ya, vert);
     if (!pt.has(k)) {
       const a = at(xa, ya), b = at(xb, yb);
-      const t = Math.abs(b - a) < 1e-6 ? 0.5 : (0.5 - a) / (b - a);
+      const t = Math.abs(b - a) < 1e-6 ? 0.5 : (LEVEL - a) / (b - a);
       pt.set(k, [xa + 0.5 + (xb - xa) * t, ya + 0.5 + (yb - ya) * t]);
     }
     return k;
@@ -37,13 +40,13 @@ function contours(f: Float32Array, N: number, x0: number, y0: number, x1: number
   };
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
     const a = at(x, y), b = at(x + 1, y), c = at(x + 1, y + 1), d = at(x, y + 1);
-    const code = (a > 0.5 ? 1 : 0) | (b > 0.5 ? 2 : 0) | (c > 0.5 ? 4 : 0) | (d > 0.5 ? 8 : 0);
+    const code = (a > LEVEL ? 1 : 0) | (b > LEVEL ? 2 : 0) | (c > LEVEL ? 4 : 0) | (d > LEVEL ? 8 : 0);
     if (code === 0 || code === 15) continue;
     const top = () => cross(x, y, x + 1, y, 0);
     const right = () => cross(x + 1, y, x + 1, y + 1, 1);
     const bottom = () => cross(x, y + 1, x + 1, y + 1, 0);
     const left = () => cross(x, y, x, y + 1, 1);
-    const mid = (a + b + c + d) / 4 > 0.5;
+    const mid = (a + b + c + d) / 4 > LEVEL;
     switch (code) {
       case 1: case 14: link(left(), top()); break;
       case 2: case 13: link(top(), right()); break;
@@ -101,13 +104,15 @@ function smooth(line: number[], closed: boolean): number[] {
 }
 
 /**
- * Grenzlinien aller Besitzer als ein Dreiecksnetz mit Farbe und Deckkraft je Ecke.
+ * Grenzlinien aller Besitzer als ein Dreiecksnetz: Farbe und Sichtbarkeit je Ecke, dazu „bd“ =
+ * (Weg entlang der Linie in Feldern, Lage quer zur Linie −1 … 1) für die Striche im Grafikprogramm.
  * heightAt = Geländehöhe; colorOf = Farbe eines Besitzers.
  */
 export function borderGeometry(g: Game, heightAt: (x: number, z: number) => number, colorOf: (owner: number) => number): THREE.BufferGeometry {
   const N = g.size;
   const pos: number[] = [];
   const col: number[] = [];
+  const bd: number[] = [];
   const owners = new Map<number, [number, number, number, number]>();
   for (let i = 0; i < N * N; i++) {
     const o = g.own[i];
@@ -157,47 +162,111 @@ export function borderGeometry(g: Game, heightAt: (x: number, z: number) => numb
       addRibbon(line, closed, heightAt, (x, z) => {
         const tx = Math.floor(x), tz = Math.floor(z);
         return tx >= 0 && tz >= 0 && tx < N && tz < N && g.seen[tz * N + tx] ? 1 : 0;
-      }, c, pos, col);
+      }, c, pos, col, bd);
     }
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  geo.setAttribute('bd', new THREE.Float32BufferAttribute(bd, 2));
   return geo;
 }
 
-/** Band entlang eines Linienzugs: vier Reihen (außen durchsichtig, innen kräftig) */
+/**
+ * Band entlang eines Linienzugs: drei Reihen (links, Mitte, rechts), damit es dem Boden folgt.
+ * Die Sichtbarkeit (Deckkraft je Ecke) ist 0 über Wasser und im Nebel und läuft am Strand aus, sodass die
+ * Linie auf dem Sand vor der Wasserlinie endet.
+ */
 function addRibbon(line: number[], closed: boolean, heightAt: (x: number, z: number) => number, seen: (x: number, z: number) => number,
-  c: THREE.Color, pos: number[], col: number[]) {
+  c: THREE.Color, pos: number[], col: number[], bd: number[]) {
   const n = line.length / 2;
   if (n < 2) return;
-  const offs = [-SOFT, -CORE, CORE, SOFT];
-  const rows: number[][] = []; // je Punkt: 4 × (x, y, z, alpha)
+  // Weg entlang der Linie; bei Ringen leicht gestreckt, damit die Striche am Anfang und Ende genau aufgehen
+  const m = closed ? n : n - 1;
+  const s = new Float32Array(n + 1);
+  for (let i = 0; i < m; i++) {
+    const j = (i + 1) % n;
+    s[i + 1] = s[i] + Math.hypot(line[j * 2] - line[i * 2], line[j * 2 + 1] - line[i * 2 + 1]);
+  }
+  if (closed && s[n] > 0) {
+    const k = (Math.max(1, Math.round(s[n] / DASH)) * DASH) / s[n];
+    for (let i = 0; i <= n; i++) s[i] *= k;
+  }
+  const offs = [-HALF, 0, HALF];
+  const rows: number[][] = []; // je Punkt: 3 × (x, y, z, Sichtbarkeit)
   for (let i = 0; i < n; i++) {
     const ip = closed ? (i - 1 + n) % n : Math.max(0, i - 1), inx = closed ? (i + 1) % n : Math.min(n - 1, i + 1);
     let tx = line[inx * 2] - line[ip * 2], tz = line[inx * 2 + 1] - line[ip * 2 + 1];
     const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
     const x = line[i * 2], z = line[i * 2 + 1];
-    const h = heightAt(x, z);
-    // über Wasser unsichtbar, am Strand weich auslaufend; im Nebel ebenfalls aus
-    const vis = THREE.MathUtils.smoothstep(h, 0.02, 0.22) * seen(x, z);
+    // über Wasser unsichtbar, auf dem Strand vor der Wasserlinie auslaufend; im Nebel ebenfalls aus
+    const vis = THREE.MathUtils.smoothstep(heightAt(x, z), 0.1, 0.24) * seen(x, z);
     const r: number[] = [];
     for (const o of offs) {
       const px = x - tz * o, pz = z + tx * o;
-      const py = Math.max(heightAt(px, pz), 0.05) + 0.06;
-      r.push(px, py, pz, Math.abs(o) > CORE + 1e-6 ? 0 : 0.9 * vis);
+      const py = Math.max(heightAt(px, pz), 0.05) + 0.05;
+      r.push(px, py, pz, vis);
     }
     rows.push(r);
   }
-  const m = closed ? n : n - 1;
-  const put = (r: number[], k: number) => { pos.push(r[k * 4], r[k * 4 + 1], r[k * 4 + 2]); col.push(c.r, c.g, c.b, r[k * 4 + 3]); };
+  const put = (r: number[], k: number, si: number) => {
+    pos.push(r[k * 4], r[k * 4 + 1], r[k * 4 + 2]);
+    col.push(c.r, c.g, c.b, r[k * 4 + 3]);
+    bd.push(si, k - 1);
+  };
   for (let i = 0; i < m; i++) {
     const a = rows[i], b = rows[(i + 1) % n];
     // ganz unsichtbare Stücke weglassen
-    if (a[7] === 0 && a[11] === 0 && b[7] === 0 && b[11] === 0) continue;
-    for (let k = 0; k < 3; k++) {
-      put(a, k); put(b, k); put(b, k + 1);
-      put(a, k); put(b, k + 1); put(a, k + 1);
+    if (a[3] === 0 && b[3] === 0) continue;
+    const sa = s[i], sb = s[i + 1];
+    for (let k = 0; k < 2; k++) {
+      put(a, k, sa); put(b, k, sb); put(b, k + 1, sb);
+      put(a, k, sa); put(b, k + 1, sb); put(a, k + 1, sa);
     }
   }
+}
+
+/**
+ * Material der Grenzlinie: malt auf das Band schmale Striche mit runden Enden in der Besitzerfarbe, mit
+ * dunklem Rand. Die Kanten werden je Bildpunkt geglättet (kein Flimmern beim Zoomen);
+ * wird die Linie aus großer Höhe sehr dünn, wachsen die Striche zu einer durchgehenden Linie zusammen.
+ */
+export function borderMaterial(): THREE.MeshBasicMaterial {
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', `#include <common>
+attribute vec2 bd;
+varying vec2 vBd;`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+vBd = bd;`);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec2 vBd;`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+{
+  vec2 p = vec2(vBd.x, vBd.y * ${HALF.toFixed(3)});
+  // Größe eines Bildpunkts in Feldern (für glatte Kanten)
+  float px = max(fwidth(vBd.x), 1e-4);
+  float per = ${DASH.toFixed(3)};
+  // Strich als schmale Kapsel mit runden Enden. Breite und Rand wachsen mit der Entfernung mit (am Bildschirm
+  // etwa gleich dick); aus großer Höhe werden die Striche länger, bis die Linie durchgeht.
+  float len = mix(0.3, per + 0.2, smoothstep(0.045, 0.1, px));
+  float r = clamp(px * 3.6, 0.055, 0.115);
+  float ow = clamp(px * 1.4, 0.016, 0.036);
+  float u = mod(p.x, per) - per * 0.5;
+  float d = length(vec2(max(abs(u) - (len * 0.5 - r), 0.0), p.y)) - r;
+  float aa = px * 0.8;
+  float body = 1.0 - smoothstep(-aa, aa, d);
+  float rim = 1.0 - smoothstep(ow - aa, ow + aa, d);
+  // Besitzerfarbe kräftig, zur Mitte des Strichs etwas heller (wirkt wie ein gemalter Strich)
+  vec3 own = diffuseColor.rgb * (1.05 + 0.25 * (1.0 - smoothstep(0.0, r, abs(p.y))));
+  // dunkler Rand: trennt die Linie von hellem Sand, sattem Gras und dunklem Wald
+  diffuseColor.rgb = mix(vec3(0.025, 0.02, 0.015), own, body);
+  // Sichtbarkeit (Strand, Nebel) mit klarer Kante statt halb durchsichtiger Striche
+  diffuseColor.a = smoothstep(0.3, 0.7, diffuseColor.a) * max(body, rim * 0.9);
+}`);
+  };
+  mat.customProgramCacheKey = () => 'grenze-strich-v2';
+  return mat;
 }
