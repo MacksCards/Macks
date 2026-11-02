@@ -105,3 +105,5 @@
 /* Status eines Betriebs: lange Texte brechen um, die Spalte darf breit werden */
 .info .row.status b { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.25; }
 .info .xline { color: var(--warn); }
+/* (S3) Brand, Pest, Dürre und „Kein Weg“ in Warnrot (laufende Ereignisse stehen unter der Überschrift) */
+.info .xline.neg { color: #f08a72; font-weight: 600; }

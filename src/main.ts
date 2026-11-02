@@ -10,6 +10,7 @@ import { grafikWahl } from './ui/settings';
 import { calmClock } from './render/cloth';
 import { ZOOM_STEP } from './input';
 import * as THREE from 'three';
+import * as events from './events'; // (S3) nur für automatische Tests (window.__events)
 
 const TICK = 0.25; // Sekunden Spielzeit pro Simulationsschritt
 
@@ -260,6 +261,7 @@ async function boot() {
   (window as unknown as { __ui: UI }).__ui = ui;
   (window as unknown as { __view: View }).__view = view;
   (window as unknown as { __sound: typeof sound }).__sound = sound;
+  (window as unknown as { __events: typeof events }).__events = events; // (S3) Feuer, Pest, Dürre im Test auslösen
 }
 
 void boot().catch((e) => {

@@ -27,11 +27,18 @@ const EXTRA: InfoLines[] = [eventLines];
 /** weiteren Lieferanten für Zusatzzeilen anmelden (z. B. Ureinwohner, Paket S4) */
 export function addInfoLines(fn: InfoLines) { if (!EXTRA.includes(fn)) EXTRA.push(fn); }
 
-function extraHtml(L: Live, g: Game, b: Building): string {
+/** (S3) Laufendes (Brand, Pest, Dürre) gehört gleich unter die Überschrift */
+const URGENT = /^(🔥|💀|☀️)/u;
+
+/** Zusatzzeilen einsetzen: Dringendes unter die Überschrift, alles andere (Schutz, Hinweise) unten anfügen */
+function withExtra(h: string, L: Live, g: Game, b: Building): string {
   const lines: string[] = [];
   for (const fn of EXTRA) { try { lines.push(...fn(g, b)); } catch { /* ein fehlerhafter Spielteil darf das Fenster nicht stören */ } }
-  // als ein wechselnder Block: neue oder verschwundene Zeilen bauen das Fenster nicht neu
-  return `<div class="xlines">${L.v(lines.map((l) => `<p class="sub xline">${esc(l)}</p>`).join(''))}</div>`;
+  const row = (l: string, warn: boolean) => `<p class="sub xline${warn ? ' neg' : ''}">${esc(l)}</p>`;
+  const top = lines.filter((l) => URGENT.test(l)).map((l) => row(l, true)).join('');
+  const rest = lines.filter((l) => !URGENT.test(l)).map((l) => row(l, l.startsWith('🚧'))).join('');
+  // je ein wechselnder Block: neue oder verschwundene Zeilen bauen das Fenster nicht neu
+  return h.replace('</h3>', `</h3><div class="xlines xtop">${L.v(top)}</div>`) + `<div class="xlines">${L.v(rest)}</div>`;
 }
 
 // ---------- „Wo?“: zum Hersteller springen oder die passende Baumenü-Kategorie öffnen ----------
@@ -157,7 +164,7 @@ export class InfoPanel {
     const f = (b.hp ?? g.maxHp(b)) / g.maxHp(b);
     h += `<div class="row"><span>❤️ Zustand</span><b>${L.v(`${Math.round(f * 10) * 10} %`)}</b></div>${L.bar(f, f > 0.6 ? '#7cc95a' : f > 0.3 ? '#e8b93a' : '#e2553f')}`;
     h += `<p class="sub">${atWar(g, HUMAN, b.owner) ? '⚔️ Ihr seid im Krieg.' : '🕊️ Ihr habt Frieden.'} Wähle Soldaten oder ein Schiff mit Kanonen und tippe hierher, um anzugreifen.${b.type === 'kontor' || b.type === 'markt' ? ' Fällt es, während deine Soldaten daneben stehen, gehört es dir – mit dem Land ringsum.' : ''}</p>`;
-    h += extraHtml(L, g, b);
+    h = withExtra(h, L, g, b);
     this.show(L, h);
   }
 
@@ -191,7 +198,7 @@ export class InfoPanel {
     if (this.tab === 'bilanz' && k) { const r = this.bilanzTab(L, k); h += r.body; foot = r.foot; }
     else if (this.tab === 'ausbau' && k) { const r = this.ausbauTab(L, k); h += r.body; foot = r.foot; }
     else h += this.lagerTab(L, k, isl);
-    if (k) h += extraHtml(L, g, k);
+    if (k) h = withExtra(h, L, g, k);
     if (!this.show(L, h, foot)) return;
     this.bindTabs();
     const box = $('#info');
@@ -375,7 +382,7 @@ export class InfoPanel {
     // Unterhalt: was es jetzt kostet, und was es in Ruhe kosten würde
     const idle = d.upkeepIdle !== undefined && d.upkeepIdle !== d.upkeep;
     if (d.upkeep > 0 || idle) h += `<div class="row"><span>Unterhalt jetzt${idle ? ` <small>(ruhend ${d.upkeepIdle})</small>` : ''}</span><b>${L.v(`${g.upkeepOf(b)}/Min`)}</b></div>`;
-    h += extraHtml(L, g, b);
+    h = withExtra(h, L, g, b);
     if (d.prod) foot += b.off ? `<button class="btn ok" id="infoOff">▶ Betreiben<small>Unterhalt dann ${d.upkeep}</small></button>` : `<button class="btn" id="infoOff">⏸ Ruhen lassen${idle ? `<small>Unterhalt nur ${d.upkeepIdle}</small>` : ''}</button>`;
     if (b.type !== 'kontor') foot += `<button class="btn danger" id="infoDel">💥 Abreißen</button>`;
     if (!this.show(L, h, foot)) return;

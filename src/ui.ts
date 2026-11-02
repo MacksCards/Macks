@@ -616,6 +616,9 @@ export class UI {
     else if (/eingezogen/.test(text)) sound.play('aufstieg');
     else if (/Aufgabe erledigt|ausgebaut/.test(text)) sound.play('muenzen');
     else if (/Stapel/.test(text)) sound.play('horn');
+    // (S3) Ereignisse: Feuer, Pest und Dürre mit Sturmglocke, Schatz mit Münzen
+    else if (/^(🔥 Feuer|💀 Pest auf|☀️ Dürre)/u.test(text)) sound.play('alarm');
+    else if (/^💰 Schatz/u.test(text)) sound.play('muenzen');
     else if (/^⚠️/.test(text) || /^⚔️ (Angriff|Dein Schiff|.* erklärt dir)/.test(text) || /Piraten gesichtet/.test(text)) sound.play('alarm');
     else if (/^(⚔️|💣) /.test(text)) { /* Befehl – eigener Klang */ }
     else if (/ausgebildet/.test(text)) sound.play('marsch');
