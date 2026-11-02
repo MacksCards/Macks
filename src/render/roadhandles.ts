@@ -2,17 +2,19 @@
 // (wie beim Verschieben einer Route in einer Karten-App).
 // - kleiner weißer Kreis in der Mitte jedes Wegstücks: ziehen = neuen Knickpunkt anlegen
 // - goldener Kreis mit vier Pfeilen: ein Knickpunkt (ziehen = verschieben, antippen = entfernen)
-// - Kreis am Ziel: ziehen = Ziel verschieben
+// - Kreis mit Fähnchen am Ziel: ziehen = Ziel verschieben
+// - Start: heller Kreis mit dunklem Punkt (nur Zeichen, nicht ziehbar)
+// Ein Tipp auf einen Griff ist ein normaler Tipp (siehe build.ts); erst wer den Finger bewegt, zieht.
 // Die Griffe haben am Bildschirm immer dieselbe Größe und liegen über allem (auch über Bäumen).
 import * as THREE from 'three';
 
-export type HandleKind = 'mid' | 'via' | 'end';
+export type HandleKind = 'start' | 'mid' | 'via' | 'end';
 export interface Handle { kind: HandleKind; x: number; y: number; z: number }
 
 /** Größe am Bildschirm (Bildpunkte, Durchmesser) */
-const PX: Record<HandleKind, number> = { mid: 30, via: 38, end: 34 };
-/** so nah muss der Finger an einem Griff landen (Bildpunkte) */
-const HIT_PX = 30;
+const PX: Record<HandleKind, number> = { start: 24, mid: 30, via: 36, end: 36 };
+/** so nah muss der Finger an einem Griff landen: sichtbarer Kreis plus dieser Rand (Bildpunkte) */
+const HIT_EXTRA = 8;
 const MAX = 24;
 
 /** Bild eines Griffs zeichnen (Kreis mit Schatten, Rand und Pfeilen) */
@@ -28,7 +30,7 @@ function drawHandle(kind: HandleKind): THREE.CanvasTexture {
   // Füllung mit leichtem Verlauf (wirkt wie ein gewölbter Knopf)
   const g = x.createRadialGradient(-r * 0.3, -r * 0.35, r * 0.1, 0, 0, r);
   if (kind === 'via') { g.addColorStop(0, '#fff2b8'); g.addColorStop(1, '#e8a417'); }
-  else if (kind === 'end') { g.addColorStop(0, '#fffbe0'); g.addColorStop(1, '#f2d64b'); }
+  else if (kind === 'end') { g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#cfe0f2'); }
   else { g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#d9e4d0'); }
   x.fillStyle = g;
   x.beginPath(); x.arc(0, 0, r, 0, Math.PI * 2); x.fill();
@@ -36,8 +38,25 @@ function drawHandle(kind: HandleKind): THREE.CanvasTexture {
   x.lineWidth = S * 0.06;
   x.strokeStyle = '#3b2610';
   x.stroke();
-  // vier kleine Pfeile = „verschieben“
   x.fillStyle = '#3b2610';
+  if (kind === 'start') {
+    // Start: nur ein dicker Punkt
+    x.beginPath(); x.arc(0, 0, r * 0.38, 0, Math.PI * 2); x.fill();
+    return texOf(c);
+  }
+  if (kind === 'end') {
+    // Ziel: Fähnchen (Stange + rote Fahne)
+    x.fillRect(-r * 0.32, -r * 0.62, r * 0.12, r * 1.24);
+    x.fillStyle = '#d23a2a';
+    x.beginPath();
+    x.moveTo(-r * 0.2, -r * 0.62); x.lineTo(r * 0.5, -r * 0.4); x.lineTo(-r * 0.2, -r * 0.12);
+    x.closePath(); x.fill();
+    x.lineWidth = S * 0.025; x.strokeStyle = '#3b2610'; x.stroke();
+    x.fillStyle = '#3b2610';
+    x.beginPath(); x.ellipse(-r * 0.26, r * 0.62, r * 0.3, r * 0.1, 0, 0, Math.PI * 2); x.fill();
+    return texOf(c);
+  }
+  // vier kleine Pfeile = „verschieben“
   const a = r * 0.62, w = r * 0.24, l = r * 0.26;
   for (let i = 0; i < 4; i++) {
     x.save();
@@ -52,6 +71,10 @@ function drawHandle(kind: HandleKind): THREE.CanvasTexture {
   }
   // Mitte: Punkt
   x.beginPath(); x.arc(0, 0, r * 0.14, 0, Math.PI * 2); x.fill();
+  return texOf(c);
+}
+
+function texOf(c: HTMLCanvasElement): THREE.CanvasTexture {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
@@ -67,7 +90,7 @@ export class RoadHandles {
   private v = new THREE.Vector3();
 
   constructor() {
-    for (const k of ['mid', 'via', 'end'] as HandleKind[]) {
+    for (const k of ['start', 'mid', 'via', 'end'] as HandleKind[]) {
       this.mats[k] = new THREE.SpriteMaterial({
         map: drawHandle(k), sizeAttenuation: false, depthTest: false, depthWrite: false, transparent: true,
         opacity: k === 'mid' ? 0.9 : 1,
@@ -109,17 +132,19 @@ export class RoadHandles {
     });
   }
 
-  /** Griff unter dem Finger (nächster in Fingerbreite) oder -1; Knickpunkte und Ziel vor den Mittel-Griffen */
+  /** Griff unter dem Finger (auf dem Kreis oder knapp daneben) oder -1; der Start zählt nicht (nicht ziehbar) */
   at(clientX: number, clientY: number, camera: THREE.PerspectiveCamera, rect: DOMRect): number {
     let best = -1, bestD = Infinity;
     camera.updateMatrixWorld();
     this.list.forEach((h, i) => {
+      if (h.kind === 'start') return;
       this.v.set(h.x, h.y, h.z).project(camera);
       if (this.v.z > 1) return;
       const sx = rect.left + ((this.v.x + 1) / 2) * rect.width, sy = rect.top + ((1 - this.v.y) / 2) * rect.height;
-      // Mittel-Griffe zählen etwas weiter weg, damit ein Knickpunkt daneben gewinnt
-      const d = Math.hypot(sx - clientX, sy - clientY) + (h.kind === 'mid' ? 6 : 0);
-      if (d < HIT_PX + (h.kind === 'mid' ? 6 : 0) && d < bestD) { bestD = d; best = i; }
+      // bei gleich nahen Griffen gewinnen Knickpunkt und Ziel vor der Mitte
+      const d = Math.hypot(sx - clientX, sy - clientY);
+      const rank = d + (h.kind === 'mid' ? 4 : 0);
+      if (d < PX[h.kind] / 2 + HIT_EXTRA && rank < bestD) { bestD = rank; best = i; }
     });
     return best;
   }

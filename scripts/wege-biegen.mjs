@@ -54,6 +54,8 @@ const setup = await page.evaluate(() => {
     if (ok) pair = [[x, y], [x + 10, y]];
   }
   if (pair) for (let i = -3; i <= 13; i++) for (let j = -5; j <= 5; j++) g.own[g.idx(pair[0][0] + i, pair[0][1] + j)] = 0;
+  // Nebel über dem Prüfgebiet aufdecken (für brauchbare Bilder)
+  if (pair) { for (let i = -20; i <= 30; i++) for (let j = -18; j <= 18; j++) if (g.inMap(pair[0][0] + i, pair[0][1] + j)) g.seen[g.idx(pair[0][0] + i, pair[0][1] + j)] = 1; window.__view.onSeen(); }
   return { placed, pair };
 });
 console.log('Aufbau:', JSON.stringify(setup));
@@ -74,7 +76,7 @@ await tap(sB);
 const st1 = await page.evaluate(() => { const b = window.__ui.build; return { cells: b.roadCells.length, end: b.roadEndSet, h: window.__view.roadHandles.count }; });
 console.log('Geplant:', JSON.stringify(st1));
 check(st1.end && st1.cells === 11, 'gerader Weg mit 11 Feldern geplant');
-check(st1.h === 2, 'zwei Ziehpunkte (Mitte + Ziel)');
+check(st1.h === 3, 'Zeichen: Start, Mitte (ziehbar), Ziel');
 await page.waitForTimeout(400);
 await page.screenshot({ path: `${out}/wb1-geplant-${W}.png` });
 // Mittel-Griff 4 Felder zur Seite ziehen
@@ -91,7 +93,7 @@ console.log('Gebogen:', JSON.stringify({ vias: st2.vias, n: st2.cells.length, h:
 check(st2.vias.length === 1 && st2.vias[0][1] === A[1] + 4, 'Knickpunkt 4 Felder daneben gesetzt');
 check(st2.cells.some(([x, y]) => x === st2.vias[0]?.[0] && y === st2.vias[0]?.[1]), 'Weg läuft über den Knickpunkt');
 check(st2.cells[0][0] === A[0] && st2.cells[0][1] === A[1] && st2.cells.at(-1)[0] === B[0] && st2.cells.at(-1)[1] === B[1], 'Anfang und Ende unverändert');
-check(st2.h >= 3, 'Ziehpunkte: Knickpunkt, Ziel und Mitten');
+check(st2.h >= 4, 'Ziehpunkte: Start, Knickpunkt, Ziel und Mitten');
 const roads1 = await page.evaluate(() => window.__game().roads.reduce((a, b) => a + (b > 0), 0));
 check(roads1 === roads0, 'Ziehen baut nichts');
 await page.screenshot({ path: `${out}/wb3-gebogen-${W}.png` });
@@ -121,6 +123,68 @@ const st6 = await page.evaluate(() => { const b = window.__ui.build; return { vi
 check(st6.roads - roads0 === n5, `✓ baut den gebogenen Weg (${st6.roads - roads0} von ${n5} Feldern)`);
 check(st6.vias === 0 && st6.h === 0, 'nach dem Bauen keine Ziehpunkte mehr');
 await page.screenshot({ path: `${out}/wb4-gebaut-${W}.png` });
+
+// ---------- Grenzfälle aus der Prüfung ----------
+// synthetische Finger (mehrere gleichzeitig möglich)
+const ptr = (type, id, p) => page.evaluate(([type, id, x, y]) => {
+  document.querySelector('#c').dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, bubbles: true, pointerType: 'touch', isPrimary: id === 1, button: 0 }));
+}, [type, id, p[0], p[1]]);
+const st = () => page.evaluate(() => { const b = window.__ui.build; return { vias: b.roadVias.map((v) => v.join(',')), n: b.roadCells.length, end: b.roadEndSet, last: b.roadCells.at(-1)?.join(','), roads: window.__game().roads.reduce((a, b) => a + (b > 0), 0) }; });
+// neuer Plan: Start = gebautes Ende (B), Ziel 10 Felder zurück auf der Linie ein Feld daneben
+// näher heran: auf dem kleinen iPhone sind Felder sonst nur ~15 Bildpunkte breit, und schon ein Wackeln wechselt das Feld
+await page.evaluate(([A]) => { const r = window.__view.rig; r.tx = A[0] + 5.5; r.tz = A[1] + 2.5; r.dist = 15; window.__view.updateCamera(); }, [A]);
+await page.waitForTimeout(500);
+const C = [A[0], A[1] + 2];
+await tap(await scr(...C));
+await page.waitForTimeout(600);
+let s0 = await st();
+check(s0.end && s0.n > 5, 'zweiter Plan angelegt');
+// 1) Ziel-Kreis gedrückt halten, leicht wackeln (im selben Feld), 0,9 s, loslassen: baut NICHT
+let pc = await scr(...C);
+await ptr('pointerdown', 1, pc);
+await ptr('pointermove', 1, [pc[0] + 5, pc[1] + 4]);
+await ptr('pointermove', 1, [pc[0] + 10, pc[1] + 2]);
+await page.waitForTimeout(900);
+await ptr('pointerup', 1, [pc[0] + 10, pc[1] + 2]);
+await page.waitForTimeout(400);
+let s1 = await st();
+check(s1.roads === s0.roads && s1.end, 'Ziel-Kreis festhalten und wackeln baut nichts');
+// 2) Tipp aufs Nachbarfeld des Ziels: neues Ziel, kein Bau
+const C2 = [C[0] + 1, C[1]];
+await page.waitForTimeout(600);
+const pC2 = await scr(...C2);
+console.log('C2-Probe:', JSON.stringify(await page.evaluate(([x, y]) => ({ pick: window.__view.pick(x, y, false), handle: window.__view.roadHandleAt(x, y), before: window.__ui.build.roadCells.at(-1), target: window.__ui.build.roadStart }), pC2)), JSON.stringify(pC2));
+await tap(pC2);
+let s2 = await st();
+check(s2.roads === s0.roads && s2.end, `Tipp neben das Ziel setzt ein neues Ziel statt zu bauen (${JSON.stringify(s2)} ${C2})`);
+// 3) Mittel-Kreis ziehen, dann zweiter Finger (Zoom): Knick wird zurückgenommen
+const midNow = await page.evaluate(() => { const b = window.__ui.build; const c = b.roadCells[Math.round((b.roadCells.length - 1) / 2)]; return c; });
+let m0 = await scr(...midNow), m1 = await scr(midNow[0], midNow[1] + 3);
+const nBefore = (await st()).n;
+await ptr('pointerdown', 1, m0);
+for (let i = 1; i <= 6; i++) { await ptr('pointermove', 1, [m0[0] + (m1[0] - m0[0]) * i / 6, m0[1] + (m1[1] - m0[1]) * i / 6]); await page.waitForTimeout(30); }
+const s3a = await st();
+await ptr('pointerdown', 2, [W * 0.8, H * 0.5]);
+await ptr('pointermove', 2, [W * 0.85, H * 0.55]);
+await ptr('pointerup', 2, [W * 0.85, H * 0.55]);
+await ptr('pointerup', 1, m1);
+await page.waitForTimeout(400);
+const s3 = await st();
+check(s3a.vias.length === 1, 'beim Ziehen entsteht ein Knick');
+check(s3.vias.length === 0 && s3.n === nBefore && s3.roads === s0.roads, 'zweiter Finger (Zoom) nimmt das Ziehen zurück');
+// 4) Knick hinter das Ziel ziehen: das Ziel bleibt das letzte Feld
+const end4 = (await st()).last.split(',').map(Number);
+const mid4 = await page.evaluate(() => { const b = window.__ui.build; return b.roadCells[Math.round((b.roadCells.length - 1) / 2)]; });
+let a4 = await scr(...mid4), b4 = await scr(end4[0] + 2, end4[1]);
+await page.mouse.move(a4[0], a4[1]); await page.mouse.down();
+for (let i = 1; i <= 10; i++) { await page.mouse.move(a4[0] + (b4[0] - a4[0]) * i / 10, a4[1] + (b4[1] - a4[1]) * i / 10); await page.waitForTimeout(30); }
+await page.mouse.up(); await page.waitForTimeout(400);
+const s4 = await st();
+check(s4.last === end4.join(','), `Knick hinter dem Ziel: Ziel bleibt das Ende (${s4.last} / ${end4.join(',')})`);
+await page.screenshot({ path: `${out}/wb5-grenzfaelle-${W}.png` });
+// 5) Rechenzeit beim Ziehen (Knicke + kein Durchgang): Weg mit 2 Knicken neu rechnen
+const ms = await page.evaluate(() => { const b = window.__ui.build; const t0 = performance.now(); for (let i = 0; i < 20; i++) b.roadTo(b.roadCells.at(-1)); return (performance.now() - t0) / 20; });
+check(ms < 15, `Neu-Rechnen beim Ziehen schnell genug (${ms.toFixed(1)} ms)`);
 console.log('Fehler im Browser:', errs.length ? errs.join(' | ') : 'keine');
 console.log(fails.length || errs.length ? `FEHLER: ${fails.length + errs.length}` : 'Alle Prüfungen bestanden');
 await browser.close(); server.close();

@@ -15,6 +15,8 @@ export type Mode =
 
 /** ein zweiter Tipp auf dieselbe Stelle baut erst nach dieser Zeit (ms) – gegen Fehltipps */
 const CONFIRM_MS = 500;
+/** so viele Knickpunkte darf ein geplanter Weg haben */
+const MAX_VIAS = 8;
 
 export class BuildTool {
   /** offene Kategorie im Baumenü */
@@ -31,11 +33,12 @@ export class BuildTool {
   /** Knickpunkte: der Weg läuft vom Start über diese Felder zum Ziel (per Ziehpunkt gesetzt) */
   roadVias: [number, number][] = [];
   /** Ziehpunkte auf der Vorschau: Mitte je Wegstück (seg = Nummer des Stücks), Knickpunkte (i), Ziel */
-  private handles: { kind: 'mid' | 'via' | 'end'; x: number; y: number; seg: number; i: number }[] = [];
-  /** gerade gezogener Ziehpunkt */
-  private drag: { kind: 'mid' | 'via' | 'end'; seg: number; via: number; moved: boolean; at: [number, number] } | null = null;
-  /** einmal erklären, wie man die Kreise benutzt */
-  private toldDrag = false;
+  private handles: { kind: 'start' | 'mid' | 'via' | 'end'; x: number; y: number; seg: number; i: number }[] = [];
+  /** gerade gezogener Ziehpunkt; px = wo der Finger aufsetzte, undo = Stand vor dem Ziehen */
+  private drag: {
+    kind: 'mid' | 'via' | 'end'; seg: number; via: number; moved: boolean; at: [number, number]; px: [number, number];
+    undo: { vias: [number, number][]; target: [number, number] | null };
+  } | null = null;
   /** wann die Vorschau (Gebäude oder Wegziel) zuletzt gesetzt wurde */
   private shownAt = 0;
 
@@ -132,7 +135,7 @@ export class BuildTool {
           const c = isRoad ? g.canRoad(cx, cy, HUMAN, m.type as 'weg' | 'steinweg') : g.canPlace(m.type, cx, cy);
           if (!c.ok && !(isRoad && g.roads[g.idx(cx, cy)])) return c.reason ?? 'Geht hier nicht';
         }
-        return 'Geht hier nicht';
+        return null;
       };
       const cost = build
         ? `${build} Felder · ${costText(Object.fromEntries(Object.entries(d.cost).map(([k, v]) => [k, (v ?? 0) * build])))}`
@@ -142,9 +145,11 @@ export class BuildTool {
       const msg = !this.roadStart ? `Tippe aufs Startfeld.${m.type === 'steinweg' ? ' Feldwege werden gepflastert.' : ''}`
         : !ok ? 'Tippe jetzt aufs Ziel (gelb = Start).'
         : linked ? (linked === 'haus' ? 'Schon mit dem Weg verbunden ✓ – anderes Ziel tippen.' : 'Hier liegt schon ein Weg ✓ – anderes Ziel tippen.')
-        : this.roadNoWay ? (this.roadVias.length ? 'Kein Durchgang – Kreis verschieben oder antippen (weg).' : 'Kein Durchgang – tippe ein anderes Ziel.')
-        : build ? (this.roadPartial ? '✓ baut bis vors Hindernis – oder anderes Ziel.' : this.roadVias.length ? '✓ baut – Kreis antippen = Knick weg.' : '✓ baut – Kreise ziehen biegt den Weg.')
-        : `⚠️ ${why()} – anderes Ziel tippen.`;
+        : this.roadNoWay ? 'Kein Durchgang – Kreis ziehen führt drumherum, oder anderes Ziel tippen.'
+        : build ? (this.roadPartial ? '✓ baut bis vors Hindernis – oder anderes Ziel.'
+          : this.roadVias.length ? `✓ baut – goldenen Kreis antippen entfernt den Knick.`
+          : `✓ baut – Kreis ziehen biegt ${isRoad ? 'den Weg' : 'die Reihe'}, oder anderes Ziel tippen.`)
+        : why() ? `⚠️ ${why()} – anderes Ziel tippen.` : 'Hier liegt schon ein Weg ✓ – anderes Ziel tippen.';
       // eine Zeile; die Kosten stehen hinten – wird es zu eng, werden sie zuerst gekürzt,
       // auf schmalen Bildschirmen fällt der Name weg (das Symbol bleibt), siehe build.css
       t.innerHTML = `<b>${d.icon}<span class="nm"> ${d.name}</span></b> <span class="msg">${msg}</span> <span class="cost">${cost}</span>`;
@@ -344,6 +349,7 @@ export class BuildTool {
     /** wo jedes Wegstück in cells anfängt und endet (für die Mittel-Griffe) */
     const segs: [number, number][] = [];
     let noWay = false, partial = false;
+    let lastCell: [number, number] | undefined;
     for (let i = 0; i + 1 < pts.length; i++) {
       // schon belegte Felder meiden: sonst läuft der Weg zum Knickpunkt hin und auf derselben Spur zurück
       const used = new Set(cells.map(([x, y]) => y * this.ui.g.size + x));
@@ -351,10 +357,17 @@ export class BuildTool {
       const last = i + 2 === pts.length;
       if (r.noWay || (r.partial && !last)) noWay = true;
       if (r.partial && last) partial = true;
+      if (last) lastCell = r.cells[r.cells.length - 1];
       const a = cells.length;
       // jedes Feld nur einmal (sonst würde es doppelt bezahlt)
       for (const c of r.cells) if (!used.has(c[1] * this.ui.g.size + c[0])) { used.add(c[1] * this.ui.g.size + c[0]); cells.push(c); }
       segs.push([Math.max(0, a - 1), cells.length - 1]);
+    }
+    // das Ende des letzten Stücks bleibt immer das letzte Feld (gelb markiert, dort geht es nach ✓ weiter) –
+    // auch wenn ein Knickpunkt hinter dem Ziel liegt und das Feld schon früher vorkam
+    if (lastCell) {
+      const k = cells.findIndex((c) => c[0] === lastCell![0] && c[1] === lastCell![1]);
+      if (k >= 0 && k < cells.length - 1) { cells.splice(k, 1); cells.push(lastCell); }
     }
     this.roadCells = cells.slice(0, 200);
     this.roadNoWay = noWay;
@@ -390,8 +403,27 @@ export class BuildTool {
     const cost = new Float64Array(W * H * 4).fill(Infinity);
     const from = new Int32Array(W * H * 4).fill(-1);
     const id = (x: number, y: number, d: number) => ((y - by0) * W + (x - bx0)) * 4 + d;
-    const open: [number, number][] = [];
-    const push = (st: number, c: number) => { open.push([st, c]); };
+    // Warteliste als Haufen (kleinste Kosten oben): schnell genug, um beim Ziehen jedes Mal neu zu rechnen
+    const hs: number[] = [], hc: number[] = [];
+    const push = (st: number, c: number) => {
+      let i = hs.length; hs.push(st); hc.push(c);
+      while (i > 0) { const p = (i - 1) >> 1; if (hc[p] <= hc[i]) break; [hs[p], hs[i]] = [hs[i], hs[p]]; [hc[p], hc[i]] = [hc[i], hc[p]]; i = p; }
+    };
+    const pop = (): [number, number] => {
+      const top: [number, number] = [hs[0], hc[0]];
+      const ls = hs.pop()!, lc = hc.pop()!;
+      if (hs.length) {
+        hs[0] = ls; hc[0] = lc;
+        for (let i = 0; ;) {
+          const l = 2 * i + 1, r = l + 1; let m = i;
+          if (l < hs.length && hc[l] < hc[m]) m = l;
+          if (r < hs.length && hc[r] < hc[m]) m = r;
+          if (m === i) break;
+          [hs[m], hs[i]] = [hs[i], hs[m]]; [hc[m], hc[i]] = [hc[i], hc[m]]; i = m;
+        }
+      }
+      return top;
+    };
     // Start: das Feld selbst, oder – wenn dort ein Gebäude steht – alle freien Nachbarfelder
     const starts: [number, number][] = pass(x0, y0) ? [[x0, y0]] : g.occ[g.idx(x0, y0)] ? this.freeAround(x0, y0, pass) : [];
     for (const [sx, sy] of starts) if (sx >= bx0 && sy >= by0 && sx <= bx1 && sy <= by1) for (let d = 0; d < 4; d++) { cost[id(sx, sy, d)] = 0; push(id(sx, sy, d), 0); }
@@ -402,10 +434,8 @@ export class BuildTool {
     // nächstes erreichbares Feld zum Ziel merken (falls das Ziel selbst nicht erreichbar ist)
     let near = -1, nearD = Infinity;
     const d0 = Math.hypot(x1 - x0, y1 - y0);
-    while (open.length && guard++ < 60000) {
-      // kleinste Kosten zuerst (einfach, Suchraum ist klein)
-      let bi = 0; for (let i = 1; i < open.length; i++) if (open[i][1] < open[bi][1]) bi = i;
-      const [st, c] = open[bi]; open[bi] = open[open.length - 1]; open.pop();
+    while (hs.length && guard++ < 60000) {
+      const [st, c] = pop();
       if (c > cost[st]) continue;
       const d = st % 4, cell = (st - d) / 4, x = cell % W + bx0, y = Math.floor(cell / W) + by0;
       if (goals.has(y * N + x)) { goal = st; break; }
@@ -482,15 +512,17 @@ export class BuildTool {
 
   // ---------- Ziehpunkte: Weg biegen ----------
 
-  /** Ziehpunkte neu anlegen: Mitte jedes längeren Wegstücks, jeder Knickpunkt, das Ziel */
+  /** Ziehpunkte neu anlegen: Start (nur Zeichen), Mitte jedes längeren Wegstücks, jeder Knickpunkt, Ziel (Fähnchen) */
   private makeHandles() {
     const hs: typeof this.handles = [];
     const ui = this.ui;
-    if (ui.mode.kind === 'road' && this.roadEndSet && this.roadTarget && this.roadCells.length > 1) {
+    if (ui.mode.kind === 'road' && this.roadEndSet && this.roadTarget && this.roadStart && this.roadCells.length > 1) {
       const cells = this.roadCells;
-      this.roadSegs.forEach(([a, b], seg) => {
-        // kurze Stücke bekommen keinen Mittel-Griff (sonst liegen die Kreise aufeinander)
-        if (b - a < 4 || this.roadNoWay) return;
+      hs.push({ kind: 'start', x: this.roadStart[0], y: this.roadStart[1], seg: -1, i: -1 });
+      // Mittel-Griffe auch bei „kein Durchgang“: gerade dann hilft ein Knick um das Hindernis herum.
+      // Kurze Stücke bekommen keinen (sonst liegen die Kreise aufeinander), höchstens MAX_VIAS Knicke
+      if (this.roadVias.length < MAX_VIAS) this.roadSegs.forEach(([a, b], seg) => {
+        if (b - a < 4) return;
         const c = cells[Math.min(cells.length - 1, Math.round((a + b) / 2))];
         if (c) hs.push({ kind: 'mid', x: c[0], y: c[1], seg, i: -1 });
       });
@@ -512,19 +544,22 @@ export class BuildTool {
   dragStart(x: number, y: number) {
     const i = this.ui.view.roadHandleAt(x, y);
     const h = this.handles[i];
-    if (!h) { this.drag = null; return; }
-    this.drag = { kind: h.kind, seg: h.seg, via: h.kind === 'via' ? h.i : -1, moved: false, at: [h.x, h.y] };
-    sound.play('klick');
-    this.makeHandles();
+    if (!h || h.kind === 'start') { this.drag = null; return; }
+    // Stand merken: wird die Geste abgebrochen (z. B. zweiter Finger zum Zoomen), kommt er zurück
+    this.drag = {
+      kind: h.kind, seg: h.seg, via: h.kind === 'via' ? h.i : -1, moved: false, at: [h.x, h.y], px: [x, y],
+      undo: { vias: this.roadVias.map((v) => [v[0], v[1]] as [number, number]), target: this.roadTarget },
+    };
   }
 
   dragMove(x: number, y: number) {
     const d = this.drag;
-    if (!d || !this.roadStart) return;
+    if (!d || !this.roadStart || !this.roadTarget) return;
     const t = this.ui.view.pick(x, y, false);
     if (!t || (t[0] === d.at[0] && t[1] === d.at[1])) return;
     // Knickpunkte nur auf Felder, über die der Weg laufen kann (sonst bleibt der Punkt stehen)
     if (d.kind !== 'end' && !this.passable(t[0], t[1])) return;
+    if (!d.moved) sound.play('klick');
     d.at = t;
     d.moved = true;
     if (d.kind === 'end') {
@@ -536,31 +571,37 @@ export class BuildTool {
     } else {
       this.roadVias[d.via] = t;
     }
-    this.roadTo(this.roadTarget!);
+    this.roadTo(this.roadTarget);
     this.previewRoad();
     this.updateHint();
   }
 
-  dragEnd(cancel: boolean) {
+  /** Finger los: gezogen = fertig; abgebrochen = alter Stand; nur getippt = wie ein normaler Tipp */
+  dragEnd(cancel: boolean, tap: boolean) {
     const d = this.drag;
     this.drag = null;
     if (!d) return;
-    if (!cancel && !d.moved) {
-      if (d.kind === 'via') {
-        // Knickpunkt antippen = entfernen
-        this.roadVias.splice(d.via, 1);
-        this.roadTo(this.roadTarget!);
-        sound.play('klick');
-      } else if (d.kind === 'end') {
-        // Ziel nochmal antippen = bauen (wie bisher), aber nicht aus Versehen gleich nach dem Setzen
-        if (performance.now() - this.shownAt >= CONFIRM_MS) { this.confirmRoad(); return; }
-      } else if (!this.toldDrag) {
-        this.toldDrag = true;
-        this.ui.toast('Halte den Kreis fest und zieh ihn dorthin, wo der Weg langlaufen soll.', 'info');
-      }
+    if (cancel) {
+      if (d.moved) { this.roadVias = d.undo.vias; this.roadTarget = d.undo.target; if (this.roadTarget) this.roadTo(this.roadTarget); }
     } else if (d.moved) {
       sound.play('weg');
       this.shownAt = performance.now();
+    } else if (tap) {
+      // ein Tipp auf einen Griff zählt wie ein Tipp auf die Karte – mit dem genauen Feld unter dem Finger
+      const t = this.ui.view.pick(d.px[0], d.px[1], false);
+      const vi = t ? this.roadVias.findIndex((v) => v[0] === t[0] && v[1] === t[1]) : -1;
+      if (vi >= 0) {
+        // Knickpunkt antippen = Knick entfernen
+        this.roadVias.splice(vi, 1);
+        if (this.roadTarget) this.roadTo(this.roadTarget);
+        sound.play('klick');
+      } else if (d.kind === 'mid' && t && t[0] === d.at[0] && t[1] === d.at[1]) {
+        this.ui.toast('Halte den Kreis fest und zieh ihn dorthin, wo der Weg langlaufen soll.', 'info');
+        return;
+      } else {
+        this.roadTap(d.px[0], d.px[1]);
+        return;
+      }
     }
     this.previewRoad();
     this.updateHint();

@@ -115,7 +115,7 @@ export class UI {
       wantsPaint: (x, y) => this.build.wantsDrag(x, y),
       paintStart: (x, y) => this.build.dragStart(x, y),
       paintMove: (x, y) => this.build.dragMove(x, y),
-      paintEnd: (cancel) => this.build.dragEnd(cancel),
+      paintEnd: (cancel, tap) => this.build.dragEnd(cancel, tap),
     });
     // Kompassnadel folgt jeder Drehung sofort
     this.input.onCamera = () => this.hud.needle();

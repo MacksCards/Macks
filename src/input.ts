@@ -11,7 +11,8 @@ export interface InputHandlers {
   wantsPaint(x: number, y: number): boolean;
   paintStart(x: number, y: number): void;
   paintMove(x: number, y: number): void;
-  paintEnd(cancel: boolean): void;
+  /** tap = der Finger hat sich kaum bewegt und lag kürzer als 1 s (ein Tipp, kein Ziehen) */
+  paintEnd(cancel: boolean, tap: boolean): void;
   /** Doppeltipp auf die Karte: true = selbst erledigt, sonst zoomt die Karte eine Stufe näher */
   doubleTap?(x: number, y: number): boolean;
 }
@@ -225,7 +226,7 @@ export class Input {
       // neue Zwei-Finger-Geste: Drehung von vorn zählen
       this.rotAcc = 0;
       this.rotOn = false;
-      if (this.painting) { this.painting = false; this.h.paintEnd(true); }
+      if (this.painting) { this.painting = false; this.h.paintEnd(true, false); }
     }
   }
 
@@ -237,7 +238,8 @@ export class Input {
 
     if (this.ptrs.size === 1) {
       p.x = e.clientX; p.y = e.clientY;
-      if (this.painting) { this.h.paintMove(e.clientX, e.clientY); return; }
+      // gezogen wird erst, wenn der Finger sich wirklich bewegt (ein Tipp auf einen Griff ist ein Tipp)
+      if (this.painting) { if (this.moved) this.h.paintMove(e.clientX, e.clientY); return; }
       if (!this.moved) return;
       if (this.rotating) {
         this.view.rig.yaw -= (e.clientX - px) * 0.008;
@@ -323,7 +325,7 @@ export class Input {
     this.ptrs.delete(e.pointerId);
     if (this.painting && this.ptrs.size === 0) {
       this.painting = false;
-      this.h.paintEnd(cancel);
+      this.h.paintEnd(cancel, !cancel && !this.moved && e.timeStamp - p.t < TAP_MS);
       return;
     }
     // ein Finger bleibt nach dem Zwei-Finger-Zoom liegen: die Drehung beginnt beim nächsten Mal von vorn
