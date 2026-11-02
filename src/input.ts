@@ -325,7 +325,17 @@ export class Input {
     this.ptrs.delete(e.pointerId);
     if (this.painting && this.ptrs.size === 0) {
       this.painting = false;
-      this.h.paintEnd(cancel, !cancel && !this.moved && e.timeStamp - p.t < TAP_MS);
+      const tap = !cancel && !this.moved && e.timeStamp - p.t < TAP_MS;
+      // Doppeltipp zoomt auch dann, wenn der zweite Tipp auf einem Ziehpunkt landet
+      const lt = this.lastTap;
+      if (tap && lt && e.timeStamp - lt.t < DOUBLE_MS && Math.hypot(e.clientX - lt.x, e.clientY - lt.y) < DOUBLE_PX) {
+        this.lastTap = null;
+        this.h.paintEnd(true, false);
+        if (!this.h.doubleTap?.(e.clientX, e.clientY)) this.zoomStepAt(e.clientX, e.clientY, ZOOM_STEP);
+        return;
+      }
+      if (tap) this.lastTap = { t: e.timeStamp, x: e.clientX, y: e.clientY };
+      this.h.paintEnd(cancel, tap);
       return;
     }
     // ein Finger bleibt nach dem Zwei-Finger-Zoom liegen: die Drehung beginnt beim nächsten Mal von vorn

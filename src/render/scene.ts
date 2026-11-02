@@ -389,6 +389,7 @@ export class View {
     try {
       this.updateCamera();
       await this.compileAll(token);
+      for (const t of this.roadHandles.textures()) this.renderer.initTexture(t);
       // einmal wirklich zeichnen: bereitet auch die Schatten-Programme vor
       if (token === this.prepToken) this.renderer.render(this.scene, this.camera);
     } catch (e) {
@@ -665,7 +666,7 @@ export class View {
       this.previewRoads.setColorAt(0, this.roadCol.setHex(0xffffff));
       this.previewRoads.frustumCulled = false;
       // derselbe Weg noch einmal zart über allem: so sieht man den geplanten Verlauf auch durchs Laub im Wald
-      const xray = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthTest: false, depthWrite: false }), 400);
+      const xray = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.45, depthTest: false, depthWrite: false }), 400);
       xray.instanceMatrix = this.previewRoads.instanceMatrix;
       xray.instanceColor = this.previewRoads.instanceColor;
       xray.count = 0;
