@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { BUILDINGS, BuildingId, UNITS } from '../data';
 import { Building, Game, HUMAN, Unit } from '../game';
-import { iconFor } from '../events';
+import { fireStrength, iconFor } from '../events';
 import { sound } from '../audio';
 import { T } from '../world';
 import { Sky } from 'three/examples/jsm/objects/Sky.js';
@@ -1274,7 +1274,10 @@ export class View {
       if (frac >= 1) continue;
       const p = v.mesh.position, s = BUILDINGS[b.type].size;
       bars.bar(p.x, p.y + v.top + 0.25, p.z, frac);
-      if (frac < 0.75) fx.burn('b' + b.id, p.x, p.y + v.top * 0.75, p.z, frac < 0.5 ? 1 - frac * 2 : 0.1, dt, s * 0.28);
+      // (S3) laufender Brand (events.ts): kräftige Flammen gleich vom Ausbruch an, beim Löschen kleiner
+      const fire = fireStrength(g, b);
+      if (fire > 0) fx.burn('b' + b.id, p.x, p.y + v.top * 0.75, p.z, fire, dt, s * 0.28);
+      else if (frac < 0.75) fx.burn('b' + b.id, p.x, p.y + v.top * 0.75, p.z, frac < 0.5 ? 1 - frac * 2 : 0.1, dt, s * 0.28);
     }
     bars.end();
   }

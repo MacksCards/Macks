@@ -6,6 +6,7 @@ import { buildingGeometry, makeMillBlades, oldSmoke } from '../models_old';
 import { houseModel } from './haeuser';
 import { marktModel } from './markt';
 import { burg, festung, grosseBurg, holztor, holzturm, palisade, steinmauer, steinturm, steintor, steintorKlein, triumphbogen } from './militaer';
+import { arztModel, feuerwehrModel, galgenModel } from './ereignisse'; // (S3)
 
 /** Militärbauten; bei Mauern/Palisaden ist variant die Nachbarmaske */
 const MILITAER: Partial<Record<BuildingId, (variant: number) => ModelDef>> = {
@@ -95,6 +96,9 @@ export function buildingModel(type: BuildingId, tier = 0, opts: ModelOpts = {}):
   if (WALLS.has(type)) { m = MILITAER[type]!(tier); cache.set(key, m); return m; }
   if (type === 'haus') m = houseModel(tier);
   else if (type === 'markt') m = marktModel();
+  else if (type === 'feuerwehr') m = feuerwehrModel(); // (S3) Schutzgebäude gegen Feuer, Pest, Diebe
+  else if (type === 'arzt') m = arztModel(); // (S3)
+  else if (type === 'galgen') m = galgenModel(); // (S3)
   else if (KNOWN.includes(type)) {
     m = { geo: buildingGeometry(type), smoke: oldSmoke(type), spinners: [] };
     if (type === 'muehle') m.spinners.push({ geo: makeMillBlades(), pos: [0, 1.35, 0.62], axis: 'z', speed: 1.2 });

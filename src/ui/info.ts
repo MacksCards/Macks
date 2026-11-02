@@ -9,6 +9,7 @@ import { sound } from '../audio';
 import type { UI } from '../ui';
 import { $, costText, fmt, hpHtml, soft } from './util';
 import { bindTax, houseTaxHtml, taxSectionHtml } from './tax';
+import { infoLines } from '../events'; // (S3) Ereignisse: Brand, Pest, Dürre, Schutz
 
 /** Reiter im Kontor: Lager (immer) und Handel (sobald ui/trade.ts Inhalt hat) */
 type KontorTab = 'lager' | 'handel';
@@ -227,6 +228,13 @@ export class InfoPanel {
           if (foot) h += `<p class="sub">Tippe unten auf ein Schiff, um es zu bestellen.</p>`;
         }
       }
+    }
+    // (S3) Ereignisse: Laufendes (Brand, Pest, Dürre) gleich unter die Überschrift, Schutz-Zeilen hier unten
+    {
+      const lines = infoLines(g, b);
+      const urgent = lines.filter((x) => /^(🔥|💀|☀️)/u.test(x)).map((x) => `<p class="sub neg">${x}</p>`).join('');
+      if (urgent) h = h.replace('</h3>', `</h3>${urgent}`);
+      for (const x of lines) if (!/^(🔥|💀|☀️)/u.test(x)) h += `<p class="sub${x.startsWith('🚧') ? ' neg' : ''}">${x}</p>`;
     }
     if (b.hp !== undefined) h += hpHtml(b.hp, g.maxHp(b));
     const idle = d.upkeepIdle !== undefined && d.upkeepIdle !== d.upkeep;
