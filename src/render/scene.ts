@@ -816,7 +816,9 @@ export class View {
   /**
    * Besitzerfarbe an einem Meshy-Modell: große Fahne (Kontor, Werft, Burg, Türme …) oder kleiner Wimpel,
    * jeweils auf einem Mast an der höchsten Stelle des Modells. Hat das Modell selbst einen Fahnenmast
-   * ("fahne" in manifest.json, z. B. Kontor), hängt die Fahne dort – ohne zweiten Mast.
+   * ("fahne" in manifest.json; heute bei keinem Modell mehr), hängt die Fahne dort – ohne zweiten Mast.
+   * Kontor und Werften: Fahne auf der Landseite (landSideMark); den Mast auf der Wasserseite hat das
+   * Kontor-Modell nicht mehr (herausgeschnitten, siehe scripts/modell-schnitt.mjs).
    * (glb muss schon an seinem Platz stehen: Lage in Weltkoordinaten)
    */
   private ownerMark(glb: THREE.Object3D, b: Building): MarkDef {

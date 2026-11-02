@@ -23,12 +23,7 @@
   "art": "gebaeude",
   "building": "kontor",
   "tier": 0,
-  "size": 3,
-  "fahne": [
-   -0.515,
-   0.601,
-   0.446
-  ]
+  "size": 3
  },
  "haus-0": {
   "file": "haus-0.glb",

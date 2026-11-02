@@ -13,7 +13,10 @@
 //
 // So wurden die heutigen Modelle bearbeitet (Rot ist eine Gegnerfarbe, deshalb keine festen roten Fahnen):
 //   kontor.glb:  --box -0.9,-0.56,0.42,0.7,0.38,0.58 --rotbox -0.9,-0.49,0.42,0.7,0.38,0.58 --pol -0.57,-0.49,0.4,0.53
-//                (rotes Tuch entfernt, Mast bleibt; "fahne": [-0.515, 0.601, 0.446])
+//                (rotes Tuch entfernt, Mast blieb; "fahne": [-0.515, 0.601, 0.446])
+//                danach (02.11.2026) auch der Mast: --box -0.565,-0.515,-0.157,0.7,0.445,0.485
+//                (Rohwerte im Modell, 54 Dreiecke; die Fahne hängt seit 02.11.2026 auf der Landseite,
+//                der leere Mast stand sonst als dunkle Stange neben ankernden Schiffen; "fahne" aus manifest.json entfernt)
 //   festung.glb: --ymax 0.25   (alle rot-blauen Fahnen samt Masten auf den Türmen entfernt)
 //   schule.glb, weingut.glb: --flecken
 //   burg.glb:    --rotbox -0.30,-0.11,-0.22,0.05,0.62,0.74, danach --box -0.29,-0.12,-0.21,0.04,0.668,0.74 (rotes Wandbanner)

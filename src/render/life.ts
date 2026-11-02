@@ -3,8 +3,8 @@
 //
 // Fischschwärme sieht man wie in der Natur: dunkle Fischschatten knapp unter der Oberfläche, darunter ein
 // leichter dunkler Fleck des ganzen Schwarms, ab und zu ein kleiner, weich auslaufender Kräuselring, wo ein
-// Fisch an die Oberfläche kommt, gelegentlich ein springender Fisch mit Spritzern, und über großen Schwärmen
-// kreisen Möwen. Wie viel davon zu sehen ist, hängt vom Fischbestand des Fanggrunds ab.
+// Fisch an die Oberfläche kommt (nur in der Nähe), gelegentlich ein springender Fisch mit Spritzern, und über
+// großen Schwärmen kreisen Möwen. Wie viel davon zu sehen ist, hängt vom Fischbestand des Fanggrunds ab.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BUILDINGS } from '../data';
@@ -245,6 +245,8 @@ export class LifeLayer {
   private wingsR: THREE.InstancedMesh;
   private wingsL: THREE.InstancedMesh;
   private nr = 0;
+  /** Helligkeit der Kräuselringe je nach Kameraabstand (1 = nah, 0 = von Weitem ausgeblendet) */
+  private ringFade = 1;
   private nd = 0;
   private herds: Herd[] = [];
 
@@ -510,9 +512,13 @@ export class LifeLayer {
     const pm = this.patches.material as THREE.MeshBasicMaterial;
     pm.opacity = 0.18 * (1 - Math.min(1, Math.max(0, (cam.dist - 14) / 12)));
     const patch = pm.opacity > 0.005;
-    // von Weitem: Fische kommen öfter an die Oberfläche (etwas größere Ringe), damit man Fanggründe erkennt
+    // Möwen von Weitem etwas größer, damit man sie noch sieht
     const farK = Math.min(1, Math.max(0, (cam.dist - 18) / 30));
-    const rises = farK > 0.4 ? 3 : 2;
+    // Kräuselringe gehören zur Nahansicht: von Weitem waren sie nur noch kleine, scharf umrandete hellblaue
+    // Kreise („komische blaue Zeichen“) – deshalb ab Abstand 24 schwächer, ab 36 ganz weg (nah unverändert).
+    // Den Fanggrund erkennt man von Weitem an den Fischschatten.
+    const rf = Math.min(1, Math.max(0, (cam.dist - 24) / 12));
+    this.ringFade = 1 - rf * rf * (3 - 2 * rf);
     let nf = 0, ns = 0, np = 0, ng = 0;
     this.nr = 0; this.nd = 0;
     const { m, q, v, s: sc, up, e } = TMP;
@@ -564,15 +570,15 @@ export class LifeLayer {
         this.jumpSplash(s, t0, jt, 0.6, drops, 0);
         this.jumpSplash(s, t0 + JUMP, jt - JUMP, 1, drops, 0.5);
       }
-      // Fische kommen an die Oberfläche: je Schwarm zwei (von Weitem drei) Takte, mehr Bestand = öfter
-      for (let j = 0; j < rises; j++) {
+      // Fische kommen an die Oberfläche: je Schwarm zwei Takte, mehr Bestand = öfter (von Weitem keine Ringe mehr)
+      for (let j = 0; j < 2 && this.ringFade > 0.01; j++) {
         const P = 2.4 + hash(s.k * 0.731 + j) * 2.6;
         const qq = (t + s.jump * 3.1 + j * 1.37) / P;
         const n = Math.floor(qq), u = (qq - n) * P;
         if (u > RING_T || hash(n * 7.13 + s.k * 0.37 + j * 0.11) > fill * 1.15) continue;
         const a = hash(n * 3.7 + s.k + j) * Math.PI * 2, r = 0.85 * Math.sqrt(hash(n * 5.3 + s.k * 1.3 + j));
         const tt = t - u;
-        this.ring(shoalX(s, tt) + Math.cos(a) * r, shoalZ(s, tt) + Math.sin(a) * r * 0.7, u, 0.3 * (1 + farK * 0.25), 0.2 * (1 + farK * 0.3));
+        this.ring(shoalX(s, tt) + Math.cos(a) * r, shoalZ(s, tt) + Math.sin(a) * r * 0.7, u, 0.3, 0.2);
       }
       // über manchen vollen Fanggründen kreisen Möwen (nicht über jedem, sonst wirkt es wie ein Zeichen)
       if (birds && fill >= 0.6 && hash(s.k * 0.173) < 0.45) {
@@ -625,10 +631,10 @@ export class LifeLayer {
 
   /** weich auslaufender Ring an (x, z), u Sekunden nach dem Entstehen; size = größter Halbmesser, k = Helligkeit */
   private ring(x: number, z: number, u: number, size: number, k: number) {
-    if (this.nr >= MAXN.rings) return;
+    if (this.nr >= MAXN.rings || this.ringFade <= 0.01) return;
     const rest = 1 - u / RING_T;
     const r = size * (0.12 + 0.88 * (1 - rest * rest));
-    const b = k * rest * rest * Math.min(1, u * 8);
+    const b = k * rest * rest * Math.min(1, u * 8) * this.ringFade;
     if (this.nr >= this.rings.instanceMatrix.count) ensureCapacity(this.rings, this.nr + 1, MAXN.rings);
     TMP.m.compose(TMP.v.set(x, WY + 0.002, z), TMP.q.identity(), TMP.s.set(r, 1, r));
     this.rings.setMatrixAt(this.nr, TMP.m);
