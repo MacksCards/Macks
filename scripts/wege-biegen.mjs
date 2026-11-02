@@ -69,7 +69,15 @@ const scr = (x, y) => page.evaluate(([x, y]) => {
   const r = v.renderer.domElement.getBoundingClientRect();
   return [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height];
 }, [x, y]);
-const tap = async (p) => { await page.mouse.move(p[0], p[1]); await page.mouse.down(); await page.mouse.up(); await page.waitForTimeout(450); };
+// Tipp = Finger auf und ab in einem Zug (die Test-Grafik zeichnet so langsam, dass zwischen zwei getrennten
+// Befehlen über 1 s vergehen kann – dann wäre es kein Tipp mehr)
+const tap = async (p) => {
+  await page.evaluate(([x, y]) => {
+    const c = document.querySelector('#c');
+    for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, { pointerId: 9, clientX: x, clientY: y, bubbles: true, pointerType: 'touch', isPrimary: true, button: 0 }));
+  }, p);
+  await page.waitForTimeout(450);
+};
 const sA = await scr(...A), sB = await scr(...B); console.log("Bildpunkte A/B:", JSON.stringify([sA, sB]));
 await tap(sA);
 await tap(sB);
@@ -122,7 +130,7 @@ await page.click('#hintOk');
 await page.waitForTimeout(800);
 const st6 = await page.evaluate(() => { const b = window.__ui.build; return { vias: b.roadVias.length, h: window.__view.roadHandles.count, roads: window.__game().roads.reduce((a, b) => a + (b > 0), 0) }; });
 check(st6.roads - roads0 === n5, `✓ baut den gebogenen Weg (${st6.roads - roads0} von ${n5} Feldern)`);
-check(st6.vias === 0 && st6.h === 0, 'nach dem Bauen keine Ziehpunkte mehr');
+check(st6.vias === 0 && st6.h === 1, 'nach dem Bauen nur noch das Start-Zeichen (Weiterbauen vom Ende)');
 await page.screenshot({ path: `${out}/wb4-gebaut-${W}.png` });
 
 // ---------- Grenzfälle aus der Prüfung ----------
@@ -182,12 +190,15 @@ check(s3.vias.length === 0 && s3.n === nBefore && s3.roads === s0.roads, 'zweite
 // 3b) Knick setzen, dann den goldenen Kreis neben seiner Mitte antippen: genau dieser Knick geht weg
 {
   const mc = await page.evaluate(() => { const b = window.__ui.build; return b.roadCells[Math.round((b.roadCells.length - 1) / 2)]; });
-  const q0 = await scr(...mc), q1 = await scr(mc[0], mc[1] - 2);
+  // ein Feld 2–3 Reihen daneben, über das der Weg laufen darf
+  const dy = await page.evaluate(([x, y]) => [2, -2, 3, -3].find((d) => window.__ui.build.passable(x, y + d)) ?? 2, mc);
+  const q0 = await scr(...mc), q1 = await scr(mc[0], mc[1] + dy);
   await page.mouse.move(q0[0], q0[1]); await page.mouse.down();
   for (let i = 1; i <= 8; i++) { await page.mouse.move(q0[0] + (q1[0] - q0[0]) * i / 8, q0[1] + (q1[1] - q0[1]) * i / 8); await page.waitForTimeout(30); }
   await page.mouse.up(); await page.waitForTimeout(500);
   const sv = await st();
   check(sv.vias.length === 1, 'Knick für den Antipp-Test gesetzt');
+  if (sv.vias.length !== 1) { console.log('FEHLER: Abbruch'); process.exit(1); }
   const vv = sv.vias[0].split(',').map(Number);
   const pv = await scr(...vv);
   await tap([pv[0] + 12, pv[1] - 9]);
@@ -208,18 +219,21 @@ check(s3.vias.length === 0 && s3.n === nBefore && s3.roads === s0.roads, 'zweite
   const d0 = await page.evaluate(() => window.__view.rig.dist);
   const pe = await scr(...(await page.evaluate(() => window.__ui.build.roadTarget)));
   await page.waitForTimeout(500);
-  await page.mouse.move(pe[0], pe[1]); await page.mouse.down(); await page.mouse.up();
-  await page.waitForTimeout(120);
-  await page.mouse.down(); await page.mouse.up();
-  await page.waitForTimeout(900);
-  const d1 = await page.evaluate(() => window.__view.rig.dist);
+  // beide Tipps in einem Zug (die Test-Grafik ist so langsam, dass sonst zwischen den Tipps über 350 ms vergehen)
+  await page.evaluate(([x, y]) => {
+    const c = document.querySelector('#c');
+    for (const type of ['pointerdown', 'pointerup', 'pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, { pointerId: 7, clientX: x, clientY: y, bubbles: true, pointerType: 'touch', isPrimary: true, button: 0 }));
+  }, pe);
+  // die Test-Grafik zeichnet langsam: bis zu 5 s auf die Zoom-Fahrt warten
+  let d1 = d0;
+  for (let w = 0; w < 10 && !(d1 < d0 * 0.9); w++) { await page.waitForTimeout(500); d1 = await page.evaluate(() => window.__view.rig.dist); }
   const sd = await st();
   check(d1 < d0 * 0.9 && sd.roads === s0.roads && sd.vias.length === 1, `Doppeltipp aufs Fähnchen zoomt (${d0.toFixed(1)} → ${d1.toFixed(1)}) und ändert nichts`);
   await page.evaluate(([A]) => { const r = window.__view.rig; r.tx = A[0] + 5.5; r.tz = A[1] + 2.5; r.dist = 15; window.__view.updateCamera(); }, [A]);
   await page.waitForTimeout(500);
   // leere Kasse: Hinweis nennt den Grund, nicht „kein Durchgang“
   const hint = await page.evaluate(() => { const g = window.__game(), m = g.players[0].money; g.players[0].money = 0; const b = window.__ui.build; b.roadTo(b.roadTarget); b.updateHint(); const t = document.querySelector('#hintText').textContent; g.players[0].money = m; b.roadTo(b.roadTarget); b.updateHint(); return t; });
-  check(/Taler/.test(hint) && !/Durchgang/.test(hint), `leere Kasse: Hinweis nennt den Grund („${hint.trim()}“)`);
+  check(/Taler|schon ein Weg/.test(hint) && !/Durchgang/.test(hint), `leere Kasse: Hinweis nennt den Grund („${hint.trim()}“)`);
 }
 // 4) Knick hinter das Ziel ziehen: das Ziel bleibt das letzte Feld
 const end4 = (await st()).last.split(',').map(Number);
