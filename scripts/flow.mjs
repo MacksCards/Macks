@@ -62,8 +62,10 @@ await page.evaluate(() => window.__ui.selectShip(null));
 await page.evaluate(() => { window.__ui.paused = false; });
 const tA = await page.evaluate(() => window.__game().time);
 await page.click('.cat[data-cat="nahrung"]');
-await page.waitForTimeout(2500);
-const tB = await page.evaluate(() => window.__game().time);
+// Die Test-Grafik zeichnet nur 1–2 Bilder pro Sekunde (Spielzeit höchstens 0,1 s je Bild):
+// deshalb bis zu 10 s warten, bis die Zeit sichtbar weiterläuft, statt fest 2,5 s
+let tB = tA;
+for (let w = 0; w < 20 && !(tB > tA + 0.5); w++) { await page.waitForTimeout(500); tB = await page.evaluate(() => window.__game().time); }
 await page.screenshot({ path: `${out}/f3b-menue.png`, timeout: 240000 });
 console.log('Einfrier-Test:', tB > tA + 0.5 ? 'OK, Zeit läuft (' + tA.toFixed(1) + ' → ' + tB.toFixed(1) + ')' : 'FEHLER, Zeit steht (' + tA + ' → ' + tB + ')');
 await page.click('.cat[data-cat="nahrung"]');
