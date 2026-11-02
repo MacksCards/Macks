@@ -6,3 +6,7 @@ assets/raw/
 
 # Arbeitskopien paralleler Arbeitspakete (werden nie eingecheckt)
 .claude/worktrees/
+
+# Testbilder aus scripts/smoke.mjs und scripts/flow.mjs
+/shots/
+/f*.png
