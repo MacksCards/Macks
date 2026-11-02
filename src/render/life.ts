@@ -61,14 +61,23 @@ function patchGeo() {
   }
   return softShape(pts, [0, 0], 0.75, 0.55);
 }
-/** Kräuselring: schmal, innen und außen weich (hell, wird aufs Wasser addiert) */
+/**
+ * Kräuselring (hell, wird aufs Wasser addiert). (KL) Wie ein echter Wasserring: kein scharfer Strich, sondern
+ * ein breiter, weich an- und abschwellender Wellenkamm (Glockenform über mehrere Stufen) und innen ein
+ * kaum sichtbarer Nachläufer. Ganz nah sah der alte Ring (drei Stufen, spitzer Kamm) wie ein scharf
+ * umrandeter hellblauer Kreis aus.
+ */
 function ringGeo() {
   const pos: number[] = [], col: number[] = [];
-  const R = [0.4, 0.78, 1.0], A = [0, 1, 0], n = 40;
+  // Halbmesser der Stufen und Helligkeit dort (0 = unsichtbar)
+  const R = [0.25, 0.38, 0.48, 0.57, 0.65, 0.73, 0.81, 0.9, 1.0];
+  const bump = (r: number, c: number, w: number) => { const d = (r - c) / w; return Math.exp(-d * d); };
+  const A = R.map((r, i) => (i === 0 || i === R.length - 1 ? 0 : Math.min(1, bump(r, 0.68, 0.2) + 0.15 * bump(r, 0.42, 0.1))));
+  const n = 36;
   const p = (r: number, a: number, al: number) => { pos.push(Math.cos(a) * r, 0, Math.sin(a) * r); col.push(1, 1, 1, al); };
   for (let i = 0; i < n; i++) {
     const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2;
-    for (let k = 0; k < 2; k++) {
+    for (let k = 0; k < R.length - 1; k++) {
       p(R[k], a0, A[k]); p(R[k + 1], a0, A[k + 1]); p(R[k + 1], a1, A[k + 1]);
       p(R[k], a0, A[k]); p(R[k + 1], a1, A[k + 1]); p(R[k], a1, A[k]);
     }
@@ -639,7 +648,9 @@ export class LifeLayer {
     if (this.nr >= this.rings.instanceMatrix.count) ensureCapacity(this.rings, this.nr + 1, MAXN.rings);
     TMP.m.compose(TMP.v.set(x, WY + 0.002, z), TMP.q.identity(), TMP.s.set(r, 1, r));
     this.rings.setMatrixAt(this.nr, TMP.m);
-    this.rings.setColorAt(this.nr++, TMP.c.setRGB(b * 0.9, b * 0.94, b));
+    // (KL) etwas schwächer und im Ton des Wassers statt hellblau-weiß: ein Lichtschimmer, kein gemalter Kreis
+    const c = b * 0.6;
+    this.rings.setColorAt(this.nr++, TMP.c.setRGB(c * 0.82, c * 0.86, c * 0.88));
   }
 
   /** Wassertropfen, die beim Springen hochfliegen und zurückfallen */

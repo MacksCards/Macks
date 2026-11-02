@@ -63,7 +63,10 @@ function world(seed = 4242): Game {
   declareWar(g, HUMAN, ai);
   const res: Record<string, number[]> = { holzturm: [], wachturm: [] };
   let shots = 0;
-  g.ev.shot = (kind) => { if (kind === 'kanone') shots++; };
+  // (KL) nur Kanonenschüsse auf den Turm zählen – wehrt sich der Kanonier gegen Soldaten des Gegners,
+  // die zufällig auf derselben Insel stehen, zählten diese Schüsse sonst mit
+  let target: Building | null = null;
+  g.ev.shot = (kind, _fx, _fy, tx, ty) => { if (kind === 'kanone' && target && Math.hypot(tx - target.x - 0.5, ty - target.y - 0.5) < 1.5) shots++; };
   for (let trial = 0; trial < 60; trial++) {
     const type = trial % 2 ? 'wachturm' : 'holzturm';
     const [tx, ty] = landSpot(g, isl.cx, isl.cy, 0, isl.id);
@@ -72,6 +75,7 @@ function world(seed = 4242): Game {
     const u = spawnUnit(g, 'kanonier', HUMAN, ux, uy);
     u.hp = 1e6;
     orderAttack(g, [u], tw.id);
+    target = tw;
     shots = 0;
     for (let i = 0; i < 2000 && g.byId.has(tw.id); i++) { tw.cd = 99; g.tick(0.25); }
     res[type].push(shots);
