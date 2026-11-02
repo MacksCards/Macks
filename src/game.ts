@@ -11,6 +11,7 @@ import { SYSTEMS } from './systems';
 import { Island, PFLANZEN, T, WORLD_SIZE, WORLD_SIZES, generateWorld, rng } from './world';
 import { SCHWIERIGKEIT, stufe } from './schwierigkeit';
 import { book } from './stats';
+import { KEIN_FESTES_LAND, trockeneFlaeche } from './landhoehe'; // (KL)
 
 /** zuWeit = kein Marktkarren kommt hin (zu weit von Kontor/Marktplatz); aus = vom Spieler ruhen gelassen */
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft' | 'zuWeit' | 'aus';
@@ -1440,6 +1441,8 @@ export class Game {
       let w = 0;
       for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Wasser) w++;
       if (w < 2) return { ok: false, reason: 'Das Kontor muss direkt an der Küste stehen' };
+      // (KL) jedes Feld muss im Bild trockenes Land sein (siehe src/landhoehe.ts)
+      if (!trockeneFlaeche(this, x, y, s)) return { ok: false, reason: KEIN_FESTES_LAND };
       if (ignoreShip) return { ok: true };
       const ship = this.shipNear(owner, x + s / 2, y + s / 2);
       if (!ship) return { ok: false, reason: 'Ein Schiff muss in der Nähe liegen' };
@@ -1468,6 +1471,9 @@ export class Game {
       else if (!this.depositLeft(il, d.deposit)) return { ok: false, reason: d.deposit === 'erz' && il.erzDeep > 0 ? 'Das Erzvorkommen ist oben erschöpft' : 'Das Erzvorkommen ist erschöpft' };
     }
     if (d.pflanze && this.fertility(type, x, y) <= 0) return { ok: false, reason: `Diese Insel ist nicht fruchtbar für ${PFLANZEN[d.pflanze].name}` };
+    // (KL) keine Hütte halb im Wasser: jedes Feld der Grundfläche muss im Bild trockenes Land sein
+    // (winzige Sandbänke und Landzungen liegen im Bild unter Wasser; siehe src/landhoehe.ts)
+    if (!trockeneFlaeche(this, x, y, s)) return { ok: false, reason: KEIN_FESTES_LAND };
     return this.canAfford(d.cost, owner, isl);
   }
 
