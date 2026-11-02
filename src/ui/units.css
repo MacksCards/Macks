@@ -1,1 +1,26 @@
-/* Soldatenfenster: die Knöpfe „+ in der Nähe“ und „Halt“ stehen in der Fußleiste des Infofensters (info.css) */
+/* Soldaten- und Flottenfenster (schmales Infofenster, 220 px). „Halt“, „Ausmustern“ und „Patrouille“ stehen in der
+   Fußleiste des Infofensters (info.css). Alle Knöpfe mindestens 44 px hoch; kompakt, damit auf 375 px Höhe alles
+   ohne Wischen zu sehen ist (Zeichen oben, kurze Beschriftung darunter). */
+.info .ustat { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; font-size: 14px; margin: 0 0 2px; }
+.info .ustat b { margin-left: auto; font-size: 13px; white-space: nowrap; }
+.info .bar.thin { height: 5px; margin: 2px 0 4px; }
+.info .ubtns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px; margin: 4px 0 0; }
+.info .ubtns.u3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.info .ubtns .btn {
+  min-height: var(--tap); min-width: 0; padding: 2px; font-size: 13px; line-height: 1.1; overflow-wrap: break-word;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
+}
+.info .ubtns .btn b { display: block; font-size: 17px; line-height: 1.1; font-weight: 400; }
+.info .ubtns .btn small { display: block; font-size: 11px; font-weight: 400; color: var(--pergament-2); white-space: nowrap; }
+.info .ubtns .btn.on { background: var(--holz-3); border-color: var(--gold); }
+.info .ubtns .btn.on small { color: var(--gold); }
+/* Gruppen 1–3: große Ziffer */
+.info .ubtns .grp b { font: 18px/1 var(--display); color: var(--gold); }
+.info .ubtns + .sub { margin-top: 6px; }
+/* Flotte: je Schiff eine Zeile mit „nur dieses“ */
+.info .fship { display: flex; align-items: center; gap: 6px; padding: 2px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
+.info .fship > span { flex: 1 1 auto; min-width: 0; }
+.info .fship > span b { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info .fship > span small { display: block; font-size: 12px; color: var(--pergament-2); }
+.info .fship .btn { flex: none; min-height: var(--tap); min-width: var(--tap); padding: 2px 6px; font-size: 12px; }

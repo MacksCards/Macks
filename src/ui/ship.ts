@@ -4,7 +4,7 @@
 // Handelsrouten kommen aus dem Gerüst ui/trade.ts und erscheinen erst, wenn es sie gibt.
 import './ship.css';
 import { GOOD, GOODS, GoodId, SHIPS, UNITS } from '../data';
-import { armShip, atWar, disarmShip, setWhiteFlag, unloadTroops, whiteFlag } from '../combat';
+import { armShip, atWar, disarmShip, setWhiteFlag, stopPatrol, unloadTroops, whiteFlag } from '../combat';
 import { HUMAN, Ship } from '../game';
 import { sound } from '../audio';
 import type { UI } from '../ui';
@@ -80,6 +80,9 @@ export class ShipPanel {
     if (gunsOpen) {
       h += '<div class="fold-b">';
       if (s.guns) h += `<p class="sub">Tippe auf ein feindliches Schiff oder Gebäude, um es zu beschießen.</p>`;
+      // (U4) Patrouille und Flotte (Bedienung in ui/units.ts)
+      if (s.guns) h += `<button class="btn wide" id="shipPatrol">🔁 ${s.patrol ? 'Patrouille beenden' : 'Patrouille fahren'}</button>`;
+      if (g.ships.filter((o) => o.owner === HUMAN).length > 1) h += `<p class="sub">Ein weiteres eigenes Schiff antippen nimmt es dazu – dann fahren und kämpfen sie gemeinsam.</p>`;
       if (kl) {
         if (!canArm && (s.guns ?? 0) < sd.kanonen && g.isUnlocked('kanonengiesserei')) h += `<p class="sub">Kanonen kommen aus der Kanonengießerei ins Lager.</p>`;
         if (s.guns) h += `<button class="btn wide" id="shipDisarm">Kanonen ins Lager zurück</button>`;
@@ -147,6 +150,8 @@ export class ShipPanel {
       ui.renderInfo();
     });
     document.getElementById('shipDisarm')?.addEventListener('click', () => { disarmShip(g, s); sound.play('kisten'); ui.renderInfo(); });
+    // (U4) Patrouille: Ziel aufs Meer tippen bzw. beenden
+    document.getElementById('shipPatrol')?.addEventListener('click', () => { if (s.patrol) { stopPatrol(g, s); ui.toast('Patrouille beendet', 'info'); ui.renderInfo(); } else ui.units.startPatrol([s]); });
     document.getElementById('shipLand')?.addEventListener('click', () => {
       const n = unloadTroops(g, s);
       ui.toast(n ? (n === 1 ? '🪖 Ein Soldat an Land' : `🪖 ${n} Soldaten an Land`) : 'Hier ist kein Platz an der Küste', n ? 'good' : 'bad');
