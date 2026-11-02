@@ -126,7 +126,8 @@ export class UI {
     this.g.ev = {
       added: (b) => { v.addBuilding(b); if (b.type === 'kontor' || b.type === 'markt') v.onTerritory(); },
       removed: (b) => { v.removeBuilding(b); if (b.type === 'markt' || b.type === 'kontor') v.onTerritory(); if (this.selected === b) this.select(null); if (b.owner === HUMAN) sound.play('abriss'); },
-      changed: (b) => v.changedBuilding(b),
+      // Kontor/Marktplatz wechselt den Besitzer (Eroberung): Gebietsgrenze neu zeichnen
+      changed: (b) => { v.changedBuilding(b); if (b.type === 'kontor' || b.type === 'markt') v.onTerritory(); },
       roads: () => v.onRoadsChanged(),
       trees: () => v.onTreesChanged(),
       felled: (k) => { v.onFelled(k); if (this.g.seen[k]) sound.play('baum', { x: k % this.g.size, z: Math.floor(k / this.g.size) }); },

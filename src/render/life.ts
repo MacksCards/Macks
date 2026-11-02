@@ -506,8 +506,9 @@ export class LifeLayer {
   private updateShoals(t: number, cam: { x: number; z: number; dist: number }, R: number) {
     const g = this.g;
     const drops = cam.dist <= 30, birds = cam.dist <= 60, jumpFish = cam.dist <= 34;
-    // Fischschatten bis ganz hinaus (von Weitem nur jeder zweite Fisch: spart Rechenzeit, der Schwarm bleibt erkennbar)
-    const step = cam.dist > 34 ? 2 : 1;
+    // Fischschatten bis ganz hinaus (von Weitem nur jeder zweite, ganz weit oben jeder dritte Fisch:
+    // dort sind sie nur noch winzige Flecken – spart Rechenzeit, der Schwarm bleibt erkennbar)
+    const step = cam.dist > 48 ? 3 : cam.dist > 34 ? 2 : 1;
     // der dunkle Fleck gehört zur Nahansicht (von Weitem sähe er aus wie ein Wolkenschatten): mit dem Zoom ausblenden
     const pm = this.patches.material as THREE.MeshBasicMaterial;
     pm.opacity = 0.18 * (1 - Math.min(1, Math.max(0, (cam.dist - 14) / 12)));
