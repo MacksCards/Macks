@@ -1,17 +1,20 @@
-// Schiffsfenster: Laderaum, Zustand, die einklappbaren Blöcke Kanonen, Soldaten und Einladen (+10 / +50 / Max,
-// anfangs zu). Die Hauptknöpfe (Kontor bauen, Alles ausladen, Bewaffnen, an Land setzen) stehen in der festen
-// Fußleiste des Infofensters und sind so immer ohne Wischen erreichbar.
-// Handelsrouten kommen aus dem Gerüst ui/trade.ts und erscheinen erst, wenn es sie gibt.
+// Schiffsfenster: Laderaum, Zustand, die einklappbaren Blöcke Kanonen, Soldaten und „Waren umladen“ (je Ware
+// −10 / +10 / Max, anfangs zu). Am Kontor ist jeder volle Laderaum ein Knopf „⬇ ausladen“. Die Hauptknöpfe (Kontor
+// bauen, Alles ausladen, Bewaffnen, an Land setzen) stehen in der festen Fußleiste des Infofensters und sind so
+// immer ohne Wischen erreichbar. Schalter „Weiße Flagge“, Handelsroute und „Abwracken“ (mit Rückfrage) kommen aus
+// ui/trade.ts bzw. combat.ts (Paket U5).
+// Lagerbestände ändern sich laufend: sie stehen nicht im HTML, sondern paint() setzt sie in die vorhandenen
+// Elemente – so wird das Fenster nicht alle 0,25 s neu aufgebaut und kein Tipp geht verloren.
 import './ship.css';
-import { GOOD, GOODS, GoodId, SHIPS, UNITS } from '../data';
+import { GOOD, GOODS, GoodId, SHIPS, SLOT_CAP, UNITS } from '../data';
 import { armShip, atWar, disarmShip, setWhiteFlag, stopPatrol, unloadTroops, whiteFlag } from '../combat';
 import { HUMAN, Ship } from '../game';
 import { sound } from '../audio';
 import type { UI } from '../ui';
 import { $, hpHtml } from './util';
 
-/** Einladen: so viele Tonnen je Knopf (Max = so viel, wie Lager und Laderaum hergeben) */
-const STEPS: (number | 'max')[] = [10, 50, 'max'];
+/** Umladen je Ware: −10 = ins Kontor, +10 = aufs Schiff, Max = so viel, wie Lager und Laderaum hergeben */
+const STEPS: (number | 'max')[] = [-10, 10, 'max'];
 /** so heißt der Segel-Hinweis im Fenster und in der Hilfe */
 export const SAIL_HINT = 'Tippe aufs Meer oder auf eine Insel – das Schiff segelt so nah wie möglich heran.';
 
@@ -42,23 +45,27 @@ export class ShipPanel {
       const cargo = s.slots.reduce((a, sl) => a + sl.n, 0);
       h += `<p class="sub">⚓ Am Kontor von ${g.islands[dock.island].name}</p>`;
       if (cargo) foot += `<button class="btn ok" id="shipUnload">⬇️ Alles ausladen<small>${cargo} t an Bord</small></button>`;
-      const loadable = GOODS.filter((gd) => l[gd.id] >= 1);
-      if (loadable.length) {
+      // Waren, die im Kontor liegen oder an Bord sind (die Liste ändert sich selten; die Mengen setzt paint())
+      const movable = GOODS.filter((gd) => l[gd.id] >= 1 || g.shipCargo(s, gd.id) > 0);
+      if (movable.length) {
         const loadOpen = this.open.load ?? false;
-        h += this.foldHead('load', '📦 Einladen', `${loadable.length} Waren`, loadOpen);
+        h += this.foldHead('load', '📦 Umladen', `${movable.length} Waren`, loadOpen);
         if (loadOpen) {
-          h += '<div class="fold-b"><p class="sub">Aus dem Kontor aufs Schiff:</p>';
-          for (const gd of loadable) {
-            h += `<div class="load"><span title="${gd.name}">${gd.icon} ${Math.floor(l[gd.id])}</span>` + STEPS.map((n) =>
-              `<button class="btn" data-load="${gd.id}" data-n="${n}" aria-label="${gd.name}: ${n === 'max' ? 'so viel wie geht' : `${n} t`} einladen">${n === 'max' ? 'Max' : `+${n}`}</button>`).join('') + '</div>';
+          h += '<div class="fold-b"><p class="sub">⚓ im Kontor · ⛵ an Bord. −10 bringt Ware ins Kontor, +10 und Max aufs Schiff.</p>';
+          for (const gd of movable) {
+            h += `<div class="load" data-lg="${gd.id}"><span title="${gd.name}"><em>${gd.icon}</em><b>${gd.name}</b><small class="lk">⚓ –</small><small class="ls">⛵ –</small></span>` + STEPS.map((n) =>
+              `<button class="btn" data-load="${gd.id}" data-n="${n}" aria-label="${gd.name}: ${n === 'max' ? 'so viel wie geht einladen' : n < 0 ? `${-n} t ausladen` : `${n} t einladen`}">${n === 'max' ? 'Max' : n < 0 ? `−${-n}` : `+${n}`}</button>`).join('') + '</div>';
           }
           h += '</div>';
         }
       }
     }
-    // Laderaum
+    // Laderaum: am Kontor ist jeder volle Laderaum ein Knopf zum Ausladen
     h += `<h4>Laderaum</h4><div class="slots">`;
-    for (const sl of s.slots) h += `<div class="slot">${sl.g ? `<span>${GOOD[sl.g].icon}</span><b>${sl.n}</b>` : '<small>leer</small>'}</div>`;
+    s.slots.forEach((sl, i) => {
+      if (sl.g && dock) h += `<button class="slot btn" data-unl="${i}" aria-label="Laderaum ${i + 1}: ${sl.n} t ${GOOD[sl.g].name} ausladen"><span>${GOOD[sl.g].icon}</span><b>${sl.n}</b><small>⬇ aus</small></button>`;
+      else h += `<div class="slot">${sl.g ? `<span>${GOOD[sl.g].icon}</span><b>${sl.n}</b>` : '<small>leer</small>'}</div>`;
+    });
     h += '</div>';
     h += hpHtml(s.hp ?? sd.hp, sd.hp);
     if ((s.hp ?? sd.hp) < sd.hp) {
@@ -67,9 +74,10 @@ export class ShipPanel {
     }
     // Weiße Flagge (erst, wenn Piraten gesichtet wurden oder Krieg herrscht): friedliche Fahrt
     if (g.pirateSeen || war) {
+      // Schalter: an = friedliche Fahrt
       const wf = whiteFlag(g, s);
-      h += `<button class="btn wide" id="shipFlag" aria-pressed="${wf}">🏳️ ${wf ? 'Weiße Flagge einholen' : 'Weiße Flagge hissen'}</button>`;
-      h += `<p class="sub">${wf ? 'Piraten und Gegner lassen das Schiff in Ruhe (nicht mit Soldaten an Bord). Deine Kanonen schießen nicht von selbst.' : 'Mit weißer Flagge lassen Piraten und Gegner das Schiff in Ruhe.'}</p>`;
+      h += `<div class="switchrow sflag"><span>🏳️ Weiße Flagge<small>${wf ? (s.troops?.length ? 'Schützt nicht, solange Soldaten an Bord sind.' : 'Piraten und Gegner lassen das Schiff in Ruhe; deine Kanonen schweigen.') : 'Gehisst lassen Piraten und Gegner das Schiff in Ruhe.'}</small></span>`
+        + `<button class="btn${wf ? ' on' : ''}" id="shipFlag" role="switch" aria-checked="${wf}" aria-label="Weiße Flagge">${wf ? '🏳️ Gehisst' : 'Eingeholt'}</button></div>`;
     }
     // Kanonen (einklappbar; ohne eigene Wahl offen bei Krieg, wenn Kanonen an Bord sind
     // oder wenn das Kontor hier Kanonen zum Bewaffnen hat)
@@ -104,13 +112,39 @@ export class ShipPanel {
       }
       if (tr && near >= 0 && !s.path.length) foot += `<button class="btn ok" id="shipLand">🪖 An Land setzen<small>${tr} Soldaten</small></button>`;
     }
-    // Handelsrouten (Gerüst ui/trade.ts)
+    // Handelsroute und Abwracken (ui/trade.ts)
     if (ui.trade.ready) h += ui.trade.shipHtml(s);
+    h += ui.trade.scrapHtml(s);
     if (canFound) h += `<h4>Insel in der Nähe</h4>${ui.info.islandHtml(near).replace('<h3>', '<h3 class="small">')}`;
     else if (near < 0 && !s.path.length && !dock) h += '<p class="sub">Segle an eine Küste, um dort ein Kontor zu bauen.</p>';
     if (dock || canFound) h += `<p class="sub">${SAIL_HINT}</p>`;
-    if (!ui.setInfo(h, foot)) return;
-    this.bind(s);
+    if (ui.setInfo(h, foot)) this.bind(s);
+    this.paint(s);
+  }
+
+  /** laufende Zahlen setzen (Lager im Kontor, Ladung je Ware, Zustand der Route) – ohne neu aufzubauen */
+  private paint(s: Ship) {
+    const ui = this.ui, g = ui.g, body = $('#infoBody');
+    const dock = g.shipDock(s);
+    const l = dock ? g.lagerOf(HUMAN, dock.island) : null;
+    if (l) {
+      const free = s.slots.some((sl) => !sl.g);
+      const cap = g.capOf(HUMAN, dock!.island);
+      body.querySelectorAll<HTMLElement>('[data-lg]').forEach((row) => {
+        const id = row.dataset.lg as GoodId;
+        const have = Math.floor(l[id]), on = g.shipCargo(s, id);
+        const lk = row.querySelector('.lk'), ls = row.querySelector('.ls');
+        if (lk && lk.textContent !== `⚓ ${have}`) lk.textContent = `⚓ ${have}`;
+        if (ls && ls.textContent !== `⛵ ${on}`) ls.textContent = `⛵ ${on}`;
+        // Knöpfe, die gerade nichts bewirken, blass (antippen erklärt, warum)
+        const canLoad = have >= 1 && (free || s.slots.some((sl) => sl.g === id && sl.n < SLOT_CAP));
+        row.querySelectorAll<HTMLElement>('[data-n]').forEach((bt) => {
+          const off = bt.dataset.n === '-10' ? on <= 0 || have >= cap : !canLoad;
+          if ((bt.getAttribute('aria-disabled') === 'true') !== off) bt.setAttribute('aria-disabled', String(off));
+        });
+      });
+    }
+    ui.trade.paintShip(body, s);
   }
 
   /** Kopfzeile eines einklappbaren Blocks */
@@ -131,10 +165,28 @@ export class ShipPanel {
       ui.renderInfo();
     });
     body.querySelectorAll<HTMLElement>('[data-load]').forEach((bt) => bt.addEventListener('click', () => {
+      const id = bt.dataset.load as GoodId;
       const n = bt.dataset.n === 'max' ? 1e9 : Number(bt.dataset.n);
-      const got = g.loadGood(s, bt.dataset.load as GoodId, n);
+      if (n < 0) {
+        // −10: ins Kontor (nur so viel, wie im Lager Platz ist)
+        const got = g.unloadGood(s, id, -n);
+        if (got > 0) sound.play('kisten');
+        else if (g.shipCargo(s, id) <= 0) ui.toast(`${GOOD[id].name}: nichts an Bord`, 'info');
+        else { const dock = g.shipDock(s); ui.toast(`Kontor ist voll (${dock ? g.capOf(HUMAN, dock.island) : 0} t je Ware)`, 'bad'); }
+      } else {
+        const got = g.loadGood(s, id, n);
+        if (got > 0) sound.play('kisten');
+        else ui.toast(g.shipDock(s) && (g.lagerOf(HUMAN, g.shipDock(s)!.island)?.[id] ?? 0) < 1 ? `${GOOD[id].name}: nichts im Kontor` : 'Kein Platz mehr im Laderaum', 'bad');
+      }
+      ui.renderInfo();
+    }));
+    // ein Laderaum: ⬇ ausladen
+    body.querySelectorAll<HTMLElement>('[data-unl]').forEach((bt) => bt.addEventListener('click', () => {
+      const sl = s.slots[Number(bt.dataset.unl)];
+      if (!sl?.g) return;
+      const got = g.unloadGood(s, sl.g, sl.n);
       if (got > 0) sound.play('kisten');
-      else ui.toast('Kein Platz mehr im Laderaum', 'bad');
+      else { const dock = g.shipDock(s); ui.toast(`Kontor ist voll (${dock ? g.capOf(HUMAN, dock.island) : 0} t je Ware)`, 'bad'); }
       ui.renderInfo();
     }));
     body.querySelectorAll<HTMLElement>('[data-fold]').forEach((bt) => bt.addEventListener('click', () => {
@@ -164,5 +216,6 @@ export class ShipPanel {
       ui.toast('Tippe auf die Küste neben dem Schiff', 'info');
     });
     if (ui.trade.ready) ui.trade.bindShip(body, s);
+    ui.trade.bindScrap(body, s);
   }
 }
