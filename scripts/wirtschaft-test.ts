@@ -308,7 +308,8 @@ const setHouse = (g: Game, h: Building, tier: number, residents = TIERS[tier].ma
   const w = put(g, 'weberei', k, 2, 8)!;
   g.setTaxRate(3, 20); g.setOff(w, true); g.setMatLock(k, true); g.players[HUMAN].erlass = 2;
   const d = JSON.parse(JSON.stringify(g.serialize())) as SaveData;
-  check('Spielstand Version 5', d.v === 5);
+  // (Zusammenführung Welle 2) Version 6; ältere Stände laden weiter (siehe unten und spielstaende-test)
+  check('Spielstand Version 6', d.v === 6);
   const g2 = Game.fromSave(d);
   check('Steuersatz, Ruhen, Sperre und Erlass bleiben erhalten', g2.taxRate(3) === 20 && !!g2.byId.get(w.id)?.off && !!g2.kontor()?.matLock && g2.players[HUMAN].erlass === 2);
   const old = JSON.parse(JSON.stringify(d)) as SaveData & { v: number };

@@ -115,9 +115,12 @@ const run = (g: Game, sec: number, dt = 0.25) => { for (let i = 0; i < sec / dt;
   const g = Game.create(42, 3);
   quiet(g);
   g.popByTier = () => [300, 0, 0, 0, 0];
+  // (Zusammenführung) S3 gibt die Feuerwehr inzwischen frei – für „ohne Freigabe“ hier zurückhalten
+  check('S3 gibt Feuerwehr, Arzt und Galgen frei', g.isReady('feuerwehr') && g.isReady('arzt') && g.isReady('galgen'));
+  g.isReady = (t) => t !== 'feuerwehr' && Game.prototype.isReady.call(g, t);
   run(g, 20 * 60);
   const before = g.buildings.some((b) => b.type === 'feuerwehr' && b.owner !== HUMAN);
-  const ready = g.isReady.bind(g);
+  const ready = Game.prototype.isReady.bind(g);
   g.isReady = (t) => t === 'feuerwehr' || ready(t);
   g.isUnlocked = (t) => t === 'feuerwehr' || Game.prototype.isUnlocked.call(g, t);
   for (const p of g.players) if (p.ai) p.money = Math.max(p.money, 9000);

@@ -11,7 +11,7 @@ import { SYSTEMS } from './systems';
 import { Island, PFLANZEN, T, WORLD_SIZE, WORLD_SIZES, generateWorld, rng } from './world';
 import { SCHWIERIGKEIT, stufe } from './schwierigkeit';
 import { book } from './stats';
-import { KEIN_FESTES_LAND, trockeneFlaeche } from './landhoehe'; // (KL)
+import { KEIN_FESTES_LAND, landVorbereiten, trockeneFlaeche } from './landhoehe'; // (KL)
 
 /** zuWeit = kein Marktkarren kommt hin (zu weit von Kontor/Marktplatz); aus = vom Spieler ruhen gelassen */
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft' | 'zuWeit' | 'aus';
@@ -220,7 +220,7 @@ export interface SaveData {
   /** 3 = alt (Welt kam aus der Startzahl), 4 = Welt steht vollständig im Spielstand,
    *  5 = Wirtschaft wie 1602 (Steuersätze, Betriebe ruhen, Baumaterial-Sperre, Schulden – alles neue Felder sind
    *  freiwillig, ältere Stände laufen mit den Standardwerten weiter) */
-  v: 3 | 4 | 5;
+  v: 3 | 4 | 5 | 6;
   seed: number;
   tiles: string;
   roads: string;
@@ -285,7 +285,8 @@ const LAGER: BuildingId[] = ['kontor', 'markt'];
 const SAVE_KEY = 'neue-ufer-save-v4';
 /** hierhin wird ein unlesbarer Stand gesichert, bevor ein neues Spiel ihn überschreiben kann */
 const BROKEN_KEY = 'neue-ufer-save-sicherung';
-export const SAVE_VERSION = 5;
+/** 6: Ereignisse (S3), Meldungsverlauf und Nebenaufgaben (U3), Merkzettel der Bedienung (U4), Gegner-Zustand (KI2) */
+export const SAVE_VERSION = 6;
 /** So lange (echte Sekunden) lässt sich ein Bau mit voller Erstattung zurücknehmen */
 export const UNDO_SECONDS = 10;
 export const HUMAN = 0;
@@ -552,6 +553,7 @@ export class Game {
     g.recompute();
     g.checkUnlocks(true);
     for (const s of SYSTEMS) s.load?.(g, undefined);
+    landVorbereiten(g); // (KL) Küstenrechnung beim Erzeugen statt im ersten Denkschritt der Gegner
     return g;
   }
 
@@ -624,6 +626,7 @@ export class Game {
     }
     g.checkUnlocks(true);
     for (const s of SYSTEMS) s.load?.(g, d.ext?.[s.id]);
+    landVorbereiten(g); // (KL) wie in create
     return g;
   }
 
@@ -670,7 +673,7 @@ export class Game {
     if (!raw) return null;
     try {
       const d = JSON.parse(raw) as SaveData;
-      if (!d || typeof d !== 'object' || (d.v !== 3 && d.v !== 4 && d.v !== 5)) throw new Error(`unbekannte Version ${String((d as { v?: unknown } | null)?.v)}`);
+      if (!d || typeof d !== 'object' || (d.v !== 3 && d.v !== 4 && d.v !== 5 && d.v !== 6)) throw new Error(`unbekannte Version ${String((d as { v?: unknown } | null)?.v)}`);
       return Game.fromSave(d);
     } catch (e) {
       try {

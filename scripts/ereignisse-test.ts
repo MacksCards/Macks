@@ -493,7 +493,8 @@ function plagueTown(seed: number, opts: Partial<GameOptions>, withDoctor: boolea
   let ok = true;
   try { const g3 = Game.fromSave(d); run(g3, 5); ok = !ev.burning(g3, g3.byId.get(hs[0].id)!); } catch (e) { ok = false; console.log(e); }
   check('Alter Spielstand ohne Ereignisse lädt (Standardwerte)', ok);
-  check('Spielstand-Version unverändert (5)', g.serialize().v === 5);
+  // (Zusammenführung) Version 6: Ereignisse, Meldungsverlauf und Bedienung im Spielstand; Version 5 lädt weiter
+  check('Spielstand-Version 6', g.serialize().v === 6);
 }
 
 // ---------- Leistung: großer Brand in einer großen Stadt ----------

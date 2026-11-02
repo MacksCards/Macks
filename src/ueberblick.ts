@@ -38,7 +38,8 @@ export const LOG_SAVE = 30;
 /** wichtige Meldungen (Warnung, Krieg, Piraten, Bankrott): bleiben stehen, bis man sie antippt */
 export function important(text: string, kind: MsgKind): boolean {
   if (kind !== 'bad') return false;
-  return /^(⚠️|🚨|🏳️|🚩|🏴‍☠️|⚔️ .* erklärt dir)/u.test(text) || /Bankrott|verloren/.test(text);
+  // (S3) Brand und Pest brauchen schnelles Handeln: bleiben stehen wie Kriegsmeldungen
+  return /^(⚠️|🚨|🏳️|🚩|🏴‍☠️|⚔️ .* erklärt dir|🔥 Feuer auf|💀 Pest auf)/u.test(text) || /Bankrott|verloren/.test(text);
 }
 
 // ---------- Aufgaben ----------

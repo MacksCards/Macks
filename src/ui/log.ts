@@ -72,12 +72,35 @@ export class LogBook implements Part {
     });
     // neueste unten (am nächsten zur Aufgabe), ältere wandern nach oben
     box.appendChild(t);
-    while (box.children.length > SHOWN_MAX) {
-      const kids = Array.from(box.children) as HTMLElement[];
-      (kids.find((c) => !c.classList.contains('imp') && c !== t) ?? kids[0]).remove();
-    }
+    this.trim(box, t);
     if (imp) return; // bleibt stehen, bis man sie antippt
     const ms = Math.min(6500, 3000 + Math.max(0, plain(e.text).length - 40) * 45);
+    setTimeout(() => t.classList.add('out'), ms);
+    setTimeout(() => t.remove(), ms + 450);
+  }
+
+  /** höchstens SHOWN_MAX Einblendungen: zuerst fallen gewöhnliche weg (nicht wichtige, nicht die mit Knopf) */
+  private trim(box: HTMLElement, keep: HTMLElement) {
+    while (box.children.length > SHOWN_MAX) {
+      const kids = Array.from(box.children) as HTMLElement[];
+      (kids.find((c) => !c.classList.contains('imp') && !c.classList.contains('act') && c !== keep)
+        ?? kids.find((c) => c !== keep) ?? kids[0]).remove();
+    }
+  }
+
+  /** (U3 + U4) Meldung mit eigenem Knopf (z. B. „↩ Rückgängig“ nach dem Bauen) in derselben Zeile links unten.
+   *  Steht ms lang; eine neue ersetzt die vorige. Im Verlauf steht nur der Text. */
+  action(text: string, label: string, run: () => void, ms = 8000) {
+    const e = addLog(this.ui.g, text, 'info');
+    const box = this.box();
+    box.querySelector('.ltoast.act')?.remove();
+    const t = el('div', 'ltoast ltoast-info act', '<span class="tx"></span><button class="btn" type="button"></button>');
+    t.querySelector('.tx')!.textContent = plain(text);
+    const bt = t.querySelector('button')!;
+    bt.textContent = label;
+    bt.addEventListener('click', (ev) => { ev.stopPropagation(); e.read = true; t.remove(); run(); });
+    box.appendChild(t);
+    this.trim(box, t);
     setTimeout(() => t.classList.add('out'), ms);
     setTimeout(() => t.remove(), ms + 450);
   }

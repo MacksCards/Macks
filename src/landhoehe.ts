@@ -183,6 +183,10 @@ export function trockeneFlaeche(w: Welt, x: number, y: number, s: number): boole
   return true;
 }
 
+/** (Zusammenführung) Grundrechnung gleich beim Erzeugen bzw. Laden der Welt machen – sonst fällt sie in den
+ *  ersten Denkschritt der Computergegner (Kontorplatz suchen) und macht ihn um etwa 9 ms langsamer */
+export function landVorbereiten(w: Welt): void { fuer(w); }
+
 /** Bodenhöhe am Gitterpunkt wie im Bild (nur für scripts/kueste-test.ts) */
 export function bodenHoehe(w: Welt, i: number, j: number): number {
   return fuer(w).gridH(i, j);

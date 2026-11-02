@@ -648,6 +648,8 @@ export class UI {
    * damit oben nie mehrere Knöpfe stehen. Geht auch in den Meldungsverlauf (ohne Knopf).
    */
   toastAction(text: string, label: string, run: () => void, ms = 8000) {
+    // (U3 + U4) mit Meldungsverlauf: der Knopf steht in derselben Meldungszeile links unten
+    if (this.log.ready) { this.log.action(text, label, run, ms); return; }
     this.log.add(text, 'info');
     const box = $('#toasts');
     box.querySelector('.toast.act')?.remove();
