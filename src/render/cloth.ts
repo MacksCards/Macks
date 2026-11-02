@@ -1,9 +1,22 @@
 // Wehende Stoff-Fahnen (Gebäude und Schiffe): ein fein unterteiltes Tuch, das im Grafikprogramm Wellen
 // schlägt – am Mast fest, zum freien Ende hin immer stärker. Falten werden leicht schattiert, damit das
-// Tuch nach Stoff aussieht und nicht nach einem flachen Brett. Kostet keinen zusätzlichen Speicher je Bild;
-// die Uhr (windTime) teilt es sich mit Bäumen und Gras, die Fahnen wehen also im selben Wind.
+// Tuch nach Stoff aussieht und nicht nach einem flachen Brett. Kostet keinen zusätzlichen Speicher je Bild.
+//
+// Eigene „Ruhe-Uhr“ (calmClock): Sie läuft beim Spielen mit der echten Zeit (wie der Wind für Bäume und Gras)
+// und steht in der Pause still. In der Pause zeichnet das Spiel nur wenige Bilder je Sekunde (schont den
+// Akku) – was sich dann noch bewegte, ruckelte. Fahnen, Auswahl-Pfeil und das Schaukeln der Schiffe halten
+// deshalb in der Pause an der Stelle an, an der sie gerade sind, und laufen danach ohne Sprung weiter.
 import * as THREE from 'three';
-import { windTime } from './vegetation';
+
+/** Uhr für Fahnen, Auswahl-Pfeil und Schiffs-Schaukeln (Sekunden); steht still, solange still = true */
+export const calmClock = { value: 0, still: false, last: -1 };
+
+/** je gezeichnetem Bild aufrufen (t = echte Zeit in s); mehrfache Aufrufe mit gleichem t schaden nicht */
+export function tickCalm(t: number) {
+  const dt = calmClock.last < 0 ? 0 : Math.min(0.1, Math.max(0, t - calmClock.last));
+  calmClock.last = t;
+  if (!calmClock.still) calmClock.value += dt;
+}
 
 /**
  * Tuch-Form: Oberkante am Mast bei y = 0, Mastkante bei z = 0, das Tuch reicht bis z = len (Breite h nach unten).
@@ -39,7 +52,7 @@ export function clothGeometry(len: number, h: number, taper = 0, segX = 8, segY 
 export function clothMaterial(color = 0xffffff): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ color, roughness: 0.88, metalness: 0, side: THREE.DoubleSide });
   m.onBeforeCompile = (sh) => {
-    sh.uniforms.uWind = windTime;
+    sh.uniforms.uWind = calmClock;
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
 uniform float uWind;

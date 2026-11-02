@@ -5,7 +5,8 @@ import { whiteFlag } from '../combat';
 import { Game, Ship } from '../game';
 import { Builder, M, Paint } from './kit';
 import { buildingMaterial } from './materials';
-import { clothGeometry, clothMaterial } from './cloth';
+import { clothGeometry, clothMaterial, calmClock, tickCalm } from './cloth';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Fx } from './fx';
 
 /** gewölbtes Segel (Ausschnitt eines Zylindermantels), Bauch nach vorne (+z) */
@@ -87,8 +88,20 @@ function gunGeometry(large: boolean): THREE.BufferGeometry {
   return b.geometry();
 }
 
-/** Fahnentuch am Masttopp (in Schiffs-Maßen): hängt an der Mastspitze und weht nach achtern */
-const SHIP_FLAG = clothGeometry(0.3, 0.18, 0, 8, 3);
+/**
+ * Fahne am Masttopp (in Schiffs-Maßen): ein kurzer Flaggenstock setzt die Mastspitze nach oben fort, das Tuch
+ * hängt ganz oben daran und weht nach achtern. Die Unterkante des Tuchs liegt über der Mastspitze – so liegt
+ * die Fahne in der üblichen Schrägansicht über den Segeln (nicht als Farbfleck auf dem obersten Segel) und
+ * ist klar als Fahne zu erkennen. Das Tuch läuft zum Ende hin etwas schmaler zu (wie ein Schiffswimpel).
+ */
+const FLAG_LEN = 0.27, FLAG_H = 0.105, STAFF_H = 0.24;
+const SHIP_FLAG = clothGeometry(FLAG_LEN, FLAG_H, 0.4, 8, 3);
+/** Flaggenstock (Fuß bei y = 0) mit kleinem Knauf oben */
+const STAFF_GEO = (() => {
+  const pole = new THREE.CylinderGeometry(0.006, 0.009, STAFF_H, 5).translate(0, STAFF_H / 2, 0);
+  const knob = new THREE.SphereGeometry(0.014, 6, 4).translate(0, STAFF_H + 0.008, 0);
+  return mergeGeometries([pole, knob])!;
+})();
 /** Spitze des Großmasts am Code-Schiff (Lage im Schiff) */
 function codeMastTop(large: boolean): THREE.Vector3 {
   return large ? new THREE.Vector3(0, 0.08 + 1.45, -0.05) : new THREE.Vector3(0, 0.08 + 1.2, 0.25);
@@ -113,7 +126,7 @@ function highestPoint(root: THREE.Object3D, obj: THREE.Object3D): THREE.Vector3 
   return best.y > -Infinity ? best : new THREE.Vector3(0, 1.4, 0);
 }
 
-interface View { real?: boolean; mesh: THREE.Mesh; ring: THREE.Mesh; wake: THREE.Mesh; flag: THREE.Mesh; guns: THREE.Mesh; key: string; sink?: number; hpFrac: number; top: number }
+interface View { real?: boolean; mesh: THREE.Mesh; ring: THREE.Mesh; wake: THREE.Mesh; flag: THREE.Mesh; staff: THREE.Mesh; guns: THREE.Mesh; key: string; sink?: number; hpFrac: number; top: number }
 
 /** Platz für so viele Routenpunkte wird am Anfang angelegt (wächst nur bei sehr langen Routen) */
 const ROUTE_POINTS = 128;
@@ -126,6 +139,7 @@ export class ShipLayer {
   private mat = buildingMaterial();
   private gunMat = buildingMaterial({ metalness: 0.5, roughness: 0.4 });
   private flagMats = new Map<number, THREE.Material>();
+  private staffMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.7, metalness: 0 });
   private sinkMat = buildingMaterial({ transparent: true });
   // Auswahlring und Kielwasser: für alle Schiffe dieselbe Form und Farbe (nichts wird je Schiff neu angelegt)
   private ringGeo = new THREE.RingGeometry(0.95, 1.1, 40).rotateX(-Math.PI / 2);
@@ -185,7 +199,7 @@ export class ShipLayer {
   }
 
   /** Materialien für das Vorwärmen der Grafik-Programme (Untergang, Ring, Kielwasser) */
-  warmMaterials(): THREE.Material[] { return [this.sinkMat, this.ringMat, this.wakeMat, this.mat, this.gunMat, this.flagMat(0xffffff)]; }
+  warmMaterials(): THREE.Material[] { return [this.sinkMat, this.ringMat, this.wakeMat, this.mat, this.gunMat, this.staffMat, this.flagMat(0xffffff)]; }
 
   setGame(g: Game) {
     this.g = g;
@@ -261,10 +275,15 @@ export class ShipLayer {
     mesh.castShadow = true;
     mesh.userData.shipId = s.id;
     const flag = new THREE.Mesh(SHIP_FLAG, this.flagMat(pirate ? 0x111111 : this.g.players[s.owner]?.color ?? 0x2f6fd0));
-    // Fahne hängt an der Spitze des Großmasts und weht nach achtern (Heck)
-    flag.position.copy(codeMastTop(large));
+    // Fahne hängt am Flaggenstock auf der Spitze des Großmasts und weht nach achtern (Heck)
+    const staff = new THREE.Mesh(STAFF_GEO, this.staffMat);
+    const setTop = (p: THREE.Vector3) => {
+      staff.position.copy(p);
+      flag.position.set(p.x, p.y + STAFF_H - 0.004, p.z);
+    };
+    setTop(codeMastTop(large));
     flag.rotation.y = Math.PI;
-    mesh.add(flag);
+    mesh.add(staff, flag);
     const guns = new THREE.Mesh(this.gunGeos[large ? 1 : 0], this.gunMat);
     guns.castShadow = true;
     mesh.add(guns);
@@ -280,10 +299,10 @@ export class ShipLayer {
       const mk = `${s.type === 'krieg_klein' || s.type === 'krieg_gross' || pirate}${pirate}`;
       let top = this.mastTops.get(mk);
       if (!top) { top = highestPoint(mesh, real); this.mastTops.set(mk, top); }
-      flag.position.set(top.x, top.y - 0.03, top.z);
+      setTop(new THREE.Vector3(top.x, top.y - 0.03, top.z));
     }
     const top = Math.max(flag.position.y, real ? 0 : 1.5);
-    v = { mesh, ring, wake, flag, guns, key, hpFrac: 1, real: !!real, top };
+    v = { mesh, ring, wake, flag, staff, guns, key, hpFrac: 1, real: !!real, top };
     this.group.add(mesh, ring, wake);
     this.views.set(s.id, v);
     return v;
@@ -305,6 +324,9 @@ export class ShipLayer {
   update(t: number) {
     const dt = Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
+    // Schaukeln und Fahnen nach der Ruhe-Uhr: stehen in der Pause still statt zu ruckeln (s. cloth.ts)
+    tickCalm(t);
+    const ct = calmClock.value;
     const alive = this.alive;
     alive.clear();
     this.shown.length = 0;
@@ -320,15 +342,15 @@ export class ShipLayer {
       const max = SHIPS[s.type ?? 'handel_klein'].hp;
       const frac = s.hp === undefined ? 1 : Math.max(0, s.hp / max);
       v.hpFrac = frac;
-      const bob = Math.sin(t * 1.6 + s.id) * 0.03;
+      const bob = Math.sin(ct * 1.6 + s.id) * 0.03;
       v.mesh.position.set(sx, 0.08 + bob - (1 - frac) * 0.06, sy);
       v.mesh.scale.setScalar(scale);
       // beschädigt: Schlagseite
-      v.mesh.rotation.set(Math.sin(t * 1.3 + s.id) * 0.04, sdir, Math.cos(t * 1.1 + s.id) * 0.05 + (1 - frac) * 0.12);
+      v.mesh.rotation.set(Math.sin(ct * 1.3 + s.id) * 0.04, sdir, Math.cos(ct * 1.1 + s.id) * 0.05 + (1 - frac) * 0.12);
       v.guns.visible = !v.real && (s.guns ?? 0) > 0;
       // Fahne flattert; weiße Flagge statt der Besitzerfarbe, solange sie gehisst ist
       // (das Tuch schlägt im Grafikprogramm Wellen, hier pendelt es nur leicht um den Mast)
-      v.flag.rotation.y = Math.PI + Math.sin(t * 0.8 + s.id) * 0.15;
+      v.flag.rotation.y = Math.PI + Math.sin(ct * 0.8 + s.id) * 0.15;
       const flagMat = this.flagMat(whiteFlag(this.g, s) ? 0xf2efe6 : this.isPirate(s) ? 0x111111 : this.g.players[s.owner]?.color ?? 0x2f6fd0);
       if (v.flag.material !== flagMat) v.flag.material = flagMat;
       v.ring.visible = this.selected === s.id;

@@ -1,8 +1,10 @@
 // Hilfe beim Platzieren eines Gebäudes: man sieht genau, wo es steht – auch mitten im Wald.
 //
 // - Bäume auf der Grundfläche werden nicht gezeichnet (beim Bau werden sie dort ohnehin gefällt),
-//   Bäume davor (zwischen Kamera und Vorschau) und direkt am Rand werden durchsichtig.
+//   Bäume davor (zwischen Kamera und Vorschau) werden ausgeblendet, am Rand dieses schmalen Streifens und
+//   direkt an der Grundfläche nur kleiner (ruhig und scharf, kein körniges Punktmuster, kein Flimmern).
 //   Dafür ändern sich nur zwei Werte im gemeinsamen Bäume-Material (placeClear) – kein Neuaufbau, flüssig.
+// - Der Ring des Arbeitsbereichs (scene.ts) liegt über den Bäumen, damit man ihn auch im Wald sieht.
 // - Die Grundfläche bekommt eine farbige Fläche und einen klaren Rahmen mit dunkler Kante
 //   (grün = geht, rot = geht nicht). Der Rahmen ist immer zu sehen, auch hinter Gras oder Hügeln.
 // - Teile der Vorschau, die trotzdem verdeckt sind, scheinen als zarter Umriss durch.
@@ -48,6 +50,13 @@ export class PlaceHelp {
     this.xrayMat.customProgramCacheKey = () => 'bau-umriss';
     this.fill = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), this.fillMat);
     this.fill.renderOrder = 2;
+    // Blick der Spielkamera für das Schattenbild der Bäume merken (ausgeblendete Bäume werfen keinen Schatten;
+    // das Schattenbild entsteht vor dem eigentlichen Bild, nimmt also den Blick des vorigen Bilds – unsichtbar)
+    this.fill.onBeforeRender = (_r, _s, cam) => {
+      const c = cam as THREE.PerspectiveCamera;
+      placeClear.uClearVP.value.multiplyMatrices(c.projectionMatrix, c.matrixWorldInverse);
+      placeClear.uClearPS.value.set(c.projectionMatrix.elements[0], c.projectionMatrix.elements[5]);
+    };
     this.edge = new THREE.Mesh(undefined, this.edgeMat);
     this.edge.renderOrder = 3;
     this.frame = new THREE.Mesh(undefined, this.frameMat);

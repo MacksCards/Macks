@@ -5,8 +5,12 @@
 // Er hat am Bildschirm immer etwa dieselbe Größe (egal wie weit herausgezoomt) und liegt über allem –
 // auch Bäume oder Dächer davor verdecken ihn nicht.
 // Alle Pfeile zusammen kosten zwei Zeichenaufrufe (gold + Rand), und nur, solange etwas angewählt ist.
+// In der Pause steht der Pfeil still (Ruhe-Uhr aus cloth.ts): dann zeichnet das Spiel nur wenige Bilder
+// je Sekunde, ein wippender Pfeil würde ruckeln. Flüssig weiterzeichnen hieße 60 Bilder je Sekunde nur für
+// den Pfeil – das kostet auf dem iPhone spürbar Akku, während man in Ruhe überlegt.
 import * as THREE from 'three';
 import { flushInstances } from './instances';
+import { calmClock } from './cloth';
 
 /** Größe des Pfeils am Bildschirm in Bildpunkten (Höhe), für Schiffe/Gebäude bzw. für einzelne Soldaten */
 const PX_BIG = 30, PX_SMALL = 22;
@@ -47,6 +51,11 @@ export class SelectionMarks {
   private axis = new THREE.Vector3(0, 1, 0);
   private up = new THREE.Vector3();
   private spin = new THREE.Quaternion();
+  /** höchste Pfeil-Oberkante im letzten Bild, in Bildschirm-Maßen −1 … 1 (y = 1 oben); on = es gibt einen Pfeil */
+  readonly topNdc = { x: 0, y: 0, on: false };
+  /** derselbe Punkt in der Welt */
+  readonly topWorld = new THREE.Vector3();
+  private tw = new THREE.Vector3();
 
   constructor() {
     const geo = arrowGeometry();
@@ -77,9 +86,12 @@ export class SelectionMarks {
     if (this.pts.length < MAX) this.pts.push({ x, y, z, px: small ? PX_SMALL : PX_BIG, gap });
   }
 
-  /** Lage setzen; t = Uhrzeit in s, viewH = Höhe der Zeichenfläche in Bildpunkten (CSS) */
-  end(t: number, camera: THREE.PerspectiveCamera, viewH: number) {
+  /** Lage setzen; viewH = Höhe der Zeichenfläche in Bildpunkten (CSS). Wippen und Drehen laufen nach der
+   *  Ruhe-Uhr (steht in der Pause still), nicht nach der übergebenen Uhrzeit. */
+  end(_t: number, camera: THREE.PerspectiveCamera, viewH: number) {
     const n = this.pts.length;
+    const t = calmClock.value;
+    this.topNdc.on = false;
     if (!n) { flushInstances(this.gold, 0); flushInstances(this.rim, 0); return; }
     const k = (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2)) / Math.max(1, viewH);
     const bob = 0.5 + 0.5 * Math.sin(t * 3.2);
@@ -99,6 +111,11 @@ export class SelectionMarks {
       // Rand: etwas größer, Spitze etwas tiefer, damit der Umriss rundum gleich breit ist
       this.m.compose(this.v.set(p.x, p.y, p.z).addScaledVector(this.up, lift - size * 0.09), this.q, this.s.setScalar(size * 1.16));
       this.rim.setMatrixAt(i, this.m);
+      // Oberkante des Pfeils am Bildschirm (für „Pfeil nicht unter der oberen Leiste“)
+      this.tw.set(p.x, p.y, p.z).addScaledVector(this.up, lift + size * 1.05);
+      this.v.copy(this.tw).project(camera);
+      const tn = this.topNdc;
+      if (this.v.z < 1 && (!tn.on || this.v.y > tn.y)) { tn.x = this.v.x; tn.y = this.v.y; tn.on = true; this.topWorld.copy(this.tw); }
     }
     flushInstances(this.gold, n);
     flushInstances(this.rim, n);

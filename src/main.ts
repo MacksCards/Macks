@@ -7,6 +7,7 @@ import { T } from './world';
 import { DebugOverlay, QualityMode } from './render/quality';
 import { saves, slotName } from './saves';
 import { grafikWahl } from './ui/settings';
+import { calmClock } from './render/cloth';
 
 const TICK = 0.25; // Sekunden Spielzeit pro Simulationsschritt
 
@@ -115,6 +116,8 @@ async function boot() {
     // Zeichnen: beim Spielen jedes Bild (sparsam: 30 je Sekunde); in Pause, Menü und Hochformat nur,
     // wenn sich Kamera oder Bild geändert haben, sonst höchstens 10 Bilder je Sekunde (schont den Akku)
     const idle = ui.paused || modalOpen;
+    // Fahnen, Auswahl-Pfeil und Schiffs-Schaukeln stehen dann still (bei wenigen Bildern je Sekunde würden sie ruckeln)
+    calmClock.still = idle;
     pendingDt += idle ? 0 : real * ui.speed;
     const since = now - lastDraw;
     const draw = idle ? (view.needsRedraw() || since >= 100) : since >= view.quality.minInterval;
@@ -131,6 +134,7 @@ async function boot() {
         });
       }
       lastDraw = now;
+      keepArrowVisible(now);
     }
     // Klangkulisse: was ist gerade im Bild – Meer, Land, Wald?
     const r = view.rig;
@@ -153,6 +157,45 @@ async function boot() {
     sound.ambience(landNear, forestNear, ui.paused || modalOpen);
   };
   let ambT = 0, landNear = 0, forestNear = 0;
+
+  // Auswahl-Pfeil nicht unter der oberen Leiste: Beim Anwählen schiebt die Kamera das Ding schon in den freien
+  // Bereich (ui.keepLeft), rechnet dabei aber mit dem Boden. Hohe Schiffe/Gebäude samt Pfeil können oben noch
+  // unter der Leiste stecken – dann einmal, kurz nach dem Anwählen, sanft ein Stück nachschieben.
+  let selKey = '';
+  let checkAt = 0;
+  function keepArrowVisible(now: number) {
+    const key = `${ui.selected?.id ?? ''}|${view.ships.selected ?? ''}|${view.units.selected.size}`;
+    if (key !== selKey) { selKey = key; checkAt = key === '||' ? 0 : now + 450; return; }
+    if (!checkAt || now < checkAt) return;
+    checkAt = 0;
+    const top = view.selMarks.topNdc;
+    const bar = document.querySelector<HTMLElement>('#hud .top')?.getBoundingClientRect();
+    if (!top.on || !bar) return;
+    const rc = view.renderer.domElement.getBoundingClientRect();
+    const ax = rc.left + ((top.x + 1) / 2) * rc.width, ay = rc.top + ((1 - top.y) / 2) * rc.height;
+    if (ax < rc.left || ax > rc.right) return;
+    const want = Math.min(bar.bottom + 14, ay + rc.height * 0.35);
+    if (want <= ay) return;
+    // Richtung am Boden, in die die Kamera rücken muss, damit das Bild nach unten wandert
+    const a = view.groundPoint(ax, rc.top + rc.height * 0.5), b = view.groundPoint(ax, rc.top + rc.height * 0.5 + 40);
+    if (!a || !b) return;
+    const dx = a.x - b.x, dz = a.z - b.z;
+    // wie weit genau? Kamera probeweise verschieben und die Pfeilspitze nachmessen (halbieren, 14 Schritte)
+    const r = view.rig, tx0 = r.tx, tz0 = r.tz, P = view.selMarks.topWorld, q = P.clone();
+    const yAt = (k: number) => {
+      r.tx = tx0 + dx * k; r.tz = tz0 + dz * k;
+      view.updateCamera(); view.camera.updateMatrixWorld();
+      q.copy(P).project(view.camera);
+      return rc.top + ((1 - q.y) / 2) * rc.height;
+    };
+    let lo = 0, hi = 1;
+    while (yAt(hi) < want && hi < 64) hi *= 2;
+    for (let i = 0; i < 14; i++) { const m = (lo + hi) / 2; if (yAt(m) < want) lo = m; else hi = m; }
+    r.tx = tx0; r.tz = tz0;
+    view.updateCamera(); view.camera.updateMatrixWorld();
+    const k = hi;
+    ui.input.animate(420, (e) => { r.tx = tx0 + dx * k * e; r.tz = tz0 + dz * k * e; });
+  }
   requestAnimationFrame(loop);
 
   // Für automatische Tests

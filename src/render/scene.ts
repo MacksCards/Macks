@@ -209,7 +209,8 @@ export class View {
 
     this.radiusRing = new THREE.Mesh(
       new THREE.RingGeometry(0.97, 1, 72).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false }),
+      // über Bäumen und Häusern sichtbar (ohne Tiefenvergleich), damit man den Arbeitsbereich auch im Wald sieht
+      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, depthTest: false }),
     );
     this.radiusRing.visible = false;
     this.radiusRing.renderOrder = 3;
