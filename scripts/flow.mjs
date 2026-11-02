@@ -75,7 +75,7 @@ await page.screenshot({ path: `${out}/f4-gebiet.png`, timeout: 240000 });
 await page.evaluate(() => { window.__view.showArea(false); window.__ui.openMap(); });
 await page.waitForTimeout(500);
 await page.screenshot({ path: `${out}/f5-karte.png`, timeout: 240000 });
-await page.evaluate(() => window.__ui.closeModal());
+await page.evaluate(() => { window.__ui.closeModal(); window.__ui.windows.closeMap?.(); }); // (U3) Weltkarte ist eine Überlagerung, kein Fenster
 const r3 = await page.evaluate(() => {
   const g = window.__game();
   const k = g.kontor();

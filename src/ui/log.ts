@@ -1,49 +1,125 @@
-// GERÜST für den Meldungsverlauf (Paket U3). Jede Meldung landet schon jetzt hier:
-// ui.toast(text, art, ort) → log.add(text, art, ort), mit Spielzeit; die letzten 60 bleiben.
-// Einstieg: Glocke 🔔 in der Oberleiste (ui/hud.ts, mit Zahl der ungelesenen) – versteckt, solange `ready` false ist.
-// So füllen: html() liefern (Liste, „Hinschauen“ springt zum Ort), `ready` auf true setzen.
+// Meldungsverlauf (Paket U3): jede Meldung landet hier (ui.toast → log.add, mit Spielzeit und Ort).
+//   • Einblendung einzeilig links unten (höchstens 3); wichtige Meldungen (Warnung, Krieg, Piraten, Bankrott)
+//     bleiben stehen, bis man sie antippt. Tipp auf eine Einblendung mit Ort springt sanft dorthin.
+//   • Glocke 🔔 unten rechts (über der Minikarte) mit der Zahl der ungelesenen Meldungen öffnet die Liste der letzten 60
+//     (Spielzeit, Farbe nach Art, 📍 „Hinschauen“ springt zum Ort).
+// Die Meldungen selbst gehören zum Spiel (src/ueberblick.ts) – die letzten 30 stehen im Spielstand.
 import './log.css';
 import type { UI } from '../ui';
-import { Art, Ort, Part } from './util';
+import { addLog, important, logOf, type LogEntry } from '../ueberblick';
+import { Art, Ort, Part, el } from './util';
 
-export interface LogEntry {
-  text: string;
-  kind: Art;
-  /** Ort des Ereignisses in Spielfeldern, falls bekannt */
-  at?: Ort;
-  /** Spielzeit in Sekunden */
-  time: number;
-  read: boolean;
+export type { LogEntry };
+export { LOG_MAX } from '../ueberblick';
+
+/** so viele Einblendungen stehen höchstens gleichzeitig links unten */
+const SHOWN_MAX = 3;
+
+/** Spielzeit gut lesbar: „12 min“, ab einer Stunde „1 h 05“ */
+export function clock(sec: number): string {
+  const m = Math.floor(Math.max(0, sec) / 60);
+  return m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${String(m % 60).padStart(2, '0')}`;
 }
 
-/** so viele Meldungen merkt sich der Verlauf */
-export const LOG_MAX = 60;
+/** Text ohne HTML (für Vorlesen und Vergleiche) */
+const plain = (html: string) => html.replace(/<[^>]*>/g, '');
 
 export class LogBook implements Part {
-  readonly entries: LogEntry[] = [];
-
   constructor(readonly ui: UI) {}
 
-  /** noch leer – die Glocke bleibt versteckt */
-  get ready(): boolean { return false; }
+  get ready(): boolean { return true; }
+
+  /** Meldungen des laufenden Spiels (älteste zuerst) */
+  get entries(): LogEntry[] { return logOf(this.ui.g); }
 
   /** ungelesene Meldungen (Zahl an der Glocke) */
   get unread(): number { return this.entries.reduce((n, e) => n + (e.read ? 0 : 1), 0); }
 
-  /** neue Meldung merken (ruft ui.toast für jede Meldung auf) */
+  /** neue Meldung merken und links unten einblenden (ruft ui.toast für jede Meldung auf) */
   add(text: string, kind: Art = 'info', at?: Ort) {
-    this.entries.push({ text, kind, at, time: this.ui.g?.time ?? 0, read: false });
-    if (this.entries.length > LOG_MAX) this.entries.splice(0, this.entries.length - LOG_MAX);
+    const e = addLog(this.ui.g, text, kind, at);
+    this.show(e);
   }
 
-  /** Verlauf öffnen – danach gilt alles als gelesen */
+  // ---------- Einblendung links unten ----------
+
+  private box(): HTMLElement {
+    let b = document.getElementById('logToasts');
+    if (!b) {
+      b = el('div', 'ltoasts', '');
+      b.id = 'logToasts';
+      b.setAttribute('role', 'status');
+      b.setAttribute('aria-live', 'polite');
+      document.getElementById('hud')?.appendChild(b);
+    }
+    return b;
+  }
+
+  private show(e: LogEntry) {
+    const box = this.box();
+    const imp = important(e.text, e.kind);
+    const t = el('button', `ltoast ltoast-${e.kind}${imp ? ' imp' : ''}`, `${e.at ? '<i class="pin">📍</i>' : ''}<span class="tx">${e.text}</span>${imp ? '<i class="x" aria-hidden="true">✕</i>' : ''}`) as HTMLButtonElement & { _e?: LogEntry };
+    t.type = 'button';
+    t._e = e;
+    t.setAttribute('aria-label', plain(e.text) + (e.at ? ' – antippen: hinschauen' : ''));
+    t.addEventListener('click', () => {
+      e.read = true;
+      const span = t.querySelector<HTMLElement>('.tx');
+      const cut = !!span && span.scrollWidth > span.clientWidth + 1;
+      t.remove();
+      if (e.at) this.look(e.at);
+      else if (cut) this.open();
+    });
+    // neueste unten (am nächsten zur Aufgabe), ältere wandern nach oben
+    box.appendChild(t);
+    while (box.children.length > SHOWN_MAX) {
+      const kids = Array.from(box.children) as HTMLElement[];
+      (kids.find((c) => !c.classList.contains('imp') && c !== t) ?? kids[0]).remove();
+    }
+    if (imp) return; // bleibt stehen, bis man sie antippt
+    const ms = Math.min(6500, 3000 + Math.max(0, plain(e.text).length - 40) * 45);
+    setTimeout(() => t.classList.add('out'), ms);
+    setTimeout(() => t.remove(), ms + 450);
+  }
+
+  /** Kamera sanft zum Ort einer Meldung (ein Stück heran, wenn man weit weg ist) */
+  look(at: Ort) {
+    const ui = this.ui, r = ui.view.rig;
+    ui.input.flyTo({ tx: at.x, tz: at.y, dist: Math.min(r.dist, 26) }, 650);
+  }
+
+  // ---------- Liste hinter der Glocke ----------
+
+  /** Verlauf öffnen – danach gilt alles als gelesen (auch die stehenden Einblendungen verschwinden) */
   open() {
     const ui = this.ui;
-    for (const e of this.entries) e.read = true;
-    ui.dialog({ title: '🔔 Meldungen', cls: 'log', body: this.html(), foot: `<button class="btn wide ok" id="logX">▶️ Weiterspielen</button>` });
+    const list = this.entries;
+    const body = this.html();
+    for (const e of list) e.read = true;
+    document.getElementById('logToasts')?.replaceChildren();
+    ui.dialog({ title: '🔔 Meldungen', cls: 'log', body, foot: `<button class="btn wide ok" id="logX">▶️ Weiterspielen</button>` });
     document.getElementById('logX')?.addEventListener('click', () => ui.closeModal());
+    document.querySelectorAll<HTMLElement>('#modal .lrow .look').forEach((b) => {
+      b.addEventListener('click', () => {
+        const e = list[Number(b.dataset.i)];
+        if (!e?.at) return;
+        ui.closeModal();
+        this.look(e.at);
+      });
+    });
   }
 
-  /** Inhalt des Fensters (füllt U3) */
-  html(): string { return ''; }
+  /** Inhalt des Fensters: neueste zuerst, Spielzeit, Farbe nach Art, „Hinschauen“ bei Meldungen mit Ort */
+  html(): string {
+    const list = this.entries;
+    if (!list.length) return '<p class="sub">Noch keine Meldungen. Hier stehen später alle Nachrichten mit Spielzeit – mit 📍 springst du zum Ort.</p>';
+    let h = '<ul class="lrows">';
+    for (let i = list.length - 1; i >= 0; i--) {
+      const e = list[i];
+      h += `<li class="lrow k-${e.kind}${e.read ? '' : ' new'}${important(e.text, e.kind) ? ' imp' : ''}">
+        <span class="lt" title="Spielzeit">${clock(e.time)}</span><span class="lx">${e.text}</span>
+        ${e.at ? `<button class="btn sq look" data-i="${i}" aria-label="Hinschauen">📍</button>` : '<span class="nolook"></span>'}</li>`;
+    }
+    return h + '</ul><p class="sub">Links die Spielzeit. 📍 = hinschauen.</p>';
+  }
 }
