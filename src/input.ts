@@ -7,8 +7,8 @@ import { View } from './render/scene';
 
 export interface InputHandlers {
   tap(x: number, y: number): void;
-  /** true = dieser Finger malt (z. B. Wege) statt die Karte zu verschieben */
-  wantsPaint(): boolean;
+  /** true = dieser Finger malt bzw. zieht etwas (z. B. einen Ziehpunkt am Weg) statt die Karte zu verschieben */
+  wantsPaint(x: number, y: number): boolean;
   paintStart(x: number, y: number): void;
   paintMove(x: number, y: number): void;
   paintEnd(cancel: boolean): void;
@@ -215,7 +215,7 @@ export class Input {
       this.moved = false;
       this.panX = 0; this.panZ = 0;
       this.track = [{ t: e.timeStamp, x: 0, z: 0 }];
-      if (this.h.wantsPaint() && !this.rotating) {
+      if (!this.rotating && this.h.wantsPaint(e.clientX, e.clientY)) {
         this.painting = true;
         this.h.paintStart(e.clientX, e.clientY);
       }

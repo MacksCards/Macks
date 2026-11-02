@@ -110,11 +110,12 @@ export class UI {
     this.buildDom();
     this.input = new Input($('#c'), view, {
       tap: (x, y) => this.tap(x, y),
-      // Wege werden per Tippen gebaut (Start, Ziel, ✓) – ein Finger verschiebt immer nur die Karte
-      wantsPaint: () => false,
-      paintStart: (x, y) => this.build.roadTap(x, y),
-      paintMove: () => { /* Wege werden nicht gezogen */ },
-      paintEnd: () => { /* siehe build.confirmRoad */ },
+      // Wege werden per Tippen gebaut (Start, Ziel, ✓). Ein Finger verschiebt die Karte – nur wer einen
+      // Ziehpunkt auf dem geplanten Weg anfasst, biegt damit den Weg (gebaut wird erst mit ✓)
+      wantsPaint: (x, y) => this.build.wantsDrag(x, y),
+      paintStart: (x, y) => this.build.dragStart(x, y),
+      paintMove: (x, y) => this.build.dragMove(x, y),
+      paintEnd: (cancel) => this.build.dragEnd(cancel),
     });
     // Kompassnadel folgt jeder Drehung sofort
     this.input.onCamera = () => this.hud.needle();

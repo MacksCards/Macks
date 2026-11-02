@@ -19,6 +19,8 @@ Arbeitstitel: **Neue Ufer** – ein Aufbau-Strategiespiel, inhaltlich so nah wie
 
 14. **Klar sehen, was man tut:** Angewählte Schiffe und Einheiten tragen ein deutliches Auswahl-Zeichen (z. B. Pfeil/Dreieck darüber); keine unverständlichen Zeichen über Schiffen oder Gebäuden. Beim Platzieren eines Gebäudes muss man genau sehen, wo es steht – auch im Wald (Bäume an der Stelle ausblenden oder durchsichtig). Wege, Gras und Wasser sollen hochwertig aussehen, nicht flach oder künstlich. *(Korrektur vom 01.11.2026)*
 
+15. **Geplante Wege lassen sich formen:** Bei gleichem Anfang und Ende muss man den Verlauf einfach anpassen können – Ziehpunkte auf dem geplanten Weg (ziehen = Weg biegen, Knickpunkt antippen = entfernen, Ziel verschieben). Gebaut wird erst mit ✓; Wischen auf der Karte verschiebt weiter nur die Karte. *(Wunsch vom 02.11.2026)*
+
 ## Feste Projektentscheidungen
 - Ziel: zuerst ein Spiel für den Nutzer selbst, Launch später möglich.
 - Rechtlich sauber: **kein** Code, keine Grafiken, Sounds, Texte oder Namen aus Anno 1602 oder Reverse-Engineering-Projekten. Nur allgemeine Spielmechaniken (nicht geschützt) als Inspiration. Das Wort „Anno“ kommt im Spiel nicht vor.

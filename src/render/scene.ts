@@ -28,6 +28,7 @@ import { BuildAnims } from './buildanim';
 import { GroundRing, PlaceHelp } from './placehelp';
 import type { RenderLayer } from './layers';
 import { SelectionMarks } from './selmark';
+import { RoadHandles, Handle } from './roadhandles';
 import {
   CLUSTER_DIST, ISLAND_DIST, IslandSymbol, Pin, SMOKE_DIST, SMOKE_STYLE, Sign, UNIT_MARK_DIST, UNIT_MARK_PX,
   buildingSign, clusterPins, effColor, islandSymbols, smokeStrength, tapRadius, working,
@@ -113,6 +114,8 @@ export class View {
   readonly signs = new SignLayer();
   /** goldener Pfeil über Angewähltem (Gebäude, Schiff, Soldaten) */
   readonly selMarks = new SelectionMarks();
+  /** Ziehpunkte auf dem geplanten Weg (zum Biegen) */
+  readonly roadHandles = new RoadHandles();
   private selB: Building | null = null;
   /** Bau-Animationen: Wachsen, Gerüst, Einsinken */
   private anims!: BuildAnims;
@@ -136,6 +139,7 @@ export class View {
   private water!: THREE.Mesh;
   private waterUniforms: Record<string, THREE.IUniform> = { uTime: { value: 0 } };
   private previewRoads!: THREE.InstancedMesh;
+  private previewXray!: THREE.InstancedMesh;
   private views = new Map<number, BView>();
   private mat = buildingMaterial();
   private ghost: THREE.Mesh | null = null;
@@ -225,7 +229,7 @@ export class View {
     this.marks = new OwnerMarks(this.mat);
     this.scene.add(this.marks.group);
     this.anims = new BuildAnims(this.scene, this.mat);
-    this.scene.add(this.smoke.points, this.signs.mesh, this.selMarks.group);
+    this.scene.add(this.smoke.points, this.signs.mesh, this.selMarks.group, this.roadHandles.group);
 
     this.buildWorld();
   }
@@ -660,6 +664,15 @@ export class View {
       // Farbfeld gleich anlegen: sonst braucht die erste Vorschau ein neues Grafik-Programm (Ruckler)
       this.previewRoads.setColorAt(0, this.roadCol.setHex(0xffffff));
       this.previewRoads.frustumCulled = false;
+      // derselbe Weg noch einmal zart über allem: so sieht man den geplanten Verlauf auch durchs Laub im Wald
+      const xray = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, depthTest: false, depthWrite: false }), 400);
+      xray.instanceMatrix = this.previewRoads.instanceMatrix;
+      xray.instanceColor = this.previewRoads.instanceColor;
+      xray.count = 0;
+      xray.renderOrder = 3;
+      xray.frustumCulled = false;
+      this.previewRoads.add(xray);
+      this.previewXray = xray;
     }
     this.scene.add(this.previewRoads);
     this.terrain.updateRoads();
@@ -690,9 +703,22 @@ export class View {
       n++;
     }
     this.previewRoads.count = n;
+    this.previewXray.count = n;
     this.previewRoads.instanceMatrix.needsUpdate = true;
     if (this.previewRoads.instanceColor) this.previewRoads.instanceColor.needsUpdate = true;
     this.dirty = true;
+  }
+
+  /** Ziehpunkte auf dem geplanten Weg setzen (Felder; leer = keine); active = gerade gezogener Griff */
+  setRoadHandles(list: { kind: Handle['kind']; x: number; y: number }[], active = -1) {
+    this.roadHandles.set(list.map((h) => ({ kind: h.kind, x: h.x + 0.5, y: this.groundY(h.x, h.y, 1) + 0.15, z: h.y + 0.5 })), active);
+    this.dirty = true;
+  }
+
+  /** Nummer des Ziehpunkts unter dem Finger oder -1 */
+  roadHandleAt(clientX: number, clientY: number): number {
+    if (!this.roadHandles.count) return -1;
+    return this.roadHandles.at(clientX, clientY, this.camera, this.renderer.domElement.getBoundingClientRect());
   }
 
   /** Bodenhöhe unter einer Grundfläche */
@@ -1322,6 +1348,7 @@ export class View {
     this.updateCamera();
     this.updateSigns();
     this.updateSelMarks(t);
+    this.roadHandles.update(this.camera, vh);
     if (this.preparing) return; // Grafik-Programme werden noch vorbereitet: altes Bild bleibt stehen
     // Pflanzen: je nach Entfernung volle Dichte, halbe Dichte oder einfache Formen; Schatten nur nah
     this.veg.update(this.camera.position, this.rig.tx, this.rig.tz, this.rig.dist);
