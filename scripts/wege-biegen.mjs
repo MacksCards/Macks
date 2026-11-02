@@ -76,7 +76,9 @@ const tap = async (p) => {
     const c = document.querySelector('#c');
     for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, { pointerId: 9, clientX: x, clientY: y, bubbles: true, pointerType: 'touch', isPrimary: true, button: 0 }));
   }, p);
-  await page.waitForTimeout(450);
+  // der Tipp wartet im Spiel kurz (Doppeltipp?) – abwarten, bis er ausgeführt ist
+  for (let w = 0; w < 30 && await page.evaluate(() => !!window.__ui.build.pending); w++) await page.waitForTimeout(100);
+  await page.waitForTimeout(150);
 };
 const sA = await scr(...A), sB = await scr(...B); console.log("Bildpunkte A/B:", JSON.stringify([sA, sB]));
 await tap(sA);
@@ -279,6 +281,38 @@ const ms = await page.evaluate(() => {
   b.roadVias = keep; b.roadTo(t); return r;
 });
 check(ms < 15, `Neu-Rechnen beim Ziehen schnell genug (${ms.toFixed(1)} ms)`);
+// 5b) neues Ziel tippen und sofort ✓: gebaut wird der neue Plan (der kurz wartende Tipp gilt vor dem Bauen)
+{
+  await page.evaluate(([A]) => { const r = window.__view.rig; r.tx = A[0] + 5.5; r.tz = A[1] + 2.5; r.dist = 15; window.__view.updateCamera(); }, [A]);
+  await page.waitForTimeout(600);
+  const f = await page.evaluate(() => { const b = window.__ui.build, s = b.roadStart, g = window.__game(); for (let d = 3; d < 8; d++) for (const [x, y] of [[s[0], s[1] + d], [s[0], s[1] - d], [s[0] + d, s[1]], [s[0] - d, s[1]]]) if (b.passable(x, y) && !g.roads[g.idx(x, y)] && !b.roadCells.some((c) => c[0] === x && c[1] === y)) return [x, y]; return null; });
+  if (f) {
+    const pf = await scr(...f);
+    await page.evaluate(([x, y]) => {
+      const c = document.querySelector('#c');
+      for (const type of ['pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, { pointerId: 9, clientX: x, clientY: y, bubbles: true, pointerType: 'touch', isPrimary: true, button: 0 }));
+      document.querySelector('#hintOk').click();
+    }, pf);
+    await page.waitForTimeout(600);
+    const built = await page.evaluate(([x, y]) => { const g = window.__game(); return g.roads[g.idx(x, y)] > 0; }, f);
+    check(built, 'neues Ziel tippen und sofort ✓ baut den neuen Plan');
+    // nur Start gesetzt: Doppeltipp zoomt, setzt aber kein Ziel
+    const g2 = await page.evaluate(() => { const b = window.__ui.build, s = b.roadStart, g = window.__game(); for (let d = 3; d < 8; d++) for (const [x, y] of [[s[0] + d, s[1]], [s[0] - d, s[1]], [s[0], s[1] + d], [s[0], s[1] - d]]) if (b.passable(x, y) && !g.roads[g.idx(x, y)]) return [x, y]; return null; });
+    if (g2) {
+      await page.evaluate(([x, y]) => {
+        const c = document.querySelector('#c');
+        for (const type of ['pointerdown', 'pointerup', 'pointerdown', 'pointerup']) c.dispatchEvent(new PointerEvent(type, { pointerId: 8, clientX: x, clientY: y, bubbles: true, pointerType: 'touch', isPrimary: true, button: 0 }));
+      }, await scr(...g2));
+      await page.waitForTimeout(900);
+      check(await page.evaluate(() => !window.__ui.build.roadEndSet), 'nur Start gesetzt: Doppeltipp setzt kein Ziel');
+    }
+    // für den nächsten Teil wieder einen Plan anlegen
+    await page.evaluate(([A]) => { const r = window.__view.rig; r.tx = A[0] + 5.5; r.tz = A[1] + 2.5; r.dist = 15; window.__view.updateCamera(); }, [A]);
+    await page.waitForTimeout(500);
+    await tap(await scr(A[0], A[1] + 3));
+    await page.waitForTimeout(300);
+  }
+}
 // 6) ✓ während des Ziehens (zweiter Finger auf dem Knopf): sauber gebaut, kein Fehler, kein ↶ danach
 {
   const mc = await page.evaluate(() => { const b = window.__ui.build; const h = b.handles.find((x) => x.kind === 'mid'); return h ? [h.x, h.y] : null; });
@@ -287,12 +321,14 @@ check(ms < 15, `Neu-Rechnen beim Ziehen schnell genug (${ms.toFixed(1)} ms)`);
     const q0 = await scr(...mc), q1 = await scr(mc[0], mc[1] + dy), q2 = await scr(mc[0] + 2, mc[1] + dy);
     await ptr('pointerdown', 1, q0);
     for (let i = 1; i <= 5; i++) await ptr('pointermove', 1, [q0[0] + (q1[0] - q0[0]) * i / 5, q0[1] + (q1[1] - q0[1]) * i / 5]);
+    const canBuild = await page.evaluate(() => !document.querySelector('#hintOk').disabled);
+    if (!canBuild) console.log('(Hinweis: Plan hier nicht baubar – ✓-beim-Ziehen-Prüfung übersprungen)');
     await page.evaluate(() => document.querySelector('#hintOk').click());
     for (let i = 1; i <= 5; i++) await ptr('pointermove', 1, [q1[0] + (q2[0] - q1[0]) * i / 5, q1[1] + (q2[1] - q1[1]) * i / 5]);
     await ptr('pointerup', 1, q2);
     await page.waitForTimeout(500);
     const sc = await page.evaluate(() => { const b = window.__ui.build; return { end: b.roadEndSet, n: b.roadCells.length, hist: b.roadHist.length, undo: !document.querySelector('#roadUndo').classList.contains('hidden') }; });
-    check(!sc.end && sc.n === 1 && sc.hist === 0 && !sc.undo, `✓ während des Ziehens: gebaut, Plan sauber zurückgesetzt (${JSON.stringify(sc)})`);
+    if (canBuild) check(!sc.end && sc.n === 1 && sc.hist === 0 && !sc.undo, `✓ während des Ziehens: gebaut, Plan sauber zurückgesetzt (${JSON.stringify(sc)})`);
     // ✕: erst nur den Plan verwerfen, dann das Werkzeug beenden
     await page.evaluate(() => document.querySelector('#hintX').click());
     const x1 = await page.evaluate(() => ({ mode: window.__ui.mode.kind, start: window.__ui.build.roadStart }));

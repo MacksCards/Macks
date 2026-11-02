@@ -163,7 +163,7 @@ export class RoadHandles {
     });
     this.shownMids = this.list.filter((h, i) => h.kind === 'mid' && !this.hidden[i]).length;
     this.crowded = this.list.some((h, i) => h.kind !== 'mid' && this.list.some((o, j) => j > i && o.kind !== 'mid'
-      && Math.hypot(this.scr[j][0] - this.scr[i][0], this.scr[j][1] - this.scr[i][1]) < (PX[h.kind] + PX[o.kind]) * 0.35));
+      && ((d) => d > 2 && d < (PX[h.kind] + PX[o.kind]) * 0.35)(Math.hypot(this.scr[j][0] - this.scr[i][0], this.scr[j][1] - this.scr[i][1]))));
     this.list.forEach((h, i) => {
       const px = PX[h.kind] * (i === this.active ? 1.3 : 1);
       this.sprites[i].scale.setScalar(px / (p11 * H / 2));

@@ -40,14 +40,14 @@ export class BuildTool {
   /** frühere Stände der Planung (Knicke + Ziel) für ↶ */
   private roadHist: { vias: [number, number][]; target: [number, number] }[] = [];
   /** Tipp, der etwas wegnimmt (Knick entfernen, neues Ziel): wartet kurz, ob ein Doppeltipp (Zoom) daraus wird */
-  private pending: number | null = null;
+  private pending: { timer: number; fn: () => void } | null = null;
   /** schon erklärt: Tipp auf Mitte, Fähnchen, Start */
   private told = new Set<string>();
   /** Ziehpunkte auf der Vorschau: Mitte je Wegstück (seg = Nummer des Stücks), Knickpunkte (i), Ziel */
   private handles: { kind: 'start' | 'mid' | 'via' | 'end'; x: number; y: number; seg: number; i: number }[] = [];
   /** gerade gezogener Ziehpunkt; px = wo der Finger aufsetzte, undo = Stand vor dem Ziehen */
   private drag: {
-    kind: 'start' | 'mid' | 'via' | 'end'; seg: number; via: number; moved: boolean; at: [number, number];
+    kind: 'start' | 'mid' | 'via' | 'end'; seg: number; via: number; moved: boolean; at: [number, number]; px: [number, number];
     undo: { vias: [number, number][]; target: [number, number] | null };
   } | null = null;
   /** wann die Vorschau (Gebäude oder Wegziel) zuletzt gesetzt wurde */
@@ -166,7 +166,8 @@ export class BuildTool {
       const rh = ui.view.roadHandles;
       const mids = rh.shownMids > 0, crowded = rh.crowded;
       this.hintState = `${mids}|${crowded}`;
-      const linked = ok && isRoad && (this.roadNoWay || !build) ? this.alreadyLinked() : null;
+      const lack = ok && !build ? why() : null;
+      const linked = ok && isRoad && (this.roadNoWay || !build) && !(lack && /^Zu wenig/.test(lack)) ? this.alreadyLinked() : null;
       const msg = !this.roadStart ? `Tippe aufs Startfeld.${m.type === 'steinweg' ? ' Feldwege werden gepflastert.' : ''}`
         : !ok ? 'Tippe jetzt aufs Ziel.'
         : this.roadTooLong ? `Zu lang – höchstens ${MAX_CELLS} Felder auf einmal. Näheres Ziel tippen.`
@@ -346,9 +347,16 @@ export class BuildTool {
 
   /** Wege per Tippen: erstes Tippen = Start, zweites = Ziel (Vorschau), ✓ = bauen (ein Tipp baut nie) */
   roadTap(x: number, y: number) {
-    // Tipp auf das Start-Zeichen: nur erklären (sonst würde der Start zum Ziel und der Plan schrumpft auf ein Feld)
-    if (this.roadStart && this.handles[this.ui.view.roadHandleAt(x, y)]?.kind === 'start') { this.tell('start'); return; }
+    // jeder Tipp wartet kurz: wird ein Doppeltipp (Zoom) daraus, ändert sich am Plan nichts
+    // Feld und Zeichen gleich jetzt bestimmen (verschiebt man danach die Karte, gilt trotzdem das getippte Feld)
+    const onStart = !!this.roadStart && this.handles[this.ui.view.roadHandleAt(x, y)]?.kind === 'start';
     const t = this.ui.view.pick(x, y, false);
+    this.later(() => this.roadTapNow(t, onStart));
+  }
+
+  private roadTapNow(t: [number, number] | null, onStart: boolean) {
+    // Tipp auf das Start-Zeichen: nur erklären (sonst würde der Start zum Ziel und der Plan schrumpft auf ein Feld)
+    if (onStart && this.roadStart) { this.tell('start'); return; }
     if (!t) return;
     if (!this.roadStart) {
       // nur dort anfangen, wo auch ein Weg liegen kann (oder an einem Gebäude mit freiem Rand)
@@ -387,8 +395,7 @@ export class BuildTool {
         this.previewRoad();
         this.updateHint();
       };
-      // liegt schon ein Plan, wartet der Tipp kurz: wird ein Doppeltipp (Zoom) daraus, bleibt der Plan
-      if (this.roadEndSet) this.later(apply); else apply();
+      apply();
       return;
     }
     this.previewRoad();
@@ -404,13 +411,24 @@ export class BuildTool {
 
   /** Tipp kurz zurückhalten (Doppeltipp-Zeit); ein Doppeltipp verwirft ihn */
   private later(fn: () => void) {
-    this.cancelPendingTap();
-    this.pending = window.setTimeout(() => { this.pending = null; if (this.ui.mode.kind === 'road') fn(); }, 360);
+    this.flushPendingTap();
+    const p = { timer: 0, fn };
+    p.timer = window.setTimeout(() => { if (this.pending === p) { this.pending = null; if (this.ui.mode.kind === 'road') fn(); } }, 360);
+    this.pending = p;
   }
 
-  /** zurückgehaltenen Tipp verwerfen (bei Doppeltipp, Moduswechsel, ✓) */
+  /** zurückgehaltenen Tipp verwerfen (bei Doppeltipp und Moduswechsel) */
   cancelPendingTap() {
-    if (this.pending !== null) { clearTimeout(this.pending); this.pending = null; }
+    if (this.pending) { clearTimeout(this.pending.timer); this.pending = null; }
+  }
+
+  /** zurückgehaltenen Tipp sofort ausführen (vor ✓, ↶ und dem nächsten Ziehen – sonst gälte noch der alte Stand) */
+  private flushPendingTap() {
+    const p = this.pending;
+    if (!p) return;
+    clearTimeout(p.timer);
+    this.pending = null;
+    if (this.ui.mode.kind === 'road') p.fn();
   }
 
   /** Weg vom Start über die Knickpunkte zum Ziel; jedes Stück um Wasser und Gebäude herum, möglichst gerade */
@@ -568,8 +586,9 @@ export class BuildTool {
   /** Vorschau bauen; danach geht es vom Ziel aus weiter */
   private confirmRoad() {
     const ui = this.ui, g = ui.g;
+    // ein eben getippter Wunsch (neues Ziel, Knick weg) gilt vor dem Bauen
+    this.flushPendingTap();
     if (ui.mode.kind !== 'road' || !this.roadEndSet || !this.roadCells.length || this.roadNoWay || this.roadTooLong) return;
-    this.cancelPendingTap();
     // ein laufendes Ziehen (zweiter Finger auf ✓) endet hier
     this.drag = null;
     const type = ui.mode.type;
@@ -661,6 +680,7 @@ export class BuildTool {
 
   /** ↶: letzten Schritt der Planung zurücknehmen (Knick, Ziel verschoben, neues Ziel) */
   undoRoad() {
+    this.flushPendingTap();
     const h = this.roadHist.pop();
     if (!h || this.ui.mode.kind !== 'road' || !this.roadStart) return;
     this.drag = null;
@@ -684,17 +704,25 @@ export class BuildTool {
   }
 
   dragStart(x: number, y: number) {
+    // (ein wartender Tipp wird erst beim Ziehen ausgeführt – sonst käme ein Doppeltipp auf einen Kreis zu spät)
+    this.grab(x, y);
+  }
+
+  /** den Zeichen unter (x, y) zum Ziehen greifen */
+  private grab(x: number, y: number) {
     const i = this.ui.view.roadHandleAt(x, y);
     const h = this.handles[i];
     if (!h) { this.drag = null; return; }
     // Stand merken: wird die Geste abgebrochen (z. B. zweiter Finger zum Zoomen), kommt er zurück
     this.drag = {
-      kind: h.kind, seg: h.seg, via: h.kind === 'via' ? h.i : -1, moved: false, at: [h.x, h.y],
+      kind: h.kind, seg: h.seg, via: h.kind === 'via' ? h.i : -1, moved: false, at: [h.x, h.y], px: [x, y],
       undo: { vias: this.roadVias.map((v) => [v[0], v[1]] as [number, number]), target: this.roadTarget },
     };
   }
 
   dragMove(x: number, y: number) {
+    // ein eben getippter Wunsch gilt, bevor gezogen wird; danach den Kreis neu greifen (Nummern können sich verschoben haben)
+    if (this.pending && this.drag && !this.drag.moved) { const p = this.drag.px; this.flushPendingTap(); this.grab(p[0], p[1]); }
     const d = this.drag;
     if (!d || d.kind === 'start' || !this.roadStart || !this.roadTarget || !this.roadEndSet) return;
     const t = this.ui.view.pick(x, y, false);
