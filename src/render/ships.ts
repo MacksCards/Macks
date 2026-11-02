@@ -152,6 +152,8 @@ export class ShipLayer {
   private alive = new Set<number>();
   private lastT = 0;
   selected: number | null = null;
+  /** (U4) mehrere gewählte Schiffe (Flotte): je ein Ring */
+  multi = new Set<number>();
   /** Effekte (Blasen beim Untergang); setzt die Szene */
   fx?: Fx;
 
@@ -206,6 +208,7 @@ export class ShipLayer {
     for (const v of this.views.values()) this.group.remove(v.mesh, v.ring, v.wake);
     this.views.clear();
     this.selected = null;
+    this.multi.clear(); // (U4)
   }
 
   private isPirate(s: Ship) { return s.type === 'pirat' || !!this.g.players[s.owner]?.pirate; }
@@ -316,6 +319,7 @@ export class ShipLayer {
     v.ring.visible = false;
     v.wake.visible = false;
     if (this.selected === id) this.selected = null;
+    this.multi.delete(id); // (U4)
   }
 
   /** Höhe und Position eines Schiffs für Lebensbalken/Rauch */
@@ -353,7 +357,7 @@ export class ShipLayer {
       v.flag.rotation.y = Math.PI + Math.sin(ct * 0.8 + s.id) * 0.15;
       const flagMat = this.flagMat(whiteFlag(this.g, s) ? 0xf2efe6 : this.isPirate(s) ? 0x111111 : this.g.players[s.owner]?.color ?? 0x2f6fd0);
       if (v.flag.material !== flagMat) v.flag.material = flagMat;
-      v.ring.visible = this.selected === s.id;
+      v.ring.visible = this.selected === s.id || this.multi.has(s.id); // (U4) Flotte
       v.ring.position.set(sx, 0.06, sy);
       v.wake.visible = visible && s.path.length > 0;
       v.wake.position.set(sx, 0.04, sy);

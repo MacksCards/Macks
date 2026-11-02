@@ -92,6 +92,9 @@ const LAND_SIDE_FLAG = new Set<BuildingId>(['kontor', 'werft', 'grosswerft']);
 /** Meshy-Gebäude, die eine große Fahne in Besitzerfarbe tragen (wie die Code-Modelle) */
 const BIG_FLAG = new Set<BuildingId>(['kontor', 'markt', 'werft', 'grosswerft', 'burg', 'grosseburg', 'festung', 'holzturm', 'wachturm', 'triumphbogen']);
 
+/** (U4) höchstens so viele Vorschau-Felder (Wege, Häuserfeld, Abrissbereich bis 26 × 26) */
+const PREVIEW_MAX = 1200;
+
 export class View {
   renderer: THREE.WebGLRenderer;
   scene = new THREE.Scene();
@@ -654,7 +657,7 @@ export class View {
   private buildRoads() {
     if (!this.previewRoads) {
       const geo = new THREE.BoxGeometry(1, 0.05, 1);
-      this.previewRoads = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }), 400);
+      this.previewRoads = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6, depthWrite: false }), PREVIEW_MAX);
       this.previewRoads.count = 0;
       this.previewRoads.renderOrder = 2;
       // Farbfeld gleich anlegen: sonst braucht die erste Vorschau ein neues Grafik-Programm (Ruckler)
@@ -676,17 +679,18 @@ export class View {
     if (this.terrain.updateRoads(tiles)) this.dirty = true;
   }
 
-  setRoadPreview(cells: [number, number][], ok: boolean[]) {
+  /** (U4) cols = eigene Farbe je Feld (Häuserfeld, Abrissbereich, Rahmen); sonst grün/rot mit hellem Start und Ziel */
+  setRoadPreview(cells: [number, number][], ok: boolean[], cols?: readonly number[]) {
     const m = new THREE.Matrix4();
     const c = new THREE.Color();
     let n = 0;
-    for (let k = 0; k < cells.length && n < 400; k++) {
+    for (let k = 0; k < cells.length && n < PREVIEW_MAX; k++) {
       const [x, y] = cells[k];
       m.makeTranslation(x + 0.5, this.groundY(x, y, 1) + 0.04, y + 0.5);
       this.previewRoads.setMatrixAt(n, m);
       // Start und Ziel heller hervorheben (dorthin tippt man zum Bestätigen)
       const end = k === 0 || k === cells.length - 1;
-      this.previewRoads.setColorAt(n, c.setHex(ok[k] ? (end ? 0xfff27a : 0x66ff66) : (end ? 0xffa0a0 : 0xff5555)));
+      this.previewRoads.setColorAt(n, c.setHex(cols ? cols[k] : ok[k] ? (end ? 0xfff27a : 0x66ff66) : (end ? 0xffa0a0 : 0xff5555)));
       n++;
     }
     this.previewRoads.count = n;
@@ -1042,6 +1046,9 @@ export class View {
     }
     const sel = this.ships.selected;
     if (sel !== null) for (const s of this.ships.shown) if (s.s.id === sel) { sm.add(s.x, s.top, s.z); anchor(s.x, s.top, s.z); break; }
+    // (U4) mehrere gewählte Schiffe (Flotte)
+    const fl = this.ships.multi;
+    if (fl.size) for (const s of this.ships.shown) if (fl.has(s.s.id)) { sm.add(s.x, s.top, s.z); anchor(s.x, s.top, s.z); }
     const us = this.units.selected;
     if (us.size) for (const s of this.units.shown) if (us.has(s.u.id)) { sm.add(s.x, s.top + 0.1, s.z, true); anchor(s.x, s.top + 0.1, s.z); }
     sm.end(t, this.camera, this.renderer.domElement.clientHeight || 400);
