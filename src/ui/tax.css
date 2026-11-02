@@ -1,16 +1,21 @@
-/* Steuerregler: Name und Stimmung links, dann − Satz + (Knöpfe 44 px) */
-.info .taxrow { display: grid; grid-template-columns: minmax(0, 1fr) var(--tap) 3.4em var(--tap); align-items: center; gap: 4px; padding: 3px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
-.info .taxrow .taxlbl { display: flex; flex-direction: column; min-width: 0; font-size: 14px; }
-.info .taxrow .taxlbl small { font-size: 12px; color: var(--pergament-2); line-height: 1.2; }
-.info .taxrow .taxval { text-align: center; font-size: 16px; font-variant-numeric: tabular-nums; }
-.info .taxrow .btn.sq { font-size: 22px; line-height: 1; }
+/* Steuerregler (Hausfenster, Kontor, Statistik): oben Gesicht und Stufe über die ganze Breite,
+   darunter „tragbar bis …“ links neben − Satz + (Knöpfe 44 px), ganz unten die Vorschau der Einnahmen
+   genau unter −, Satz und + (mit 5 % weniger · jetzt · mit 5 % mehr) */
+.taxrow {
+  display: grid; grid-template-columns: minmax(0, 1fr) var(--tap) 3.4em var(--tap); align-items: center; gap: 0 4px;
+  padding: 3px 0; border-bottom: 1px solid rgba(110, 84, 52, .35);
+}
+.taxrow .taxlbl { display: contents; }
+.taxrow .taxlbl b { grid-column: 1 / -1; white-space: nowrap; font-size: 14px; }
+.taxrow .taxlbl small { grid-column: 1; font-size: 12px; color: var(--pergament-2); line-height: 1.2; }
+.taxrow .taxval { text-align: center; font-size: 16px; font-variant-numeric: tabular-nums; }
+.taxrow .btn.sq { font-size: 22px; line-height: 1; }
+.taxrow .taxprev { grid-column: 1; font-size: 11px; color: var(--pergament-2); text-align: right; }
+.taxrow .taxp { font-size: 12px; text-align: center; font-variant-numeric: tabular-nums; color: var(--pergament-2); white-space: nowrap; }
+.taxrow .taxp.now { color: var(--pergament); font-weight: 700; }
+.taxrow .taxp.neg { color: #f08a72; }
+.taxrow .taxp.warn { color: var(--warn); }
 /* Schalter in einer Zeile (Baumaterial an Bewohner) */
 .info .switchrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; padding: 3px 0; font-size: 14px; border-bottom: 1px solid rgba(110, 84, 52, .35); }
 .info .switchrow small { display: block; font-size: 12px; color: var(--pergament-2); }
 .info .switchrow .btn { min-width: 96px; font-size: 14px; }
-/* Gesicht und Stufenname oben über die ganze Breite (sonst bricht „😊 Pioniere“ bzw. „Aristokraten“ um),
-   darunter „tragbar bis …“ links neben − Satz + */
-.info .taxrow { row-gap: 0; }
-.info .taxrow .taxlbl { display: contents; }
-.info .taxrow .taxlbl b { grid-column: 1 / -1; white-space: nowrap; font-size: 14px; }
-.info .taxrow .taxlbl small { grid-column: 1; }
