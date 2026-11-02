@@ -118,6 +118,9 @@ function world(seed = 4242): Game {
   me.troops = [spawnUnit(g, 'infanterie', HUMAN, 0, 0).id];
   const u = g.units[g.units.length - 1]; u.ship = me.id;
   ps.target = undefined;
+  // (KI2) je nach Zufall ist das Schiff aus der Runde davor schwer beschädigt und würde gleich ausgeraubt
+  // (dann ließen es die Piraten in Ruhe) – hier geht es nur um die Flagge: Schiff heil, kein Überfall offen
+  me.safeUntil = undefined; me.hp = SHIPS.handel_klein.hp;
   g.time = Math.max(g.time, 4000);
   for (let i = 0; i < 20 && ps.target === undefined; i++) { me.path = []; ps.path = []; g.tick(0.25); }
   check('mit Soldaten an Bord schützt die weiße Flagge nicht', ps.target === me.id);

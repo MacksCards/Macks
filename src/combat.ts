@@ -4,11 +4,15 @@
 // Aufstellung in Reihe oder Block, Ausmustern, Patrouille, Arzt pflegt Soldaten, Gebäude bessern sich nur
 // bis 75 % selbst aus, Kanonen setzen Holzgebäude in Brand, Fehlschüsse mit ausgeglichenem Schaden,
 // sparsame Wegsuche im Gefecht. Zufall nur über g.rng() (gleicher Ablauf nach dem Laden).
-import { BUILDINGS, GOODS, MAX_UNITS, SHIP_GUN, SHIPS, START_CARGO, ShipType, UNITS, UnitType } from './data';
+import { BUILDINGS, GOODS, MAX_UNITS, PRICES, SHIP_GUN, SHIPS, START_CARGO, ShipType, UNITS, UnitType } from './data';
 import { ignite } from './events';
-import { Building, Check, Game, HUMAN, MsgAt, Ship, ShotKind, Unit } from './game';
+import { Building, Check, Game, HUMAN, MsgAt, Player, Ship, ShotKind, Unit } from './game';
 import { findLandPath } from './path';
-import { T } from './world';
+import { T, rng } from './world';
+import { persoenlichkeit, reizung, sollTruppen } from './ai';
+import type { Brain } from './ai';
+import { kiGrenzen } from './schwierigkeit';
+import { dockAt, route, sofort } from './trade';
 
 type Target = { kind: 'unit'; u: Unit; owner: number } | { kind: 'ship'; s: Ship; owner: number } | { kind: 'bau'; b: Building; owner: number };
 
@@ -415,16 +419,26 @@ function conquer(g: Game, b: Building, by: number) {
   checkDefeat(g, old, by);
 }
 
-function checkDefeat(g: Game, owner: number, by: number) {
+/**
+ * Ist ein Spieler besiegt? Gebäude zählen (beim Computergegner nur ein Kontor – ohne Kontor ist er handlungsunfähig),
+ * Schiffe nur, wenn sie bewaffnet sind oder Material für ein neues Kontor geladen haben (KI2). Beim Spieler zählt
+ * jedes Gebäude, und ohne Kontor schickt das Spiel ihm ein Schiff mit Baumaterial (rescue).
+ * by: wer zuletzt zugeschlagen hat (−1 = niemand, der Gegner gibt auf).
+ */
+export function checkDefeat(g: Game, owner: number, by: number) {
   const p = g.players[owner];
   // Piraten, Händler und Ureinwohner werden nicht „besiegt“ (kein Triumphbogen)
   if (!p || p.pirate || p.trader || p.natives || p.defeated) return;
-  if (g.buildings.some((b) => b.owner === owner) || g.ships.some((s) => s.owner === owner)) return;
+  const kc = BUILDINGS.kontor.cost;
+  const useful = (s: Ship) => s.owner === owner && (!p.ai || (s.guns ?? 0) > 0 || (g.shipCargo(s, 'holz') >= (kc.holz ?? 0) && g.shipCargo(s, 'werkzeug') >= (kc.werkzeug ?? 0)));
+  const land = g.buildings.some((b) => b.owner === owner && (!p.ai || b.type === 'kontor'));
+  if (land || g.ships.some(useful)) return;
   p.defeated = true;
   p.warnAt = undefined;
   for (const u of g.units.filter((x) => x.owner === owner)) killUnit(g, u);
   for (const q of g.players) q.war = (q.war ?? []).filter((x) => x !== owner);
   if (owner === HUMAN) { g.ev.message('🏳️ Du hast alles verloren.', 'bad'); return; }
+  if (by < 0) { g.ev.message(`${p.name} ist aus dem Spiel ausgeschieden`, 'info'); return; }
   if (by !== HUMAN) { g.ev.message(`${p.name} wurde von ${g.players[by]?.name ?? 'Feinden'} besiegt`, 'info'); return; }
   g.ev.message(`🏆 ${p.name} ist besiegt!`, 'good');
   g.victories++;
@@ -1153,59 +1167,63 @@ function tickPirates(g: Game, dt: number) {
 }
 
 // ---------- Computergegner ----------
+// Militär der Computergegner (Paket KI2): Soll-Truppen aus eigener Größe, Stärke des Spielers und Charakter
+// (6 bis 30, src/ai.ts sollTruppen). Ausgebildet wird wie beim Spieler in der Burg mit Waffen aus dem Lager
+// (gekauft beim Händler oder selbst geschmiedet; Burg, Türme und Schmieden setzt ai.ts ab 200 Siedlern),
+// nur mit Reserve in der Kasse und nur, solange der Sold aus dem Überschuss bezahlbar bleibt. Kriegsschiffe
+// kommen aus der eigenen Werft (bis zu 3) und laden Kanonen am Kontor. Krieg nur bei positiver Bilanz:
+// aus eigenem Antrieb je nach Charakter (Zeitpunkt gestreut), sonst bei Reizung (Kontor auf seiner Insel,
+// Soldaten auf seinem Land, Kriegsschiff vor seinem Kontor) – immer erst mit Vorwarnung.
 
-function tickAIMilitary(g: Game) {
+/** Kasse, die beim Ausbilden und Schiffbau mindestens bleibt */
+const MIL_RESERVE = 2000;
+/** so oft (Sekunden) denkt das Militär der Gegner */
+const MIL_THINK = 5;
+
+export function tickAIMilitary(g: Game) {
   if (g.players[HUMAN].defeated) return;
   for (const p of g.players) {
-    if (!p.ai || p.defeated) continue;
-    const k = g.kontor(p.id);
+    if (!p.ai || p.defeated || !p.brain) continue;
+    const b = p.brain as Brain;
+    const k = g.kontor(p.id, b.island) ?? g.kontor(p.id);
     if (!k) { if (p.warnAt !== undefined) g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good'); p.warnAt = undefined; continue; }
     const kAt = atB(g, k);
-    const pop = g.buildings.reduce((n, b) => n + (b.owner === p.id && b.type === 'haus' ? b.residents : 0), 0);
+    const S = st(g);
     const mine = g.units.filter((u) => u.owner === p.id);
     const war = atWar(g, p.id, HUMAN);
-    const S = st(g);
-    // Wache halten: Soldaten anwerben (Waffen beim Händler gekauft) – höchstens einer pro Minute
-    const want = Math.min(16, (war ? 4 : 2) + Math.floor(pop / 120));
-    if (mine.length < want && pop > 60 && g.time >= (S.recruitT.get(p.id) ?? 0)) {
-      S.recruitT.set(p.id, g.time + (war ? 40 : 75));
-      const type: UnitType = g.rng() < 0.6 ? 'infanterie' : pop > 300 && g.rng() < 0.5 ? 'kanonier' : 'reiter';
-      const price = type === 'kanonier' ? 900 : 500;
-      const [cx, cy] = g.center(k);
-      const spot = freeSpot(g, cx, cy, 3);
-      if (spot) { p.money -= Math.min(price, Math.max(0, p.money)); spawnUnit(g, type, p.id, spot[0], spot[1]); }
-    }
-    // Kriegsschiff, wenn Krieg herrscht (höchstens alle 8 Minuten ein neues)
-    if (war && g.time >= (S.shipT.get(p.id) ?? 0) && !g.ships.some((s) => s.owner === p.id && (s.guns ?? 0) > 0)) {
-      S.shipT.set(p.id, g.time + 480);
-      const [cx, cy] = g.center(k);
-      for (let r = 2; r < 8; r++) {
-        const x = Math.floor(cx + (g.rng() - 0.5) * r * 2), y = Math.floor(cy + (g.rng() - 0.5) * r * 2);
-        if (g.inMap(x, y) && g.isWater(g.idx(x, y))) {
-          p.money -= Math.min(3000, Math.max(0, p.money));
-          g.ships.push({ id: g.nextId++, type: 'krieg_klein', owner: p.id, name: `${p.name.split(' ')[0]}s Fregatte`, x: x + 0.5, y: y + 0.5, dir: 0, path: [], slots: [{ g: null, n: 0 }, { g: null, n: 0 }, { g: null, n: 0 }], hp: SHIPS.krieg_klein.hp, guns: 8, troops: [] });
-          break;
-        }
-      }
-    }
-    // Krieg erklären: erst nach einer Weile, wenn deutlich stärker
-    // erst, wenn sich der Spieler wehren kann (Burg/Türme ab 200 Siedlern) oder sehr spät
-    const canDefend = g.players[HUMAN].defendAt;
-    const ready = !war && g.time > 2400 && g.time > (g.players[HUMAN].graceUntil ?? 0) && ((canDefend !== undefined && g.time - canDefend > 900) || g.time > 5400)
-      && g.time - (p.peaceAt?.[HUMAN] ?? -9999) > 900 && strength(g, p.id) > strength(g, HUMAN) * 1.2 + 3;
+    const per = persoenlichkeit(p);
+    const inc = g.incomePerMinute(p.id);
+    const plus = inc.tax - inc.upkeep;
+    recruit(g, p, mine, plus);
+    warships(g, p, k, war);
+    // Krieg erklären – aus eigenem Antrieb (Charakter, Zeitpunkt gestreut, deutlich stärker) oder weil der
+    // Spieler ihn reizt; beides nur bei positiver Bilanz
+    reizung(g, p, MIL_THINK, (s) => S.white.has(s.id));
+    const me = g.players[HUMAN];
+    const spaet = kiGrenzen(g).angriff === 'spaet';
+    b.kriegT ??= per.kriegAb * (spaet ? 1.5 : 1) + rng(g.seed * 13 + p.id * 71)() * 900;
+    const canDefend = me.defendAt;
+    const fair = g.time > (me.graceUntil ?? 0) && g.time - (p.peaceAt?.[HUMAN] ?? -9999) > 900;
+    // aus eigenem Antrieb erst, wenn sich der Spieler wehren kann (Burg/Türme ab 200 Siedlern) oder sehr spät
+    const gate = (canDefend !== undefined && g.time - canDefend > (spaet ? 1800 : 900)) || g.time > (spaet ? 7200 : 5400);
+    const mineStr = strength(g, p.id), hisStr = strength(g, HUMAN);
+    const own = per.krieg > 0 && g.time > b.kriegT && gate && mineStr > hisStr * per.mut + 3;
+    const provoked = (b.aerger ?? 0) >= per.geduld && mineStr > 0;
+    const ready = !war && fair && plus > 0 && (own || provoked);
     if (!ready) {
       // Lage hat sich geändert: Vorwarnung verfällt
-      if (p.warnAt !== undefined && !war) { g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good', kAt); p.calmUntil = g.time + 300; g.players[HUMAN].calmUntil = g.time + 300; }
+      if (p.warnAt !== undefined && !war) { g.ev.message(`🕊️ ${p.name} rüstet wieder ab`, 'good', kAt); p.calmUntil = g.time + 300; me.calmUntil = g.time + 300; }
       p.warnAt = undefined;
     } else if (p.warnAt !== undefined) {
-      if (g.time >= p.warnAt) { p.warnAt = undefined; declareWar(g, p.id, HUMAN); }
+      if (g.time >= p.warnAt) { p.warnAt = undefined; b.aerger = 0; declareWar(g, p.id, HUMAN); }
     } else {
       // nie zwei Vorwarnungen gleichzeitig und frühestens 10 Minuten nach der letzten Kriegserklärung
-      const busy = g.players.some((o) => o.ai && o !== p && o.warnAt !== undefined) || g.time - (g.players[HUMAN].lastWarAt ?? -9999) < 600 || g.time < (p.calmUntil ?? 0) || g.time < (g.players[HUMAN].calmUntil ?? 0);
-      if (!busy && g.rng() < 0.04) {
+      const busy = g.players.some((o) => o.ai && o !== p && o.warnAt !== undefined) || g.time - (me.lastWarAt ?? -9999) < 600 || g.time < (p.calmUntil ?? 0) || g.time < (me.calmUntil ?? 0);
+      if (!busy && g.rng() < (provoked ? 0.3 : 0.04 * per.krieg)) {
         // erst eine Vorwarnung, drei Minuten später der Krieg
         p.warnAt = g.time + 180;
-        g.ev.message(`⚠️ ${p.name} rüstet zum Krieg gegen dich! ${defenseAdvice(g)}`, 'bad', kAt);
+        const why = provoked && b.anlass ? ` – ${b.anlass}` : '';
+        g.ev.message(`⚠️ ${p.name} rüstet zum Krieg gegen dich${why}! ${defenseAdvice(g)}`, 'bad', kAt);
       }
     }
     // Soldaten, die noch an Bord sitzen (z. B. nach dem Laden eines Spielstands): heimfahren und absetzen
@@ -1216,26 +1234,102 @@ function tickAIMilitary(g: Game) {
       g.moveShip(s, cx, cy);
     }
     if (!war) continue;
+    defend(g, p.id, mine);
     // Kriegsschiff jagt Schiffe des Spielers in der Nähe der eigenen Insel
     for (const s of g.ships) {
       if (s.owner !== p.id || !s.guns || s.target !== undefined) continue;
       const prey = acquire(g, p.id, s.x, s.y, 40, { ships: true, units: false });
       if (prey) shipAttack(g, s, prey.kind === 'ship' ? prey.s.id : 0);
     }
-    // Angriff: Truppen per Schiff zur nächsten Insel des Spielers bringen
-    raid(g, p.id, mine);
+    // Angriff: Truppen per Schiff zur nächsten Insel des Spielers bringen, Kriegsschiffe geben Geleit
+    raid(g, p.id, mine, sollTruppen(g, p));
   }
 }
 
-/** einfacher Überfall der KI: sammeln → einsteigen → hinfahren → absetzen → angreifen */
-function raid(g: Game, owner: number, mine: Unit[]) {
+/** Ausbildung in der Burg: bis zur Soll-Zahl, nur mit Waffen im Lager, Reserve in der Kasse und bezahlbarem Sold.
+ *  Etwa jeder vierte wird Kanonier (ab 400 Bürgern), Musketiere ab 400 Kaufleuten, sonst Schwertkämpfer und Reiter. */
+function recruit(g: Game, p: Player, mine: Unit[], plus: number) {
+  const soll = sollTruppen(g, p);
+  if (!soll || p.money < MIL_RESERVE) return;
+  const burgs = g.buildings.filter((b) => b.owner === p.id && BUILDINGS[b.type].trains);
+  if (!burgs.length) return;
+  const training = burgs.reduce((n, b) => n + (b.train?.length ?? 0), 0);
+  if (mine.length + training >= soll) return;
+  const guns = mine.filter((u) => u.type === 'kanonier').length + burgs.reduce((n, b) => n + (b.train?.filter((j) => j.type === 'kanonier').length ?? 0), 0);
+  const order: UnitType[] = [];
+  if (guns < soll / 4) order.push('kanonier');
+  order.push('musketier', ...(g.rng() < 0.35 ? ['reiter', 'infanterie'] as UnitType[] : ['infanterie', 'reiter'] as UnitType[]));
+  for (const b of burgs) for (const t of order) {
+    if (plus - UNITS[t].upkeep < 0) continue;
+    if (train(g, b, t).ok) return;
+  }
+  // keine Waffen im Lager: Schwerter für einen Soldaten am Kontor kaufen (Sofort-Handel wie der Spieler)
+  const b = burgs[0], l = g.lagerOf(p.id, b.island);
+  const need = (UNITS.infanterie.cost.schwerter ?? 3) - Math.floor(l?.schwerter ?? 0);
+  if (l && need > 0 && plus > UNITS.infanterie.upkeep && p.money > MIL_RESERVE + need * (PRICES.schwerter?.kaufen ?? 122) * 1.4 + 500) sofort(g, p.id, b.island, 'schwerter', need);
+}
+
+/** Kriegsschiffe: bis zu 3 aus der eigenen Werft (im Frieden die Eroberin eines, bei Krieg oder Vorwarnung mehr);
+ *  am Kontor Kanonen laden */
+function warships(g: Game, p: Player, k: Building, war: boolean) {
+  const navy = g.ships.filter((s) => s.owner === p.id && (s.type ?? '').startsWith('krieg'));
+  for (const s of navy) {
+    const max = SHIPS[s.type ?? 'krieg_klein'].kanonen;
+    if (s.path.length || s.target !== undefined || (s.guns ?? 0) >= max) continue;
+    const dock = g.shipDock(s);
+    if (dock) {
+      // fehlende Kanonen am Kontor kaufen (Sofort-Handel wie der Spieler), solange die Kasse reicht
+      const l = g.lagerOf(p.id, dock.island);
+      const lack = Math.max(0, max - (s.guns ?? 0) - Math.floor(l?.kanonen ?? 0));
+      const each = (PRICES.kanonen?.kaufen ?? 340) * 1.4;
+      const n = Math.min(lack, Math.floor((p.money - MIL_RESERVE) / each));
+      if (n > 0) sofort(g, p.id, dock.island, 'kanonen', n);
+      armShip(g, s);
+    }
+    else if (!s.troops?.length && !st(g).raids.has(p.id)) { const at = dockAt(g, k); if (at) g.moveShip(s, at[0], at[1]); }
+  }
+  const per = persoenlichkeit(p);
+  // die Eroberin hält schon im Frieden ein Kriegsschiff, sobald sie eine Werft hat
+  const want = war ? 3 : p.warnAt !== undefined ? 2 : per.ruestetFrueh ? 1 : 0;
+  const building = g.buildings.filter((b) => b.owner === p.id && b.job && b.job.ship.startsWith('krieg')).length;
+  if (navy.length + building >= Math.min(3, want) || p.money < MIL_RESERVE + 1500) return;
+  const w = g.buildings.find((b) => b.owner === p.id && (b.type === 'werft' || b.type === 'grosswerft') && !b.job);
+  if (!w) return;
+  const type: ShipType = w.type === 'grosswerft' && g.reached(SHIPS.krieg_gross.unlock, p.id) ? 'krieg_gross' : 'krieg_klein';
+  const sd = SHIPS[type], l = g.lagerOf(p.id, w.island);
+  if (!l) return;
+  for (const [gd, n] of [['holz', sd.cost.holz], ['stoff', sd.cost.stoff]] as const) {
+    const lack = Math.ceil(n - l[gd]);
+    if (lack > 0 && sofort(g, p.id, w.island, gd, lack) < lack) return;
+  }
+  g.orderShip(w, type);
+}
+
+/** Verteidigung im Krieg: freie Soldaten greifen Feinde an, die auf eigenem Land stehen */
+function defend(g: Game, owner: number, mine: Unit[]) {
+  const N = g.size;
+  const foes = g.units.filter((u) => u.ship === undefined && u.owner !== owner && atWar(g, owner, u.owner) && g.own[Math.floor(u.y) * N + Math.floor(u.x)] === owner);
+  if (!foes.length) return;
+  const crew = new Set(st(g).raids.get(owner)?.crew ?? []);
+  for (const u of mine) {
+    if (u.ship !== undefined || u.target !== undefined || u.board !== undefined || crew.has(u.id)) continue;
+    let best: Unit | undefined, bd = 30;
+    for (const f of foes) { const d = Math.hypot(f.x - u.x, f.y - u.y); if (d < bd) { bd = d; best = f; } }
+    if (best) orderAttack(g, [u], best.id);
+  }
+}
+
+/** Überfall der KI in Wellen: sammeln → einsteigen → hinfahren (Kriegsschiffe geben Geleit) → absetzen → angreifen.
+ *  Transport: am liebsten ein Kriegsschiff, sonst ein Handelsschiff ohne Handelsroute. */
+function raid(g: Game, owner: number, mine: Unit[], soll: number) {
   const raids = st(g).raids;
   let r = raids.get(owner);
   const islandAt = (x: number, y: number) => g.islandOf[g.idx(Math.floor(x), Math.floor(y))];
   const idle = mine.filter((u) => u.ship === undefined && u.target === undefined && !u.path.length && u.board === undefined);
   if (!r) {
-    if (idle.length < 4 || g.rng() > 0.15) return;
-    const ship = g.ships.find((s) => s.owner === owner && !s.path.length);
+    if (idle.length < Math.max(4, Math.round(soll * 0.5)) || g.rng() > 0.15) return;
+    const free = g.ships.filter((s) => s.owner === owner && !s.path.length && !route(g, s));
+    const ship = free.find((s) => (s.type ?? '').startsWith('krieg')) ?? free.find((s) => (s.type ?? 'handel_klein').startsWith('handel'));
     if (!ship) return;
     const goal = g.buildings.filter((b) => b.owner === HUMAN && (b.type === 'kontor' || b.type === 'markt'))
       .sort((a, b) => Math.hypot(a.x - ship.x, a.y - ship.y) - Math.hypot(b.x - ship.x, b.y - ship.y))[0];
@@ -1243,7 +1337,9 @@ function raid(g: Game, owner: number, mine: Unit[]) {
     // Schiff erst an die Küste bei den Soldaten bringen (dort, wo sie es auch erreichen)
     const cx = idle.reduce((a, u) => a + u.x, 0) / idle.length, cy = idle.reduce((a, u) => a + u.y, 0) / idle.length;
     if (!g.moveShip(ship, cx, cy)) return;
-    r = { phase: 'anfahrt', ship: ship.id, t: 0, dest: g.center(goal), crew: idle.slice(0, SHIPS[ship.type ?? 'handel_klein'].troops).map((u) => u.id) };
+    // Kanoniere zuerst an Bord (gegen Türme), dann die anderen
+    const crew = [...idle].sort((a, b) => (b.type === 'kanonier' ? 1 : 0) - (a.type === 'kanonier' ? 1 : 0)).slice(0, SHIPS[ship.type ?? 'handel_klein'].troops);
+    r = { phase: 'anfahrt', ship: ship.id, t: 0, dest: g.center(goal), crew: crew.map((u) => u.id) };
     raids.set(owner, r);
     return;
   }
@@ -1261,7 +1357,7 @@ function raid(g: Game, owner: number, mine: Unit[]) {
     const boarding = g.units.some((u) => u.owner === owner && u.board === ship.id);
     if (!boarding || r.t > 90) {
       if (!ship.troops?.length) { raids.delete(owner); return; }
-      if (g.moveShip(ship, r.dest![0], r.dest![1])) r.phase = 'fahren'; else raids.delete(owner);
+      if (g.moveShip(ship, r.dest![0], r.dest![1])) { r.phase = 'fahren'; escort(g, owner, ship, r.dest!); } else raids.delete(owner);
     }
   } else if (r.phase === 'fahren') {
     if (!ship.path.length) {
@@ -1278,6 +1374,18 @@ function raid(g: Game, owner: number, mine: Unit[]) {
       }
     }
   } else if (!g.units.some((u) => u.owner === owner && u.target !== undefined)) raids.delete(owner);
+}
+
+/** Geleit: bis zu 3 bewaffnete Kriegsschiffe fahren mit zum Ziel und greifen dort Schiffe und Küstenbauten an */
+function escort(g: Game, owner: number, transport: Ship, dest: [number, number]) {
+  let n = 0;
+  for (const s of g.ships) {
+    if (n >= 3 || s.owner !== owner || s === transport || !(s.guns ?? 0) || s.target !== undefined) continue;
+    n++;
+    const t = acquire(g, owner, dest[0], dest[1], 12, { ships: true, buildings: true, units: false });
+    if (t && t.kind !== 'unit') shipAttack(g, s, t.kind === 'ship' ? t.s.id : t.b.id);
+    else g.moveShip(s, dest[0], dest[1]);
+  }
 }
 
 // ---------- Hauptschleife ----------
