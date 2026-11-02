@@ -558,6 +558,8 @@ export class UI {
     else if (/erobert!|besiegt|versenkt!/.test(text) && kind === 'good') sound.play('aufstieg');
     else if (kind === 'bad') sound.play('fehler');
     else if (kind === 'good' || /Kontor auf/.test(text)) sound.play('nachricht');
+    // (U3) Einblendung links unten zeigt der Meldungsverlauf selbst (ui/log.ts, schon bei log.add oben)
+    if (this.log.ready) return;
     const box = $('#toasts');
     // Art als eigene Klasse (toast-info …) – „info“ und „good“ allein sind schon Infofenster und Warenknöpfe
     const t = el('div', `toast toast-${kind}`, text);

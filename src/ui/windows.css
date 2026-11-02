@@ -41,24 +41,35 @@
 .help .dfoot #hClose { flex: 2; font-size: 16px; }
 @media (max-width: 520px) { .hcards { grid-template-columns: 1fr; } }
 
-/* ---------- Weltkarte: Karte links so groß wie möglich (100dvh), Text und Knopf rechts ---------- */
-.modal .box.map {
-  width: auto; max-width: 100%; padding: 12px;
-  display: grid; grid-template-columns: auto 170px; grid-template-rows: auto 1fr auto; column-gap: 12px;
-  grid-template-areas: 'cv head' 'cv side' 'cv foot';
+/* ---------- Große Weltkarte: Überlagerung über dem Spiel (es läuft weiter), Karte links in voller Höhe ---------- */
+.wmap {
+  position: absolute; inset: 0; z-index: 15; display: flex; gap: 12px; align-items: stretch;
+  padding: calc(8px + var(--in-t)) calc(8px + var(--in-r)) calc(8px + var(--in-b)) calc(8px + var(--in-l));
+  background: rgba(16, 12, 9, .9);
 }
-.box.map .dhead { grid-area: head; padding: 0 0 6px; }
-.box.map h2 { font-size: 23px; text-align: left; padding: 0 40px 0 0; }
-.box.map .dbody { display: contents; }
-.box.map canvas {
-  grid-area: cv; display: block; height: auto; aspect-ratio: 1;
-  width: min(calc(100vh - 56px - var(--in-t) - var(--in-b)), calc(100vw - 240px - var(--in-l) - var(--in-r)));
-  width: min(calc(100dvh - 56px - var(--in-t) - var(--in-b)), calc(100vw - 240px - var(--in-l) - var(--in-r)));
-  border-radius: 8px; border: 1px solid var(--rand); image-rendering: pixelated; touch-action: manipulation;
+.wmap .wcv { flex: none; display: flex; align-items: center; justify-content: center; }
+.wmap canvas {
+  display: block; aspect-ratio: 1; height: auto; border-radius: 8px; border: 2px solid var(--rand); touch-action: manipulation; cursor: pointer;
+  width: min(calc(100vh - 16px - var(--in-t) - var(--in-b)), calc(100vw - 236px - var(--in-l) - var(--in-r)));
+  width: min(calc(100dvh - 16px - var(--in-t) - var(--in-b)), calc(100vw - 236px - var(--in-l) - var(--in-r)));
 }
-.box.map .mside { grid-area: side; display: flex; flex-direction: column; gap: 8px; }
-.box.map .sub { text-align: left; }
-.box.map .legend { font-size: 12px; color: var(--pergament-2); line-height: 1.7; }
-.box.map .legend span { display: inline-block; white-space: nowrap; margin-right: 8px; }
-.box.map .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 4px 0 0; vertical-align: -1px; }
-.box.map .dfoot { grid-area: foot; padding: 6px 0 0; border: 0; }
+.wmap .wside { flex: 1; min-width: 200px; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; overscroll-behavior: contain; }
+.wmap .whead { display: flex; align-items: center; gap: 6px; }
+.wmap h2 { flex: 1; margin: 0; font: 23px/1.1 var(--display); color: var(--gold); }
+.wmap .wlayers { display: flex; gap: 4px; }
+.wmap .wlayers .btn { flex: 1; font-size: 14px; padding: 0 4px; white-space: nowrap; }
+.wmap .wcard { display: flex; flex-direction: column; gap: 6px; }
+.wmap .wcard h3 { margin: 0; font: 20px/1.15 var(--display); color: var(--gold); }
+.wmap .sub { font-size: 13px; color: var(--pergament-2); margin: 0; }
+.wmap p { margin: 0; font-size: 14px; }
+.wmap .wfr { display: flex; flex-wrap: wrap; gap: 2px 10px; }
+.wmap .wfr span { white-space: nowrap; }
+.wmap .row2 { display: flex; gap: 6px; }
+.wmap .row2 .btn { flex: 1; font-size: 15px; }
+.wmap .legend { font-size: 12px; color: var(--pergament-2); line-height: 1.7; }
+.wmap .legend span { display: inline-block; white-space: nowrap; margin-right: 8px; }
+.wmap .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin: 0 4px 0 0; vertical-align: -1px; }
+
+/* ---------- Verloren: Grund deutlich ---------- */
+.modal .lgrund { font-size: 16px; text-align: center; }
+.modal .lgrund b { color: var(--schlecht); }
