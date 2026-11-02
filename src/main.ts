@@ -8,6 +8,8 @@ import { DebugOverlay, QualityMode } from './render/quality';
 import { saves, slotName } from './saves';
 import { grafikWahl } from './ui/settings';
 import { calmClock } from './render/cloth';
+import { ZOOM_STEP } from './input';
+import * as THREE from 'three';
 
 const TICK = 0.25; // Sekunden Spielzeit pro Simulationsschritt
 
@@ -113,14 +115,17 @@ async function boot() {
     // Fehler in der Anzeige dürfen das Spiel nie anhalten
     if (hudT > 0.25) { hudT = 0; try { ui.updateHud(); } catch (e) { console.warn('HUD', e); } }
     if (iconT > 0.6) { iconT = 0; try { view.refreshIcons(); } catch (e) { console.warn('Icons', e); } }
-    // Zeichnen: beim Spielen jedes Bild (sparsam: 30 je Sekunde); in Pause, Menü und Hochformat nur,
-    // wenn sich Kamera oder Bild geändert haben, sonst höchstens 10 Bilder je Sekunde (schont den Akku)
+    // Zeichnen: beim Spielen jedes Bild (sparsam: 30 je Sekunde). In Pause, Menü und Hochformat steht das ganze
+    // Bild still – Wasser, Wind in Bäumen und Gras, Fahnen, Schiffe, Auswahl-Pfeil laufen nach der Ruhe-Uhr, die
+    // dann anhält (cloth.ts). Gezeichnet wird dann nur, wenn sich Kamera oder Bild geändert haben (Verschieben und
+    // Zoomen bleiben flüssig: jedes Bild), sonst zur Sicherheit 4 Bilder je Sekunde. Das schont den Akku mehr als
+    // flüssiges Weiterzeichnen eines bewegten Bilds, und nichts ruckelt mehr (vorher liefen Wasser und Bäume mit
+    // nur 10 Bildern je Sekunde weiter).
     const idle = ui.paused || modalOpen;
-    // Fahnen, Auswahl-Pfeil und Schiffs-Schaukeln stehen dann still (bei wenigen Bildern je Sekunde würden sie ruckeln)
     calmClock.still = idle;
     pendingDt += idle ? 0 : real * ui.speed;
     const since = now - lastDraw;
-    const draw = idle ? (view.needsRedraw() || since >= 100) : since >= view.quality.minInterval;
+    const draw = idle ? (view.needsRedraw() || since >= 250) : since >= view.quality.minInterval;
     if (draw) {
       view.frame(now / 1000, pendingDt);
       pendingDt = 0;
@@ -160,21 +165,38 @@ async function boot() {
 
   // Auswahl-Pfeil nicht unter der oberen Leiste: Beim Anwählen schiebt die Kamera das Ding schon in den freien
   // Bereich (ui.keepLeft), rechnet dabei aber mit dem Boden. Hohe Schiffe/Gebäude samt Pfeil können oben noch
-  // unter der Leiste stecken – dann einmal, kurz nach dem Anwählen, sanft ein Stück nachschieben.
+  // unter der Leiste stecken – dann einmal, kurz nach dem Anwählen, sanft ein Stück nachschieben. Dasselbe nach
+  // dem Zoomen mit den Fingern oder dem Mausrad (erst, wenn der Zoom zur Ruhe gekommen ist und kein Finger mehr
+  // auf dem Bild liegt). Zoomen per Knopf (+/−) hält den Pfeil gleich an seiner Stelle (siehe unten).
   let selKey = '';
   let checkAt = 0;
+  let zoomDist = 0;
+  let zoomSeen = 0;
+  const fingers = new Set<number>();
+  canvas.addEventListener('pointerdown', (e) => fingers.add(e.pointerId));
+  for (const ev of ['pointerup', 'pointercancel'] as const) window.addEventListener(ev, (e) => fingers.delete(e.pointerId));
+  const hasSelection = () => !!ui.selected || view.ships.selected !== null || view.units.selected.size > 0;
+  const barBottom = () => document.querySelector<HTMLElement>('#hud .top')?.getBoundingClientRect().bottom ?? 0;
   function keepArrowVisible(now: number) {
     const key = `${ui.selected?.id ?? ''}|${view.ships.selected ?? ''}|${view.units.selected.size}`;
-    if (key !== selKey) { selKey = key; checkAt = key === '||' ? 0 : now + 450; return; }
+    if (key !== selKey) { selKey = key; checkAt = key === '||' ? 0 : now + 450; zoomDist = view.rig.dist; zoomSeen = 0; return; }
+    if (key === '||') return;
+    // Zoom beobachten: geändert → merken; 300 ms ruhig und kein Finger mehr auf dem Bild → einmal prüfen
+    const d = view.rig.dist;
+    if (Math.abs(d - zoomDist) > 1e-4) { zoomDist = d; zoomSeen = now; }
+    if (zoomSeen && now - zoomSeen > 300 && !fingers.size) { zoomSeen = 0; checkAt = now; }
     if (!checkAt || now < checkAt) return;
     checkAt = 0;
+    nudgeArrow();
+  }
+  function nudgeArrow() {
     const top = view.selMarks.topNdc;
-    const bar = document.querySelector<HTMLElement>('#hud .top')?.getBoundingClientRect();
+    const bar = barBottom();
     if (!top.on || !bar) return;
     const rc = view.renderer.domElement.getBoundingClientRect();
     const ax = rc.left + ((top.x + 1) / 2) * rc.width, ay = rc.top + ((1 - top.y) / 2) * rc.height;
     if (ax < rc.left || ax > rc.right) return;
-    const want = Math.min(bar.bottom + 14, ay + rc.height * 0.35);
+    const want = Math.min(bar + 14, ay + rc.height * 0.35);
     if (want <= ay) return;
     // Richtung am Boden, in die die Kamera rücken muss, damit das Bild nach unten wandert
     const a = view.groundPoint(ax, rc.top + rc.height * 0.5), b = view.groundPoint(ax, rc.top + rc.height * 0.5 + 40);
@@ -196,6 +218,41 @@ async function boot() {
     const k = hi;
     ui.input.animate(420, (e) => { r.tx = tx0 + dx * k * e; r.tz = tz0 + dz * k * e; });
   }
+
+  // Zoomen per Knopf, während etwas angewählt ist: Die Kamera zoomt auf das angewählte Ding zu – sein Pfeil bleibt
+  // am Bildschirm, wo er ist (das Ding wird nach unten hin größer), statt beim Heranzoomen um die Bildmitte unter
+  // die obere Leiste zu wandern. Ohne Auswahl (oder wenn der Pfeil gerade nicht frei zu sehen ist) wie gewohnt.
+  const zRay = new THREE.Raycaster(), zPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const zHit = new THREE.Vector3(), zNdc = new THREE.Vector2();
+  /** Kamera so verschieben, dass der Weltpunkt Q an der Bildstelle (nx, ny) erscheint (wenige Schritte genügen) */
+  const holdAt = (Q: THREE.Vector3, nx: number, ny: number) => {
+    const r = view.rig;
+    zPlane.constant = -Q.y;
+    for (let i = 0; i < 4; i++) {
+      view.updateCamera(); view.camera.updateMatrixWorld();
+      zRay.setFromCamera(zNdc.set(nx, ny), view.camera);
+      if (!zRay.ray.intersectPlane(zPlane, zHit)) return;
+      const dx = Q.x - zHit.x, dz = Q.z - zHit.z;
+      if (dx * dx + dz * dz < 1e-8) return;
+      r.tx += dx; r.tz += dz;
+    }
+    view.updateCamera(); view.camera.updateMatrixWorld();
+  };
+  document.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement | null)?.closest?.('#zoomIn, #zoomOut');
+    if (!btn || !hasSelection() || !view.selAnchor.on || !view.selMarks.topNdc.on) return;
+    const rc = view.renderer.domElement.getBoundingClientRect();
+    const top = view.selMarks.topNdc, ay = rc.top + ((1 - top.y) / 2) * rc.height;
+    if (ay < barBottom() || Math.abs(top.x) > 1) return; // Pfeil gerade nicht frei zu sehen: normal zoomen
+    view.updateCamera(); view.camera.updateMatrixWorld();
+    const P = view.selAnchor.p.clone(), q = P.clone().project(view.camera);
+    if (q.z > 1 || Math.abs(q.x) > 1 || Math.abs(q.y) > 1) return;
+    // ab hier zoomt diese Stelle (der Knopf selbst würde um die Bildmitte zoomen)
+    e.stopPropagation();
+    const f = btn.id === 'zoomIn' ? ZOOM_STEP : 1 / ZOOM_STEP;
+    const r = view.rig, d0 = r.dist;
+    ui.input.animate(280, (k) => { r.dist = d0 * Math.pow(f, k); holdAt(P, q.x, q.y); });
+  }, true);
   requestAnimationFrame(loop);
 
   // Für automatische Tests
