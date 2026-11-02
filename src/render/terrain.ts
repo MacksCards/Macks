@@ -98,95 +98,144 @@ vec3 tBump(vec3 pos, vec3 nrm, vec2 dH) {
 }
 // ---- Pflaster ----
 // Kopfsteinpflaster wie in alten Städten: Reihen QUER zur Fahrtrichtung, jede Reihe gegen die vorige versetzt,
-// Steine unterschiedlich lang, leicht gerundet, grau/beige/bräunlich, schmale dunkle Fugen. Die Richtung
-// kommt je Feld aus den Nachbarwegen (Datenbild, blau): gerade Wege waagerecht oder senkrecht, Kurven als
-// Fächer um die Innenecke, Kreuzungen und Einmündungen als Ringe um die Feldmitte. Am Rand wird das
-// Pflaster lückig (einzelne Steine fehlen, dazwischen Erde und Gras) statt mit harter Kante zu enden.
-const float PK = 6.0; // Steinreihen je Feld
-// Wegeverbindungen eines Feldes: 0 = kein Weg, sonst 16 + Ost 1 + West 2 + Süd 4 + Nord 8
-float tLink(vec2 tile) { return floor(texture2D(uRoad, (tile + 0.5) / uRN).b * 31.875 + 0.5); }
-// Grenze zwischen zwei Reihen bzw. zwei Steinen, leicht verschoben (n > 0: Ring mit n Steinen)
-float tJit(float i, float n, float salt, float amp) { return (th(vec2(n > 0.0 ? mod(i, n) : i, salt)) - 0.5) * amp; }
+// Steine unterschiedlich lang, leicht gerundet, grau/beige/bräunlich, schmale dunkle Fugen. Das Muster steht
+// je Feld im Wegebild (blau, siehe updateRoads): Reihen für waagerechte oder senkrechte Wege (Kreuzungen und
+// Plätze nach der längeren Richtung), in Kurven ein Fächer um die Innenecke. Wo zwei Muster aneinanderstoßen,
+// enden die Steine genau an der Feldkante bzw. die Reihengrenze dort bleibt gerade – so läuft keine Naht quer
+// durch einen Stein. Zum Rand hin werden die Steine nach und nach kleiner und verschwinden einzeln in
+// festgetretener Erde, die weich ins Gras oder in den Sand übergeht (keine Kante, keine Matte).
+const float PK = 6.0; // Steinreihen je Feld (gerade Wege)
+const float NF = 5.0; // Steinreihen in einer Kurve (Viertelkreis)
+float tCode(vec2 tile) { return floor(texture2D(uRoad, (tile + 0.5) / uRN).b * 127.5 + 0.5); }
+// Verschiebung einer Reihengrenze i; null an Feldkanten, an denen ein anderes Muster anschließt
+float tRow(float i, float salt, float a0, float a1) {
+  return (th(vec2(i, salt)) - 0.5) * 0.28 * (1.0 - a0 * (1.0 - step(0.5, abs(i - a1))));
+}
 vec3 tPave(vec2 q, float e, vec3 ground, float mid, float lo, float hi, float hi2, float pxq, out float hOut) {
   vec2 tile = floor(q);
-  float v = tLink(tile);
-  if (v < 15.5) {
-    // Randstück auf einem Nachbarfeld ohne Weg: Muster des nächsten Wegfelds fortsetzen
-    vec2 dd = q - tile - 0.5;
-    tile += abs(dd.x) > abs(dd.y) ? vec2(sign(dd.x), 0.0) : vec2(0.0, sign(dd.y));
-    v = tLink(tile);
+  vec4 tx0 = texture2D(uRoad, (tile + 0.5) / uRN);
+  float code = floor(tx0.b * 127.5 + 0.5), cor = floor(tx0.a * 127.5 + 0.5);
+  // Abstand zu einer Fuge (in Reihenbreiten), nur in Innenecken zwischen verschiedenen Mustern
+  float miter = 1e4;
+  if (cor > 0.5) {
+    // Innenecke: gehört ganz zu einem Nachbarn; gerade Fugen an den Kanten zu den anderen
+    float dir = mod(cor - 1.0, 4.0), jm = floor((cor - 1.0) / 8.0);
+    vec2 fq = q - tile;
+    if (mod(jm, 2.0) > 0.5) miter = min(miter, 1.0 - fq.x);
+    if (mod(floor(jm * 0.5), 2.0) > 0.5) miter = min(miter, fq.x);
+    if (mod(floor(jm * 0.25), 2.0) > 0.5) miter = min(miter, 1.0 - fq.y);
+    if (jm > 7.5) miter = min(miter, fq.y);
+    miter *= PK;
+    tile += dir < 0.5 ? vec2(1.0, 0.0) : dir < 1.5 ? vec2(-1.0, 0.0) : dir < 2.5 ? vec2(0.0, 1.0) : vec2(0.0, -1.0);
+    code = tCode(tile);
+  } else if (code < 0.5) {
+    // Randstück auf einem Feld ohne Weg: Muster des nächsten Wegfelds fortsetzen (erst die nähere Kante)
+    vec2 f = q - tile - 0.5;
+    vec2 sx = vec2(f.x < 0.0 ? -1.0 : 1.0, 0.0), sy = vec2(0.0, f.y < 0.0 ? -1.0 : 1.0);
+    bool xf = abs(f.x) > abs(f.y);
+    vec2 n1 = xf ? sx : sy, n2 = xf ? sy : sx;
+    float c1 = tCode(tile + n1), c2 = tCode(tile + n2);
+    if (c1 > 0.5) {
+      tile += n1; code = c1;
+      // Innenecke (Weg auf beiden Seiten, anderes Muster oder andere Nahtstellen): schräge Fuge statt
+      // durchgeschnittener Steine
+      if (c2 > 0.5 && abs(c1 - c2) > 0.5) miter = abs(abs(f.x) - abs(f.y)) * 0.7071 * PK;
+    } else if (c2 > 0.5) { tile += n2; code = c2; }
+    else { tile += sx + sy; code = tCode(tile); }
   }
-  float m = max(v - 16.0, 0.0);
-  float bE = mod(m, 2.0), bW = mod(floor(m * 0.5), 2.0), bS = mod(floor(m * 0.25), 2.0), bN = floor(m * 0.125);
-  float hor = max(bE, bW), ver = max(bS, bN);
-  // U zählt die Reihen entlang der Fahrtrichtung, V läuft entlang einer Reihe (Maß: eine Reihe = 1)
-  float U, V, salt = 0.0, n = 0.0;
-  if (bE + bW + bS + bN > 2.5) {
-    // Kreuzung, Einmündung: Ringe um die Feldmitte (sie treffen die geraden Reihen der Nachbarfelder)
-    vec2 d = q - tile - 0.5;
-    U = length(d) * PK; V = atan(d.y, d.x) / 6.2831853 + 0.5; salt = dot(tile, vec2(1.7, 9.2));
-  } else if (hor > 0.5 && ver > 0.5) {
-    // Kurve: Reihen fächerförmig um einen Punkt knapp außerhalb der Innenecke
-    vec2 d = q - (tile + vec2(bE, bS) + vec2(bE * 2.0 - 1.0, bS * 2.0 - 1.0) * 0.3);
-    U = atan(abs(d.y), abs(d.x)) * 0.8 * PK; V = length(d) * PK; salt = dot(tile, vec2(3.1, 5.3));
-  } else if (ver > 0.5) {
-    U = q.y * PK; V = q.x * PK;
+  float cls = mod(code, 8.0), bits = floor(code / 8.0);
+  float vLo = mod(bits, 2.0), vHi = mod(floor(bits * 0.5), 2.0), uLo = mod(floor(bits * 0.25), 2.0), uHi = floor(bits * 0.125);
+  // U zählt die Reihen entlang der Fahrtrichtung, V läuft entlang einer Reihe (Maß: eine Reihe = 1).
+  // U0/U1: Reihengrenzen an den Feldkanten; vA/vB: Nahtstellen entlang der Reihe
+  float U, V, U0, U1, tw, salt = 0.0, vA = -1e4, vB = 1e4;
+  if (cls > 2.5) {
+    // Kurve: Reihen fächerförmig um die Innenecke; die beiden Kanten zu den Nachbarwegen sind Reihengrenzen
+    // Nahe der Innenecke weniger Reihen (sonst laufen viele Keile in einem Punkt zusammen):
+    // ganz innen ein Stein, dann ein Ring mit 3 Reihen, außen NF Reihen; dazwischen runde Fugen
+    float k = cls - 3.0;
+    vec2 d = q - tile - vec2(1.0 - mod(k, 2.0), k < 1.5 ? 1.0 : 0.0);
+    float r = length(d);
+    float nr = r < 0.22 ? 1.0 : (r < 0.5 ? 3.0 : NF);
+    U = atan(abs(d.y), abs(d.x)) * (nr / 1.5707963); V = r * PK;
+    if (nr < 1.5) vB = 0.22 * PK; else if (nr < 3.5) { vA = 0.22 * PK; vB = 0.5 * PK; } else vA = 0.5 * PK;
+    U0 = 0.0; U1 = nr; uLo = 1.0; uHi = 1.0; tw = U / nr; salt = dot(tile, vec2(3.1, 5.3)) + nr * 1.7;
+  } else if (cls > 1.5) {
+    U = q.y * PK; V = q.x * PK; U0 = tile.y * PK; U1 = U0 + PK; tw = q.y - tile.y;
+    if (vLo > 0.5) vA = tile.x * PK;
+    if (vHi > 0.5) vB = (tile.x + 1.0) * PK;
   } else {
-    U = q.x * PK; V = q.y * PK;
+    U = q.x * PK; V = q.y * PK; U0 = tile.x * PK; U1 = U0 + PK; tw = q.x - tile.x;
+    if (vLo > 0.5) vA = tile.y * PK;
+    if (vHi > 0.5) vB = (tile.y + 1.0) * PK;
   }
-  bool ring = bE + bW + bS + bN > 2.5;
-  // Reihen leicht gewellt und unterschiedlich breit
-  U += (mid - 0.5) * 0.35;
-  float ri = floor(U);
-  float u0 = ri + tJit(ri, 0.0, 17.3 + salt, 0.3), u1 = ri + 1.0 + tJit(ri + 1.0, 0.0, 17.3 + salt, 0.3);
-  if (U < u0) { u1 = u0; ri -= 1.0; u0 = ri + tJit(ri, 0.0, 17.3 + salt, 0.3); }
-  else if (U >= u1) { u0 = u1; ri += 1.0; u1 = ri + 1.0 + tJit(ri + 1.0, 0.0, 17.3 + salt, 0.3); }
+  // Reihen leicht gewellt – nicht an Kanten, an denen ein anderes Muster anschließt
+  float wob = 1.0;
+  if (uLo > 0.5) wob = min(wob, smoothstep(0.0, 0.3, tw));
+  if (uHi > 0.5) wob = min(wob, smoothstep(1.0, 0.7, tw));
+  U += (mid - 0.5) * 0.3 * wob;
+  float ri = floor(U), rs0 = 17.3 + salt;
+  float u0 = ri + tRow(ri, rs0, uLo, U0) + tRow(ri, rs0, uHi, U1);
+  float u1 = ri + 1.0 + tRow(ri + 1.0, rs0, uLo, U0) + tRow(ri + 1.0, rs0, uHi, U1);
+  if (U < u0) { u1 = u0; ri -= 1.0; u0 = ri + tRow(ri, rs0, uLo, U0) + tRow(ri, rs0, uHi, U1); }
+  else if (U >= u1) { u0 = u1; ri += 1.0; u1 = ri + 1.0 + tRow(ri + 1.0, rs0, uLo, U0) + tRow(ri + 1.0, rs0, uHi, U1); }
   // entlang der Reihe: Steine unterschiedlich lang, jede Reihe gegen die vorige versetzt
-  float sv = 1.25; // Länge eines Steins (Rechenmaß) in Reihenbreiten
-  if (ring) { n = max(3.0, floor(6.2831853 * (ri + 0.5) * 0.8 + 0.5)); V *= n; sv = 6.2831853 * max(U, 0.3) / n; }
-  else V = V * 0.8 + th(vec2(ri, 5.1 + salt)) * 9.0;
+  const float SV = 1.25; // Länge einer V-Einheit in Reihenbreiten
+  float off = th(vec2(ri, 5.1 + salt)) * 9.0;
+  V = V / SV + off; vA = vA / SV + off; vB = vB / SV + off;
   float rs = ri * 7.31 + salt;
   float j = floor(V);
-  float b0 = j + tJit(j, n, rs, 0.6), b1 = j + 1.0 + tJit(j + 1.0, n, rs, 0.6);
-  if (V < b0) { b1 = b0; j -= 1.0; b0 = j + tJit(j, n, rs, 0.6); }
-  else if (V >= b1) { b0 = b1; j += 1.0; b1 = j + 1.0 + tJit(j + 1.0, n, rs, 0.6); }
-  vec2 id = vec2(n > 0.0 ? mod(j, n) : j, ri) + salt;
-  // Stein: Rechteck mit stark gerundeten Ecken, Kante etwas unruhig (Naturstein)
-  float hu = (u1 - u0) * 0.5, hv = (b1 - b0) * 0.5 * sv;
-  vec2 lp = vec2(U - (u0 + u1) * 0.5, (V - (b0 + b1) * 0.5) * sv);
-  float rad = min(hu, hv) * 0.6;
-  vec2 dq = abs(lp) - vec2(hu, hv) + 0.07 + th(id + 2.0) * 0.05 + rad;
-  float sdf = length(max(dq, 0.0)) + min(max(dq.x, dq.y), 0.0) - rad;
-  sdf += (hi - 0.5) * 0.12 + (hi2 - 0.5) * 0.05;
-  // zum Rand hin werden die Steine kleiner und einzelne fehlen; dort liegt festgetretene Erde, die weich ins
-  // Gras (oder in den Sand) übergeht – kein Stein wird an einer Linie abgeschnitten
-  float edge = smoothstep(0.3, 0.72, e);
-  sdf += (1.0 - edge) * 0.6;
-  float keep = step(th(id + 11.1), edge * 2.2 - 0.1);
+  float b0 = j + (th(vec2(j, rs)) - 0.5) * 0.6, b1 = j + 1.0 + (th(vec2(j + 1.0, rs)) - 0.5) * 0.6;
+  if (V < b0) { b1 = b0; j -= 1.0; b0 = j + (th(vec2(j, rs)) - 0.5) * 0.6; }
+  else if (V >= b1) { b0 = b1; j += 1.0; b1 = j + 1.0 + (th(vec2(j + 1.0, rs)) - 0.5) * 0.6; }
+  // Naht: der Stein endet genau an der Feldkante (kleiner Stein statt halbem, durchgeschnittenem)
+  float part = 0.0;
+  if (vA > b0 && vA < b1) { if (V < vA) b1 = vA; else { b0 = vA; part = 1.0; } }
+  if (vB > b0 && vB < b1) { if (V < vB) b1 = vB; else { b0 = vB; part = 2.0; } }
+  vec2 id = vec2(j + part * 0.31, ri) + salt;
+  // Stein: Rechteck mit gerundeten Ecken, Kante etwas unruhig (Naturstein); Fuge schmal.
+  // Zum Rand hin schrumpft jeder Stein unterschiedlich schnell und verschwindet schließlich ganz; kleine
+  // Steine werden dabei runder (Kiesel statt spitzer Scherben).
+  float edge = smoothstep(0.24, 0.64, e);
+  float shr = (1.0 - edge) * (0.5 + 0.55 * th(id + 11.1));
+  float gap = 0.035 + th(id + 2.0) * 0.025;
+  float hu = (u1 - u0) * 0.5 - gap - shr, hv = (b1 - b0) * 0.5 * SV - gap - shr;
+  vec2 lp = vec2(U - (u0 + u1) * 0.5, (V - (b0 + b1) * 0.5) * SV);
+  float hm = max(min(hu, hv), 0.0);
+  float rad = hm * min(1.0, 0.55 + shr * 1.5);
+  vec2 dq = abs(lp) - vec2(hu, hv) + rad;
+  float sdf = hm > 0.0 ? length(max(dq, 0.0)) + min(max(dq.x, dq.y), 0.0) - rad : 1.0;
+  sdf += (hi - 0.5) * 0.06 + (hi2 - 0.5) * 0.012;
+  // Fuge in der Innenecke einer Kreuzung
+  sdf = max(sdf, 0.045 - miter);
   // Größe eines Bildpunkts in Reihenbreiten: glatte Kanten, aus der Ferne nur noch die Mischfarbe
   float px = pxq * PK;
   float st = 1.0 - smoothstep(-px * 0.6, px * 0.6, sdf);
-  float det = 1.0 - smoothstep(0.28, 0.65, px);
-  // festgetretener Boden: der Untergrund (Gras, Sand) dunkler und erdiger – auf Sand bleibt er sandfarben
-  vec3 soil = mix(ground, mix(ground * 0.6, vec3(0.17, 0.13, 0.085), 0.5), 0.25 + 0.45 * edge);
-  vec3 fuge = mix(vec3(0.085, 0.07, 0.05), vec3(0.06, 0.088, 0.032), smoothstep(0.5, 0.8, mid) * 0.7);
-  // dunkle Fugen nur um Steine, die da sind; wo einer fehlt, sieht man Erde
-  vec3 bed = keep > 0.5 ? mix(soil, fuge, smoothstep(0.05, 0.45, edge)) : soil;
+  float det = 1.0 - smoothstep(0.3, 0.7, px);
+  // festgetretene Erde: der Untergrund (Gras, Sand) dunkler und erdiger, zur Wegmitte hin mehr
+  vec3 earth = mix(vec3(0.17, 0.13, 0.085), ground * 0.7, 0.35);
+  vec3 soil = mix(ground, earth, 0.4 + 0.5 * smoothstep(0.0, 0.6, edge));
+  // dunkle Fuge direkt um jeden Stein (er liegt eingebettet), stellenweise Moos
+  vec3 fuge = mix(vec3(0.075, 0.064, 0.048), vec3(0.06, 0.085, 0.032), smoothstep(0.55, 0.8, mid) * 0.6);
+  float rim = 1.0 - smoothstep(0.0, 0.14, sdf);
   // Farbe je Stein: grau, beige, bräunlich, ab und zu dunkel
   float r1 = th(id + 7.0), r2 = th(id + 8.3), r3 = th(id + 9.9);
-  vec3 sc = mix(vec3(0.15, 0.14, 0.125), vec3(0.235, 0.198, 0.142), smoothstep(0.25, 0.8, r1));
-  sc = mix(sc, vec3(0.175, 0.125, 0.082), step(0.72, r2) * 0.85);
-  sc = mix(sc, vec3(0.105, 0.102, 0.098), step(0.9, r3) * 0.8);
+  vec3 sc = mix(vec3(0.16, 0.15, 0.135), vec3(0.25, 0.212, 0.152), smoothstep(0.25, 0.8, r1));
+  sc = mix(sc, vec3(0.185, 0.132, 0.088), step(0.72, r2) * 0.85);
+  sc = mix(sc, vec3(0.11, 0.107, 0.1), step(0.9, r3) * 0.8);
   sc *= (0.82 + 0.32 * th(id + 12.7)) * (0.9 + 0.2 * hi2);
   // gewölbt: zum Rand hin dunkler; Schmutz am Wegrand und fleckig; in der Mitte etwas abgelaufen (heller)
-  float inner = smoothstep(0.0, 0.3, -sdf);
-  sc *= 0.7 + 0.3 * inner;
-  float dirt = (1.0 - smoothstep(0.55, 0.95, e)) * 0.45 + smoothstep(0.6, 0.85, lo * 0.5 + mid * 0.5) * 0.3;
+  float inner = smoothstep(0.0, 0.22, -sdf);
+  sc *= 0.72 + 0.28 * inner;
+  float dirt = (1.0 - smoothstep(0.5, 0.9, e)) * 0.4 + smoothstep(0.6, 0.85, lo * 0.5 + mid * 0.5) * 0.25;
   sc = mix(sc, vec3(0.16, 0.12, 0.075), dirt * (1.0 - inner * 0.5));
   sc *= 1.0 + smoothstep(0.85, 1.0, e) * 0.08;
-  vec3 near = mix(bed, sc, st * keep);
-  vec3 farC = mix(soil, mix(fuge, vec3(0.16, 0.142, 0.112) * (0.9 + 0.2 * lo), 0.8), min(1.0, edge * 1.2));
-  hOut = st * keep * (sqrt(inner) * 0.016 + (hi2 - 0.5) * 0.003) * det;
+  // Fugen werden mit kleiner werdenden Steinen (Zoom) heller, damit sie nicht flimmern
+  vec3 avgS = vec3(0.17, 0.152, 0.12) * (0.9 + 0.2 * lo);
+  fuge = mix(fuge, avgS * 0.8, smoothstep(0.12, 0.4, px) * 0.6);
+  vec3 bed = mix(soil, fuge, rim * smoothstep(0.05, 0.4, edge));
+  vec3 near = mix(bed, sc, st);
+  vec3 farC = mix(soil, avgS, edge * 0.9);
+  hOut = (st * (sqrt(inner) * 0.016 + (hi2 - 0.5) * 0.003) - rim * (1.0 - st) * 0.004) * det;
   return mix(farC, near, det);
 }
 vec3 terrainColor(vec3 p, vec4 w) {
@@ -256,7 +305,7 @@ vec3 terrainColor(vec3 p, vec4 w) {
     float pave = clamp(rd.g / max(rr, 0.001), 0.0, 1.0);
     // Pflaster: ruhigerer Rand (die Steine selbst machen ihn unregelmäßig), deckt bis etwas weiter nach außen
     float ep = rr + (mid - 0.5) * 0.12 - shore * 0.7;
-    float cover = mix(smoothstep(0.40, 0.55, e), smoothstep(0.2, 0.42, ep), pave);
+    float cover = mix(smoothstep(0.40, 0.55, e), smoothstep(0.08, 0.4, ep + (lo - 0.5) * 0.12), pave);
     // Rand: niedergetretenes, trockenes Gras mit Erde
     float worn = smoothstep(0.12, 0.42, mix(e, ep, pave)) * (1.0 - cover);
     c = mix(c, mix(c, vec3(0.27, 0.22, 0.11), 0.55) * (0.85 + 0.3 * hi), worn * 0.8);
@@ -323,6 +372,10 @@ export class Terrain {
   private roadUni: { uRoad: THREE.IUniform; uRN: THREE.IUniform };
   /** zuletzt eingetragener Weg je Feld (0 = keiner, 1 = Erdweg, 2 = Pflaster) */
   private roadShown: Uint8Array;
+  /** Pflastermuster je Feld (0 = kein Weg, 1 = waagerecht, 2 = senkrecht, 3–6 = Kurve) */
+  private roadCls: Uint8Array;
+  /** Innenecken: 0 = keine, sonst 1 + Richtung des zuständigen Wegfelds + 8 × Fugen-Bits (siehe updateRoads) */
+  private roadCorner: Uint8Array;
   /** true, solange ein ganzes Hochladen des Wegebilds aussteht (dann keine Teil-Bereiche) */
   private roadFresh = true;
 
@@ -379,6 +432,8 @@ export class Terrain {
     }
 
     this.roadShown = new Uint8Array(N * N);
+    this.roadCls = new Uint8Array(N * N);
+    this.roadCorner = new Uint8Array(N * N);
     this.roadTex = new THREE.DataTexture(new Uint8Array(N * N * 4), N, N);
     this.roadTex.magFilter = THREE.LinearFilter;
     this.roadTex.minFilter = THREE.LinearFilter;
@@ -417,7 +472,7 @@ if (vFog < 0.999) {
   gl_FragColor.rgb = mix(mist, gl_FragColor.rgb, smoothstep(0.0, 1.0, vFog));
 }`);
     };
-    this.mat.customProgramCacheKey = () => 'terrain-welt-v4';
+    this.mat.customProgramCacheKey = () => 'terrain-welt-v6';
 
     // Gelände in Blöcken zu 32 × 32 Feldern; Blöcke mit nur tiefem Meer entfallen
     const nc = (this.nc = Math.ceil(N / CT));
@@ -602,29 +657,103 @@ if (vFog < 0.999) {
       changed.push(i);
       mark(i);
     };
-    // blau: Verbindungen zu Nachbarwegen (Ost 1, West 2, Süd 4, Nord 8) + 16 = „hier ist ein Weg“, mal 8.
-    // Daraus legt das Farbprogramm die Pflastersteine quer zur Wegrichtung (Kurven als Fächer, Kreuzungen als Ringe).
-    const link = (i: number) => {
-      let v = 0;
-      if (shown[i]) {
-        const x = i % N, y = (i / N) | 0;
-        v = 16;
-        if (x < N - 1 && shown[i + 1]) v |= 1;
-        if (x > 0 && shown[i - 1]) v |= 2;
-        if (y < N - 1 && shown[i + N]) v |= 4;
-        if (y > 0 && shown[i - N]) v |= 8;
-      }
-      if (data[i * 4 + 2] !== v * 8) { data[i * 4 + 2] = v * 8; mark(i); }
+    // blau: Pflastermuster je Feld (Art + Nahtstellen, siehe tPave im Farbprogramm). Art: 0 = kein Weg,
+    // 1 = Reihen für einen waagerechten Weg, 2 = für einen senkrechten, 3–6 = Kurve (Fächer um die Innenecke).
+    // Bits: 8/16 = Naht an der unteren/oberen Feldkante entlang der Reihe (dort endet jeder Stein genau an der
+    // Kante, weil nebenan ein anderes Muster liegt), 32/64 = Reihengrenze an der unteren/oberen Kante bleibt
+    // gerade (damit sie genau auf die Reihen bzw. den Fächer des Nachbarfelds trifft). Wert × 2.
+    const cls = this.roadCls;
+    const at = (x: number, y: number) => x >= 0 && y >= 0 && x < N && y < N && shown[y * N + x] !== 0;
+    const run = (x: number, y: number, dx: number, dy: number) => {
+      let n = 0;
+      for (let k = 1; k <= 4 && at(x + dx * k, y + dy * k); k++) n++;
+      return n;
     };
-    if (all) { for (let i = 0; i < N * N; i++) put(i); for (let i = 0; i < N * N; i++) link(i); }
-    else {
+    const classify = (i: number) => {
+      if (!shown[i]) return 0;
+      const x = i % N, y = (i / N) | 0;
+      const e = at(x + 1, y), w = at(x - 1, y), s = at(x, y + 1), n = at(x, y - 1);
+      const hor = e || w, ver = s || n;
+      // echte Kurve: genau ein Nachbar quer und einer längs, und das Eckfeld dazwischen ist kein Weg
+      if (hor && ver && e !== w && s !== n && !at(x + (e ? 1 : -1), y + (s ? 1 : -1))) return 3 + (e ? 0 : 1) + (s ? 0 : 2);
+      if (hor && !ver) return 1;
+      if (ver && !hor) return 2;
+      // Kreuzung, Einmündung, breiter Weg, Platz: die längere Richtung bestimmt die Reihen
+      return run(x, y, 1, 0) + run(x, y, -1, 0) >= run(x, y, 0, 1) + run(x, y, 0, -1) ? 1 : 2;
+    };
+    // Innenecken (Feld ohne Weg zwischen einem Weg daneben und einem darüber/darunter mit anderem Muster):
+    // das Pflaster der abgerundeten Ecke gehört ganz zu EINEM Nachbarn (Richtung 0–3 = O, W, S, N), zu den
+    // anderen Nachbarn läuft eine gerade Fuge an der Feldkante (Bits jm: 1 O, 2 W, 4 S, 8 N).
+    // Vorher wurde die Ecke schräg zwischen zwei Mustern geteilt – das gab dreieckige Steinscherben.
+    const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const cornerOf = (i: number): number => {
+      if (shown[i]) return 0;
+      const x = i % N, y = (i / N) | 0;
+      const nc = DIRS.map(([dx, dy]) => (at(x + dx, y + dy) ? cls[(y + dy) * N + x + dx] : 0));
+      const horC = nc[0] || nc[1], verC = nc[2] || nc[3];
+      if (!horC || !verC || nc.filter((c) => c).every((c) => c === (nc[0] || nc[1]))) return 0;
+      // bevorzugt der Nachbar, dessen Reihen sich ohne Bruch in die Ecke fortsetzen (waagerechte Reihen
+      // ober-/unterhalb, senkrechte links/rechts), sonst der obere/untere
+      let own = [2, 3].find((d) => nc[d] === 1) ?? [0, 1].find((d) => nc[d] === 2) ?? (nc[2] ? 2 : 3);
+      let jm = 0;
+      for (let d = 0; d < 4; d++) if (d !== own && nc[d] && nc[d] !== nc[own]) jm |= 1 << d;
+      return 1 + own + 8 * jm;
+    };
+    const corner = this.roadCorner;
+    const encode = (i: number) => {
+      const c = cls[i];
+      let v = c;
+      if (c === 1 || c === 2) {
+        const x = i % N, y = (i / N) | 0;
+        const other = (xx: number, yy: number) => {
+          if (xx < 0 || yy < 0 || xx >= N || yy >= N) return false;
+          const j = yy * N + xx, o = cls[j];
+          if (o !== 0) return o !== c;
+          // Innenecke, die zu einem Nachbarn mit anderem Muster gehört
+          const k = corner[j];
+          if (!k) return false;
+          const [dx, dy] = DIRS[(k - 1) & 3];
+          const ow = (yy + dy) * N + xx + dx;
+          return ow !== i && cls[ow] !== c;
+        };
+        // waagerecht: Reihen zählen in x, Steine liegen in y – senkrecht umgekehrt
+        const [ax, ay] = c === 1 ? [0, 1] : [1, 0];
+        if (other(x - ax, y - ay)) v |= 8;
+        if (other(x + ax, y + ay)) v |= 16;
+        if (other(x - ay, y - ax)) v |= 32;
+        if (other(x + ay, y + ax)) v |= 64;
+      }
+      if (data[i * 4 + 2] !== v * 2) { data[i * 4 + 2] = v * 2; mark(i); }
+      if (data[i * 4 + 3] !== corner[i] * 2) { data[i * 4 + 3] = corner[i] * 2; mark(i); }
+    };
+    if (all) {
+      for (let i = 0; i < N * N; i++) put(i);
+      for (let i = 0; i < N * N; i++) cls[i] = classify(i);
+      for (let i = 0; i < N * N; i++) corner[i] = cornerOf(i);
+      for (let i = 0; i < N * N; i++) encode(i);
+    } else {
       for (const i of tiles) put(i);
-      for (const i of changed) {
-        link(i);
-        if (i % N < N - 1) link(i + 1);
-        if (i % N > 0) link(i - 1);
-        if (i + N < N * N) link(i + N);
-        if (i - N >= 0) link(i - N);
+      // Muster hängen von Nachbarn bis 4 Felder weit ab: dieses Umfeld neu einordnen, eins weiter neu eintragen
+      const box = (r: number, f: (i: number) => void) => {
+        const seen = new Set<number>();
+        for (const i of changed) {
+          const x = i % N, y = (i / N) | 0;
+          for (let yy = Math.max(0, y - r); yy <= Math.min(N - 1, y + r); yy++)
+            for (let xx = Math.max(0, x - r); xx <= Math.min(N - 1, x + r); xx++) {
+              const j = yy * N + xx;
+              if (!seen.has(j)) { seen.add(j); f(j); }
+            }
+        }
+      };
+      if (changed.length > 1500) {
+        // sehr viel auf einmal (z. B. große Gegend neu entdeckt): einmal alles statt vieler Umfelder
+        for (let i = 0; i < N * N; i++) cls[i] = classify(i);
+        for (let i = 0; i < N * N; i++) corner[i] = cornerOf(i);
+        for (let i = 0; i < N * N; i++) encode(i);
+      } else {
+        box(5, (j) => { cls[j] = classify(j); });
+        box(6, (j) => { corner[j] = cornerOf(j); });
+        box(7, encode);
       }
     }
     if (y1 < 0) return false;

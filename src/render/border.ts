@@ -7,9 +7,11 @@
 //   abgerundet. Die Grenzen zweier Nachbarn liegen so nebeneinander statt übereinander.
 // - Wasser übernimmt den Wert des nächsten Landfelds: entlang der Küste entsteht so keine Grenze, und eine
 //   Grenze, die zum Meer läuft, endet auf dem Strand vor der Wasserlinie.
-// - Gezeichnet wird ein schmales Band, auf das das Grafikprogramm (borderMaterial) schmale Striche mit runden
-//   Enden malt: in der Besitzerfarbe, mit dunklem Rand. So ist die Linie auf Gras,
-//   Wald, Sand und Fels gleich gut zu sehen und kann nicht mit Wasser verwechselt werden.
+// - Gezeichnet wird ein schmales Band, auf das das Grafikprogramm (borderMaterial) feine Striche mit runden
+//   Enden malt: in der Besitzerfarbe, mit dunklem Rand, am Bildschirm aus jeder Höhe gleich fein. So ist die
+//   Linie auf Gras, Wald, Sand und Fels gleich gut zu sehen und kann nicht mit Wasser verwechselt werden.
+// - Jeder Strich ist ganz oder gar nicht da: Striche, die ins Wasser, auf den nassen Strand oder in den Nebel
+//   reichen würden, fallen ganz weg (keine Bruchstücke an der Küste).
 import * as THREE from 'three';
 import { Game } from '../game';
 import { T } from '../world';
@@ -174,8 +176,8 @@ export function borderGeometry(g: Game, heightAt: (x: number, z: number) => numb
 
 /**
  * Band entlang eines Linienzugs: drei Reihen (links, Mitte, rechts), damit es dem Boden folgt.
- * Die Sichtbarkeit (Deckkraft je Ecke) ist 0 über Wasser und im Nebel und läuft am Strand aus, sodass die
- * Linie auf dem Sand vor der Wasserlinie endet.
+ * Das Band wird an jeder Strichlücke geteilt, und jeder Strich ist ganz oder gar nicht sichtbar: über Wasser,
+ * auf dem nassen Strand und im Nebel fehlt er ganz – es gibt keine angeschnittenen Strichstücke.
  */
 function addRibbon(line: number[], closed: boolean, heightAt: (x: number, z: number) => number, seen: (x: number, z: number) => number,
   c: THREE.Color, pos: number[], col: number[], bd: number[]) {
@@ -192,47 +194,72 @@ function addRibbon(line: number[], closed: boolean, heightAt: (x: number, z: num
     const k = (Math.max(1, Math.round(s[n] / DASH)) * DASH) / s[n];
     for (let i = 0; i <= n; i++) s[i] *= k;
   }
-  const offs = [-HALF, 0, HALF];
-  const rows: number[][] = []; // je Punkt: 3 × (x, y, z, Sichtbarkeit)
+  // Querrichtung je Punkt (Mittel der beiden anliegenden Stücke)
+  const nx = new Float32Array(n), nz = new Float32Array(n);
   for (let i = 0; i < n; i++) {
     const ip = closed ? (i - 1 + n) % n : Math.max(0, i - 1), inx = closed ? (i + 1) % n : Math.min(n - 1, i + 1);
     let tx = line[inx * 2] - line[ip * 2], tz = line[inx * 2 + 1] - line[ip * 2 + 1];
     const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
-    const x = line[i * 2], z = line[i * 2 + 1];
-    // über Wasser unsichtbar, auf dem Strand vor der Wasserlinie auslaufend; im Nebel ebenfalls aus
-    const vis = THREE.MathUtils.smoothstep(heightAt(x, z), 0.1, 0.24) * seen(x, z);
-    const r: number[] = [];
-    for (const o of offs) {
-      const px = x - tz * o, pz = z + tx * o;
-      const py = Math.max(heightAt(px, pz), 0.05) + 0.05;
-      r.push(px, py, pz, vis);
-    }
-    rows.push(r);
+    nx[i] = -tz; nz[i] = tx;
   }
-  const put = (r: number[], k: number, si: number) => {
-    pos.push(r[k * 4], r[k * 4 + 1], r[k * 4 + 2]);
-    col.push(c.r, c.g, c.b, r[k * 4 + 3]);
-    bd.push(si, k - 1);
-  };
+  // Punkte des Bandes: an den Linienpunkten und zusätzlich in jeder Strichlücke
+  interface P { x: number; z: number; nx: number; nz: number; s: number }
+  const pts: P[] = [];
   for (let i = 0; i < m; i++) {
-    const a = rows[i], b = rows[(i + 1) % n];
-    // ganz unsichtbare Stücke weglassen
-    if (a[3] === 0 && b[3] === 0) continue;
+    const j = (i + 1) % n;
     const sa = s[i], sb = s[i + 1];
+    const add = (t: number, sv: number) => {
+      const ux = nx[i] + (nx[j] - nx[i]) * t, uz = nz[i] + (nz[j] - nz[i]) * t, ul = Math.hypot(ux, uz) || 1;
+      pts.push({ x: line[i * 2] + (line[j * 2] - line[i * 2]) * t, z: line[i * 2 + 1] + (line[j * 2 + 1] - line[i * 2 + 1]) * t, nx: ux / ul, nz: uz / ul, s: sv });
+    };
+    add(0, sa);
+    for (let k = Math.floor(sa / DASH) + 1; k * DASH < sb - 1e-4; k++) if (k * DASH > sa + 1e-4) add((k * DASH - sa) / (sb - sa), k * DASH);
+  }
+  if (!closed) { const i = n - 1; pts.push({ x: line[i * 2], z: line[i * 2 + 1], nx: nx[i], nz: nz[i], s: s[n - 1] }); }
+  else pts.push({ ...pts[0], s: s[n] });
+  // Sichtbarkeit je Strich: nur, wenn alle seine Punkte auf trockenem, entdecktem Land liegen
+  const visAt = (x: number, z: number) => (heightAt(x, z) > 0.17 ? 1 : 0) * seen(x, z);
+  const dashOf = (a: P, b: P) => Math.floor((a.s + b.s) * 0.5 / DASH);
+  const dashVis = new Map<number, number>();
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const k = dashOf(pts[i], pts[i + 1]);
+    const v = Math.min(visAt(pts[i].x, pts[i].z), visAt(pts[i + 1].x, pts[i + 1].z));
+    dashVis.set(k, Math.min(dashVis.get(k) ?? 1, v));
+  }
+  const offs = [-HALF, 0, HALF];
+  const row = (p: P) => offs.map((o) => {
+    const px = p.x + p.nx * o, pz = p.z + p.nz * o;
+    return [px, Math.max(heightAt(px, pz), 0.05) + 0.06, pz];
+  });
+  let prevRow = row(pts[0]);
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const rb = row(b), ra = prevRow;
+    prevRow = rb;
+    const v = dashVis.get(dashOf(a, b)) ?? 0;
+    if (v === 0) continue; // ganz unsichtbare Striche weglassen
+    const put = (r: number[][], k: number, si: number) => {
+      pos.push(r[k][0], r[k][1], r[k][2]);
+      col.push(c.r, c.g, c.b, v);
+      bd.push(si, k - 1);
+    };
     for (let k = 0; k < 2; k++) {
-      put(a, k, sa); put(b, k, sb); put(b, k + 1, sb);
-      put(a, k, sa); put(b, k + 1, sb); put(a, k + 1, sa);
+      put(ra, k, a.s); put(rb, k, b.s); put(rb, k + 1, b.s);
+      put(ra, k, a.s); put(rb, k + 1, b.s); put(ra, k + 1, a.s);
     }
   }
 }
 
 /**
  * Material der Grenzlinie: malt auf das Band schmale Striche mit runden Enden in der Besitzerfarbe, mit
- * dunklem Rand. Die Kanten werden je Bildpunkt geglättet (kein Flimmern beim Zoomen);
- * wird die Linie aus großer Höhe sehr dünn, wachsen die Striche zu einer durchgehenden Linie zusammen.
+ * feinem dunklem Rand. Breite und Rand richten sich nach der Größe eines Bildpunkts: Die Linie ist am
+ * Bildschirm aus jeder Höhe gleich fein (beim Heranzoomen wird sie nicht dicker). Die Kanten werden je
+ * Bildpunkt geglättet (kein Flimmern); aus großer Höhe wachsen die Striche zu einer durchgehenden Linie zusammen.
  */
 export function borderMaterial(): THREE.MeshBasicMaterial {
-  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+  const mat = new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+    // etwas zur Kamera gezogen: kleine Buckel im Boden schneiden keine Stücke aus den Strichen
+    polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 });
   mat.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', `#include <common>
@@ -246,27 +273,29 @@ varying vec2 vBd;`)
       .replace('#include <color_fragment>', `#include <color_fragment>
 {
   vec2 p = vec2(vBd.x, vBd.y * ${HALF.toFixed(3)});
-  // Größe eines Bildpunkts in Feldern (für glatte Kanten)
-  float px = max(fwidth(vBd.x), 1e-4);
+  // Größe eines Bildpunkts in Feldern: entlang und quer zur Linie (am Hang verschieden)
+  float pxL = max(fwidth(vBd.x), 1e-4), pxA = max(fwidth(vBd.y) * ${HALF.toFixed(3)}, 1e-4);
+  float px = max(pxL, pxA);
   float per = ${DASH.toFixed(3)};
-  // Strich als schmale Kapsel mit runden Enden. Breite und Rand wachsen mit der Entfernung mit (am Bildschirm
-  // etwa gleich dick); aus großer Höhe werden die Striche länger, bis die Linie durchgeht.
-  float len = mix(0.3, per + 0.2, smoothstep(0.045, 0.1, px));
-  float r = clamp(px * 3.6, 0.055, 0.115);
-  float ow = clamp(px * 1.4, 0.016, 0.036);
+  // Strich als schmale Kapsel: etwa 3–4 Bildpunkte breit plus Rand, egal wie nah die Kamera ist; aus großer
+  // Höhe werden die Striche länger, bis die Linie durchgeht.
+  float len = mix(0.34, per + 0.2, smoothstep(0.045, 0.1, px));
+  float r = min(pxA * 1.8, ${(HALF * 0.62).toFixed(3)});
+  float ow = min(pxA * 1.2, ${(HALF * 0.3).toFixed(3)});
   float u = mod(p.x, per) - per * 0.5;
-  float d = length(vec2(max(abs(u) - (len * 0.5 - r), 0.0), p.y)) - r;
-  float aa = px * 0.8;
+  float d = length(vec2(max(abs(u) - max(len * 0.5 - r, 0.0), 0.0), p.y)) - r;
+  float aa = px * 0.75;
   float body = 1.0 - smoothstep(-aa, aa, d);
   float rim = 1.0 - smoothstep(ow - aa, ow + aa, d);
-  // Besitzerfarbe kräftig, zur Mitte des Strichs etwas heller (wirkt wie ein gemalter Strich)
-  vec3 own = diffuseColor.rgb * (1.05 + 0.25 * (1.0 - smoothstep(0.0, r, abs(p.y))));
-  // dunkler Rand: trennt die Linie von hellem Sand, sattem Gras und dunklem Wald
-  diffuseColor.rgb = mix(vec3(0.025, 0.02, 0.015), own, body);
-  // Sichtbarkeit (Strand, Nebel) mit klarer Kante statt halb durchsichtiger Striche
-  diffuseColor.a = smoothstep(0.3, 0.7, diffuseColor.a) * max(body, rim * 0.9);
+  float halo = 1.0 - smoothstep(ow + pxA * 0.6, ow + pxA * 2.2 + aa, d);
+  // Besitzerfarbe kräftig, zur Mitte hin etwas heller (wirkt wie ein gemalter Strich)
+  vec3 own = diffuseColor.rgb * (1.1 + 0.3 * (1.0 - smoothstep(0.0, r, abs(p.y))));
+  // feiner dunkler Rand und außen ein zarter heller Schein: trennt die Linie von hellem Sand, sattem Gras
+  // (auch die grüne Spielerfarbe) und dunklem Wald
+  diffuseColor.rgb = mix(mix(vec3(0.9, 0.86, 0.74), vec3(0.02, 0.018, 0.014), rim), own, body);
+  diffuseColor.a *= max(max(body, rim * 0.8), halo * 0.4);
 }`);
   };
-  mat.customProgramCacheKey = () => 'grenze-strich-v2';
+  mat.customProgramCacheKey = () => 'grenze-strich-v3';
   return mat;
 }
