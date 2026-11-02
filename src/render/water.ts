@@ -165,13 +165,13 @@ float cdist = distance(vW, cameraPosition);
 vec4 n1 = texture2D(uWaveN, vW.xz * 0.105 + vec2(uTime * 0.017, uTime * 0.010));
 vec4 n2 = texture2D(uWaveN, vW.xz * 0.235 + vec2(-uTime * 0.013, uTime * 0.022));
 vec4 n3 = texture2D(uWaveN, vW.xz * 0.031 + vec2(uTime * 0.004, -uTime * 0.006));
-vec2 slope = (n1.xy * 2.0 - 1.0) + (n2.xy * 2.0 - 1.0) * 0.65 + (n3.xy * 2.0 - 1.0) * 0.8;
+vec2 slope = (n1.xy * 2.0 - 1.0) + (n2.xy * 2.0 - 1.0) * 0.65 + (n3.xy * 2.0 - 1.0) * 0.55;
 // nah an der Kamera noch ein feines Kräuseln (sonst wirkt das Wasser beim Heranzoomen verschwommen)
 float nahW = 1.0 - smoothstep(14.0, 36.0, cdist);
 if (nahW > 0.0) slope += (texture2D(uWaveN, vW.xz * 0.71 + vec2(uTime * 0.05, -uTime * 0.035)).xy * 2.0 - 1.0) * 0.75 * nahW;
-float hgt = n1.a * 0.45 + n2.a * 0.3 + n3.a * 0.25;
+float hgt = n1.a * 0.5 + n2.a * 0.35 + n3.a * 0.15;
 // im ganz flachen Wasser etwas ruhiger, in der Ferne sanfter (kein Flimmern)
-wCalm = mix(1.0, 0.3, smoothstep(20.0, 80.0, cdist));
+wCalm = mix(1.0, 0.3, smoothstep(14.0, 65.0, cdist));
 float calm = mix(0.7, 1.0, smoothstep(0.0, 0.25, dl)) * wCalm;
 wN = normalize(vec3(-slope.x * 0.30 * calm, 1.0, -slope.y * 0.30 * calm));
 // Farbe nach Tiefe: flach hell türkis, dann blaugrün, draußen sattes tiefes Blau
@@ -240,7 +240,7 @@ vec3 wGlow = vec3(0.0);
 {
   vec3 Vw = normalize(cameraPosition - vW);
   // Himmelsspiegelung: in der Ferne mit ruhigerer Oberfläche (sonst wirkt das Meer fleckig)
-  vec3 nR = normalize(mix(vec3(0.0, 1.0, 0.0), wN, 0.4 + 0.6 * wCalm));
+  vec3 nR = normalize(mix(vec3(0.0, 1.0, 0.0), wN, 0.2 + 0.8 * wCalm));
   float ndv = max(dot(nR, Vw), 0.0);
   float fres = 0.02 + 0.98 * pow(1.0 - ndv, 5.0);
   vec3 R = reflect(-Vw, nR);
@@ -253,7 +253,7 @@ vec3 wGlow = vec3(0.0);
   #endif
   // Himmel: am Horizont hell und dunstig, oben satter blau, zur Sonne hin warm aufgehellt
   vec3 sky = mix(vec3(0.66, 0.76, 0.86), vec3(0.17, 0.36, 0.70), pow(R.y, 0.55));
-  sky += vec3(0.55, 0.47, 0.36) * pow(max(dot(R, Ls), 0.0), 5.0);
+  sky += vec3(0.44, 0.38, 0.29) * pow(max(dot(R, Ls), 0.0), 6.0);
   float keep = (1.0 - wFoam) * wSeen;
   wSpec = sky * fres * 1.35 * keep;
   // Sonne: feine Funken auf den Wellen und ein weicher Schimmer drumherum (in der Ferne breiter und
@@ -262,7 +262,8 @@ vec3 wGlow = vec3(0.0);
   float nh = max(dot(wN, Hs), 0.0);
   float sharp = mix(260.0, 1400.0, wCalm * wCalm);
   float c2 = wCalm * wCalm;
-  float glint = pow(nh, sharp) * 1.6 * c2 * c2 + pow(nh, mix(36.0, 90.0, wCalm)) * mix(0.15, 0.07, wCalm);
+  // feine Funken nur in der Nähe kräftig; schon in der mittleren Ansicht deutlich weniger (sonst unruhig)
+  float glint = pow(nh, sharp) * 1.4 * c2 * c2 * (1.0 - 0.75 * smoothstep(12.0, 30.0, cdist)) + pow(nh, mix(36.0, 90.0, wCalm)) * mix(0.09, 0.065, wCalm);
   wSpec += Lc * glint * keep;
   // Lichtnetz am Grund (aufs Licht vom Boden addiert, macht das Wasser nicht undurchsichtiger)
   wGlow = vec3(0.95, 1.0, 0.85) * wCaus * 0.55 * wSeen;
@@ -327,7 +328,7 @@ ${WATER_LIGHT}`)
       .replace('#include <opaque_fragment>', `${WATER_OUT}
 #include <opaque_fragment>`);
   };
-  mat.customProgramCacheKey = () => 'wasser-v4';
+  mat.customProgramCacheKey = () => 'wasser-v5';
   const mesh = new THREE.Mesh(geo, mat);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(N * 5, N * 5).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x0a2a3c }));
   floor.position.set(0, -2.4, 0);

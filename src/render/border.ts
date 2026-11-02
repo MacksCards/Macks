@@ -11,7 +11,9 @@
 //   Enden malt: in der Besitzerfarbe, mit dunklem Rand, am Bildschirm aus jeder Höhe gleich fein. So ist die
 //   Linie auf Gras, Wald, Sand und Fels gleich gut zu sehen und kann nicht mit Wasser verwechselt werden.
 // - Jeder Strich ist ganz oder gar nicht da: Striche, die ins Wasser, auf den nassen Strand oder in den Nebel
-//   reichen würden, fallen ganz weg (keine Bruchstücke an der Küste).
+//   reichen würden, fallen ganz weg (keine Bruchstücke an der Küste). Am Strand endet die Linie mit einem
+//   zusammenhängenden, geraden Stück: Striche vor dem Wasser, die schon am Strand entlang abknicken oder auf
+//   dem abfallenden Sand liegen, und einzelne, losgelöste Striche (weniger als MIN_RUN in Folge) fallen weg.
 import * as THREE from 'three';
 import { Game } from '../game';
 import { T } from '../world';
@@ -20,6 +22,8 @@ const FAR = 3; // so viele Felder weit übernimmt das Wasser den Besitz des näc
 const LEVEL = 0.58; // Höhenlinie: etwas über 0,5, damit die Linie knapp im eigenen Gebiet liegt
 const HALF = 0.26; // halbe Breite des Bandes (Felder) – die Striche selbst sind schmaler
 const DASH = 0.55; // Abstand von Strich zu Strich (Felder)
+const MIN_RUN = 3; // so viele Striche muss ein sichtbares Stück mindestens haben (keine Einzelstriche)
+const WET_TRIM = 0.25; // Strich vor dem Wasser weglassen, wenn er so tief am abfallenden Strand liegt
 /** Höhenlinien bei LEVEL eines Feldes f (Werte an den Feldmitten), als Linienzüge in Weltkoordinaten */
 function contours(f: Float32Array, N: number, x0: number, y0: number, x1: number, y1: number): number[][] {
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= N || y >= N ? 0 : f[y * N + x]);
@@ -221,11 +225,29 @@ function addRibbon(line: number[], closed: boolean, heightAt: (x: number, z: num
   const visAt = (x: number, z: number) => (heightAt(x, z) > 0.17 ? 1 : 0) * seen(x, z);
   const dashOf = (a: P, b: P) => Math.floor((a.s + b.s) * 0.5 / DASH);
   const dashVis = new Map<number, number>();
+  // tiefster Punkt je Strich (zeigt, ob der Strich am Strand zum Wasser hin abfällt oder schon im Wasser liegt)
+  const dashLow = new Map<number, number>();
+  // Richtung je Strich (vom ersten zum letzten Punkt): zeigt, wo die Linie am Strand abknickt
+  const dashA = new Map<number, P>(), dashB = new Map<number, P>();
+  let k0 = Infinity, k1 = -Infinity;
   for (let i = 0; i + 1 < pts.length; i++) {
     const k = dashOf(pts[i], pts[i + 1]);
+    if (!dashA.has(k)) dashA.set(k, pts[i]);
+    dashB.set(k, pts[i + 1]);
     const v = Math.min(visAt(pts[i].x, pts[i].z), visAt(pts[i + 1].x, pts[i + 1].z));
     dashVis.set(k, Math.min(dashVis.get(k) ?? 1, v));
+    const h = Math.min(heightAt(pts[i].x, pts[i].z), heightAt(pts[i + 1].x, pts[i + 1].z));
+    dashLow.set(k, Math.min(dashLow.get(k) ?? 9, h));
+    if (k < k0) k0 = k;
+    if (k > k1) k1 = k;
   }
+  const dirOf = (k: number): [number, number] | null => {
+    const a = dashA.get(k), b = dashB.get(k);
+    if (!a || !b) return null;
+    const dx = b.x - a.x, dz = b.z - a.z, l = Math.hypot(dx, dz);
+    return l > 1e-4 ? [dx / l, dz / l] : null;
+  };
+  trimDashes(dashVis, dashLow, dirOf, k0, k1, closed);
   const offs = [-HALF, 0, HALF];
   const row = (p: P) => offs.map((o) => {
     const px = p.x + p.nx * o, pz = p.z + p.nz * o;
@@ -248,6 +270,56 @@ function addRibbon(line: number[], closed: boolean, heightAt: (x: number, z: num
       put(ra, k, a.s); put(rb, k + 1, b.s); put(ra, k + 1, a.s);
     }
   }
+}
+
+/**
+ * Striche an der Küste ausdünnen. Am Strand knickt die Linie oft ab und läuft ein Stück am Wasser entlang,
+ * bevor sie im Wasser verschwindet; diese letzten Striche wirken wie lose Einzelstriche auf dem Sand. Darum
+ * fallen am Ende vor dem Wasser bis zu drei Striche weg, die abknicken (mehr als ~30° gegenüber der Linie davor)
+ * oder schon auf dem abfallenden Strand liegen. Danach verschwinden alle Stücke mit weniger als MIN_RUN
+ * Strichen in Folge. So endet die Grenze mit einem zusammenhängenden, geraden Stück.
+ * Bei Ringen (closed) zählen Stücke über den Anfang hinweg.
+ */
+function trimDashes(vis: Map<number, number>, low: Map<number, number>, dirOf: (k: number) => [number, number] | null,
+  k0: number, k1: number, closed: boolean) {
+  if (k1 < k0) return;
+  const L = k1 - k0 + 1;
+  const key = (k: number) => (closed ? k0 + (((k - k0) % L) + L) % L : k);
+  const on = (k: number) => (vis.get(key(k)) ?? 0) > 0;
+  // Nachbar unsichtbar, weil er ins Wasser oder auf den nassen Strand reicht (nicht wegen Nebel) – oder hier schon weggelassen
+  const cut = new Set<number>();
+  const wet = (k: number) => { const kk = key(k); return cut.has(kk) || (vis.has(kk) && !on(kk) && (low.get(kk) ?? 9) <= 0.17); };
+  for (let pass = 0; pass < 3; pass++) {
+    const drop: number[] = [];
+    for (let k = k0; k <= k1; k++) {
+      if (!on(k)) continue;
+      for (const side of [1, -1]) {
+        if (!wet(k + side)) continue;
+        // Richtung der Linie davor (zwei und drei Striche zurück)
+        const d = dirOf(key(k));
+        let rx = 0, rz = 0;
+        for (const b of [2, 3]) { const r = on(k - side * b) ? dirOf(key(k - side * b)) : null; if (r) { rx += r[0]; rz += r[1]; } }
+        const rl = Math.hypot(rx, rz);
+        const bend = !!d && rl > 1e-4 && (d[0] * rx + d[1] * rz) / rl < 0.87;
+        if (bend || (low.get(key(k)) ?? 9) < WET_TRIM) { drop.push(key(k)); break; }
+      }
+    }
+    for (const k of drop) { vis.set(k, 0); cut.add(k); }
+  }
+  // zusammenhängende Stücke suchen; bei Ringen an einer Lücke beginnen
+  let start = k0;
+  if (closed) {
+    let gap = -1;
+    for (let k = k0; k <= k1; k++) if (!on(k)) { gap = k; break; }
+    if (gap < 0) return; // ganz sichtbarer Ring
+    start = gap;
+  }
+  let run: number[] = [];
+  const end = () => { if (run.length < MIN_RUN) for (const k of run) vis.set(key(k), 0); run = []; };
+  for (let k = start; k < start + L; k++) {
+    if (on(k)) run.push(k); else end();
+  }
+  end();
 }
 
 /**

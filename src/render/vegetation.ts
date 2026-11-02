@@ -26,6 +26,13 @@ const FB = 2;
 export const VEG_LOD = { nah: 18, gras: 25, halb: 45, fern: 70, schatten: 35 };
 /** Bäume der halben Dichte etwas größer, damit der Wald gleich dicht wirkt */
 const HALF_SCALE = 1.3;
+/**
+ * Bäume an Wegen: der Stamm bleibt mindestens so weit (Felder) von der Wegkante weg, und die Krone darf
+ * höchstens so weit über die Kante ragen. Kronen-Halbmesser je Art bei Größe 1 (Nadel 1, Nadel 2, Laub, Palme).
+ */
+const ROAD_TRUNK = 0.45, ROAD_OVER = 0.06, CROWN = [0.5, 0.5, 0.5, 0.7];
+/** Grasbüschel bleiben so weit vom Weg weg (sonst stehen sie auf den Pflastersteinen) */
+const ROAD_TUFT = 0.1;
 /** Ferne Blöcke zählen etwas weiter weg, als sie sind (Bäume dort sind klein und verdecken sich gegenseitig) */
 const FAR_K = 1.6;
 
@@ -94,6 +101,8 @@ uniform vec4 uClearBox;`)
 export interface TreeSlot {
   mesh: THREE.InstancedMesh; i: number; x: number; y: number; z: number; rot: number; s: number; sy: number; m: number;
   hm: THREE.InstancedMesh | null; hi: number; sm: THREE.InstancedMesh | null; si: number;
+  /** Zusatzgröße in halber Dichte (am Weg 1: die Krone soll auch dann nicht über den Weg ragen) */
+  hs: number;
 }
 
 /** Baumart: 0/1 Nadelbaum (zwei Formen), 2 Laubbaum, 3 Palme */
@@ -102,7 +111,7 @@ type Kind = 0 | 1 | 2 | 3;
 const HK = [0, 0, 1, 2] as const;
 
 /** Baum im Aufbau: Art, Farbton, zählt in halber Dichte mit? */
-interface Plant { kind: Kind; x: number; y: number; z: number; rot: number; s: number; sy: number; m: number; r: number; g: number; b: number; half: boolean; tile: number; solo: boolean; slot?: TreeSlot }
+interface Plant { kind: Kind; x: number; y: number; z: number; rot: number; s: number; sy: number; m: number; r: number; g: number; b: number; half: boolean; tile: number; solo: boolean; hs: number; slot?: TreeSlot }
 
 interface Block {
   bx: number; by: number; cx: number; cz: number;
@@ -187,7 +196,44 @@ export class Vegetation {
   markTile(k: number) {
     const N = this.g.size;
     if (this.g.islandOf[k] < 0 && !this.slots.has(k)) return; // Wasser ohne Pflanzen
-    this.block(Math.floor((k % N) / B), Math.floor(((k / N) | 0) / B)).dirty = true;
+    const x = k % N, y = (k / N) | 0;
+    this.block(Math.floor(x / B), Math.floor(y / B)).dirty = true;
+    // Bäume auf den Nachbarfeldern rücken vom Weg weg: liegt das Feld am Blockrand, auch den Nachbarblock neu
+    const bx0 = Math.floor(Math.max(0, x - 2) / B), bx1 = Math.floor(Math.min(N - 1, x + 2) / B);
+    const by0 = Math.floor(Math.max(0, y - 2) / B), by1 = Math.floor(Math.min(N - 1, y + 2) / B);
+    if (bx0 !== bx1 || by0 !== by1) for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) {
+      const b = this.blocks.get(by * this.nb + bx);
+      if (b) b.dirty = true;
+    }
+  }
+
+  /**
+   * Abstand (Felder) vom Punkt (x, z) zur nächsten Wegkante in bis zu 2 Feldern Umkreis (9 = kein Weg nah).
+   * Nur für Felder mit Weg in der Nähe aufgerufen (sonst unnötige Rechnung).
+   */
+  private roadDist(x: number, z: number): number {
+    const g = this.g, N = g.size;
+    const tx = Math.floor(x), tz = Math.floor(z);
+    let d2 = 81;
+    for (let j = -2; j <= 2; j++) {
+      const yy = tz + j;
+      if (yy < 0 || yy >= N) continue;
+      for (let i = -2; i <= 2; i++) {
+        const xx = tx + i;
+        if (xx < 0 || xx >= N || !g.roads[yy * N + xx]) continue;
+        const dx = Math.max(xx - x, 0, x - (xx + 1)), dz = Math.max(yy - z, 0, z - (yy + 1));
+        d2 = Math.min(d2, dx * dx + dz * dz);
+      }
+    }
+    return Math.sqrt(d2);
+  }
+
+  /** liegt ein Weg höchstens 2 Felder vom Feld (x, y) entfernt? */
+  private nearRoad(x: number, y: number): boolean {
+    const g = this.g, N = g.size;
+    for (let j = Math.max(0, y - 2); j <= Math.min(N - 1, y + 2); j++)
+      for (let i = Math.max(0, x - 2); i <= Math.min(N - 1, x + 2); i++) if (g.roads[j * N + i]) return true;
+    return false;
   }
 
   /** geänderte Blöcke neu aufbauen; gibt die Zahl der neu gebauten Blöcke zurück */
@@ -250,28 +296,55 @@ export class Vegetation {
         if (sued) for (const d of [-1, 1, -N, N]) { const tt = g.tiles[i + d]; if (tt === T.Sand || tt === T.Wasser) coast = true; }
         // Palmenwald lichter: 1–2 Bäume je Feld statt 2–3
         const n = (sued ? 1 : 2) + (rnd() < 0.5 ? 1 : 0);
+        const roadNear = this.nearRoad(x, y);
         for (let k = 0; k < n; k++) {
-          const px = x + 0.15 + rnd() * 0.7, pz = y + 0.15 + rnd() * 0.7;
-          const s = 1.1 + rnd() * 0.9;
+          let px = x + 0.15 + rnd() * 0.7, pz = y + 0.15 + rnd() * 0.7;
+          // am Weg: von mehreren Plätzen den mit dem größten Abstand zur Wegkante nehmen
+          let dr = roadNear ? this.roadDist(px, pz) : 9;
+          for (let tries = 0; roadNear && dr < 0.75 && tries < 5; tries++) {
+            const qx = x + 0.15 + rnd() * 0.7, qz = y + 0.15 + rnd() * 0.7, dq = this.roadDist(qx, qz);
+            if (dq > dr) { px = qx; pz = qz; dr = dq; }
+          }
+          let s = 1.1 + rnd() * 0.9;
           const rot = rnd() * 6.28;
-          const sy = s * (0.9 + rnd() * 0.4);
+          let sy = s * (0.9 + rnd() * 0.4);
           const py = this.terrain.heightAt(px, pz) - 0.02;
           const kind: Kind = sued ? (rnd() < (coast ? 0.8 : 0.4) ? 3 : 2) : rnd() < 0.68 ? (rnd() < 0.5 ? 0 : 1) : 2;
+          let hs = HALF_SCALE;
+          if (dr < 3) {
+            // Stamm zu nah am Weg: Baum weglassen; sonst so klein, dass die Krone nicht über den Weg ragt
+            if (dr < ROAD_TRUNK) continue;
+            const cap = (dr + ROAD_OVER) / CROWN[kind];
+            if (cap < 0.8) continue;
+            if (s > cap) { sy *= cap / s; s = cap; }
+            hs = Math.max(1, Math.min(HALF_SCALE, cap / s));
+          }
           // Farbton je Baum: Laub mal gelblicher, mal kühler; Süden kräftiger grün
           const warm = rnd();
           const r = (0.86 + warm * 0.26) * (sued ? 0.92 : 1), gg = 0.88 + rnd() * 0.22, b = (0.82 + (1 - warm) * 0.26) * (sued ? 0.9 : 1);
           // jeder zweite Baum zählt auch in der halben Dichte (Ferne)
-          plants.push({ kind, x: px, y: py, z: pz, rot, s, sy, m: g.trees[i], r, g: gg, b, half: k % 2 === 0, tile: i, solo: false });
+          plants.push({ kind, x: px, y: py, z: pz, rot, s, sy, m: g.trees[i], r, g: gg, b, half: k % 2 === 0, tile: i, solo: false, hs });
         }
       } else if (free) {
+        const roadNear = this.nearRoad(x, y);
         if (t === T.Gras && rnd() < 0.035) {
-          const px = x + 0.5, pz = y + 0.5, s = 1.0 + rnd() * 0.6;
+          const px = x + 0.5, pz = y + 0.5;
+          let s = 1.0 + rnd() * 0.6;
           const rot = rnd() * 6.28;
-          plants.push({ kind: sued && rnd() < 0.6 ? 3 : 2, x: px, y: this.terrain.heightAt(px, pz) - 0.02, z: pz, rot, s, sy: s, m: 1, r: 1, g: 1, b: 1, half: true, tile: i, solo: true });
+          const kind: Kind = sued && rnd() < 0.6 ? 3 : 2;
+          // einzelner Baum auf der Wiese: nicht direkt neben einem Weg (er stünde sonst scheinbar mitten in
+          // der Kreuzung); weiter weg so groß, dass die Krone nicht über den Weg ragt
+          const dr = roadNear ? this.roadDist(px, pz) : 9;
+          const cap = dr < 3 ? (dr + ROAD_OVER) / CROWN[kind] : 9;
+          if (dr >= 1) {
+            s = Math.min(s, cap);
+            plants.push({ kind, x: px, y: this.terrain.heightAt(px, pz) - 0.02, z: pz, rot, s, sy: s, m: 1, r: 1, g: 1, b: 1, half: true, tile: i, solo: true, hs: Math.max(1, Math.min(HALF_SCALE, cap / s)) });
+          }
         }
         const tufts = t === T.Sand ? (rnd() < 0.3 ? 1 : 0) : 3;
         for (let k = 0; k < tufts; k++) {
           const px = x + rnd(), pz = y + rnd(), s = 0.7 + rnd() * 0.8;
+          if (roadNear && this.roadDist(px, pz) < ROAD_TUFT) continue;
           q.setFromAxisAngle(up, rnd() * 6.28);
           m.compose(TMP.v.set(px, this.terrain.heightAt(px, pz), pz), q, TMP.s.set(s, s * (0.7 + rnd() * 0.6), s));
           const dry = t === T.Sand ? 0.25 : rnd() * 0.15;
@@ -301,13 +374,13 @@ export class Vegetation {
       let hm: THREE.InstancedMesh | null = null, hi = -1;
       if (p.half) { const hk = HK[p.kind]; hm = bk.half[hk]!; hi = hidx[hk]++; }
       if (!p.solo) {
-        const slot: TreeSlot = { mesh, i, x: p.x, y: p.y, z: p.z, rot: p.rot, s: p.s, sy: p.sy, m: p.m, hm, hi, sm: null, si: -1 };
+        const slot: TreeSlot = { mesh, i, x: p.x, y: p.y, z: p.z, rot: p.rot, s: p.s, sy: p.sy, m: p.m, hm, hi, sm: null, si: -1, hs: p.hs };
         const list = this.slots.get(p.tile);
         if (list) list.push(slot); else this.slots.set(p.tile, [slot]);
         p.slot = slot; // einzelne Laubbäume auf Wiesen wachsen nicht nach: ohne Eintrag
       }
       this.put(mesh, i, p, 1);
-      if (hm) this.put(hm, hi, p, HALF_SCALE);
+      if (hm) this.put(hm, hi, p, p.hs);
     }
     for (let k = 0; k < 4; k++) this.finish(bk.trees[k], counts[k]);
     for (let k = 0; k < 3; k++) this.finish(bk.half[k], hc[k]);
@@ -332,7 +405,7 @@ export class Vegetation {
       if (!p.half) continue;
       const k = HK[p.kind];
       const mesh = f.simple[k]!, i = idx[k]++;
-      this.put(mesh, i, p, HALF_SCALE);
+      this.put(mesh, i, p, p.hs);
       if (p.slot) { p.slot.sm = mesh; p.slot.si = i; }
     }
     for (let k = 0; k < 3; k++) this.finish(f.simple[k], counts[k]);
@@ -401,7 +474,7 @@ export class Vegetation {
       if (Math.abs(mat - list[0].m) < 0.02) continue;
       for (const t of list) {
         t.m = mat;
-        const gs = growth(mat), hs = gs * HALF_SCALE;
+        const gs = growth(mat), hs = gs * t.hs;
         q.setFromAxisAngle(up, t.rot);
         v.set(t.x, t.y, t.z);
         m.compose(v, q, sc.set(t.s * gs, t.sy * gs, t.s * gs));

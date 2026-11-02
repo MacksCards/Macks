@@ -1,6 +1,12 @@
 // Leben in der Welt: Fischschwärme, Hirsche, Weidetiere, arbeitende Holzfäller/Jäger, Fischerboote.
 // Alles wird aus dem Spielzustand abgeleitet (Bestände, Arbeitsfortschritt) – keine eigene Logik.
+//
+// Fischschwärme sieht man wie in der Natur: dunkle Fischschatten knapp unter der Oberfläche, darunter ein
+// leichter dunkler Fleck des ganzen Schwarms, ab und zu ein kleiner, weich auslaufender Kräuselring, wo ein
+// Fisch an die Oberfläche kommt, gelegentlich ein springender Fisch mit Spritzern, und über großen Schwärmen
+// kreisen Möwen. Wie viel davon zu sehen ist, hängt vom Fischbestand des Fanggrunds ab.
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { BUILDINGS } from '../data';
 import { Building, Game } from '../game';
 import { T } from '../world';
@@ -14,6 +20,87 @@ function fishGeo() {
   b.sphere(0.07, { c: 0x4e6474, p: 0 }, 0, 0, 0, 0.55, 0.5, 1.5, 6);
   b.sphere(0.05, { c: 0xb9c9d4, p: 0 }, 0, -0.012, 0.01, 0.6, 0.35, 1.3, 6);
   b.add(new THREE.ConeGeometry(0.05, 0.08, 4).rotateX(-Math.PI / 2), 0x3e5464, 0, 0, -0.12);
+  return b.geometry();
+}
+/**
+ * Weiche, flache Form auf dem Wasser (Farbe kommt vom Material): innen deckend (midA), am Umriss outA, dann
+ * um `soft` weiter außen weich auslaufend (Deckkraft 0). outline = Umriss (x, z) um den Mittelpunkt c.
+ */
+function softShape(outline: [number, number][], c: [number, number], soft: number, outA = 1, midA = 1): THREE.BufferGeometry {
+  const pos: number[] = [], col: number[] = [];
+  const put = (x: number, z: number, a: number) => { pos.push(x, 0, z); col.push(1, 1, 1, a); };
+  const ext = (x: number, z: number): [number, number] => {
+    const dx = x - c[0], dz = z - c[1], l = Math.hypot(dx, dz) || 1;
+    return [x + (dx / l) * soft, z + (dz / l) * soft];
+  };
+  for (let i = 0; i < outline.length; i++) {
+    const [ax, az] = outline[i], [bx, bz] = outline[(i + 1) % outline.length];
+    const [aox, aoz] = ext(ax, az), [box, boz] = ext(bx, bz);
+    put(c[0], c[1], midA); put(bx, bz, outA); put(ax, az, outA);
+    put(ax, az, outA); put(bx, bz, outA); put(box, boz, 0);
+    put(ax, az, outA); put(box, boz, 0); put(aox, aoz, 0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  return g;
+}
+/** Fischschatten von oben: schlanker Körper mit Schwanzflosse (Kopf zeigt nach +z), weicher Rand */
+function fishShadeGeo() {
+  const body = softShape([[0, 0.17], [0.026, 0.135], [0.04, 0.07], [0.041, 0], [0.032, -0.07], [0.018, -0.13], [-0.018, -0.13], [-0.032, -0.07], [-0.041, 0], [-0.04, 0.07], [-0.026, 0.135]], [0, 0.01], 0.025, 0.85);
+  const tail = softShape([[0, -0.12], [0.055, -0.215], [0.012, -0.19], [-0.012, -0.19], [-0.055, -0.215]], [0, -0.165], 0.018, 0.7, 0.8);
+  return mergeGeometries([body, tail])!;
+}
+/** dunkler Fleck unter dem ganzen Schwarm: unregelmäßig rund, sehr weich */
+function patchGeo() {
+  const pts: [number, number][] = [];
+  for (let i = 0; i < 18; i++) {
+    const a = (i / 18) * Math.PI * 2;
+    const r = 0.62 + 0.14 * Math.sin(a * 3 + 0.7) + 0.08 * Math.sin(a * 5 + 2.1);
+    pts.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  return softShape(pts, [0, 0], 0.75, 0.55);
+}
+/** Kräuselring: schmal, innen und außen weich (hell, wird aufs Wasser addiert) */
+function ringGeo() {
+  const pos: number[] = [], col: number[] = [];
+  const R = [0.4, 0.78, 1.0], A = [0, 1, 0], n = 40;
+  const p = (r: number, a: number, al: number) => { pos.push(Math.cos(a) * r, 0, Math.sin(a) * r); col.push(1, 1, 1, al); };
+  for (let i = 0; i < n; i++) {
+    const a0 = (i / n) * Math.PI * 2, a1 = ((i + 1) / n) * Math.PI * 2;
+    for (let k = 0; k < 2; k++) {
+      p(R[k], a0, A[k]); p(R[k + 1], a0, A[k + 1]); p(R[k + 1], a1, A[k + 1]);
+      p(R[k], a0, A[k]); p(R[k + 1], a1, A[k + 1]); p(R[k], a1, A[k]);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
+  return g;
+}
+/** Möwe: Rumpf mit Kopf, Schnabel und Schwanz; die Flügel sind eigene Teile (schlagen am Gelenk) */
+function gullBodyGeo() {
+  const b = new Builder();
+  b.sphere(0.03, 0xf3f2ee, 0, 0, 0, 0.85, 0.8, 2.5, 10);
+  b.sphere(0.022, 0xf6f5f1, 0, 0.012, 0.07, 1, 0.95, 1.15, 8);
+  b.add(new THREE.ConeGeometry(0.007, 0.03, 5).rotateX(Math.PI / 2), 0xe2b43a, 0, 0.008, 0.098);
+  b.add(new THREE.ConeGeometry(0.026, 0.06, 4).rotateX(-Math.PI / 2), 0xe6e6e2, 0, 0.002, -0.085, 0, 0, 0, 1, 0.25, 1);
+  return b.geometry();
+}
+/** Flügel als dünne Platte: breit am Rumpf, spitz auslaufend, dunkle Spitze; side −1 = linker Flügel */
+function gullWingGeo(side: 1 | -1) {
+  const shape = (P: [number, number][]) => {
+    const sh = new THREE.Shape();
+    sh.moveTo(P[0][0] * side, P[0][1]);
+    for (let i = 1; i < P.length; i++) sh.lineTo(P[i][0] * side, P[i][1]);
+    return sh;
+  };
+  const wing = shape([[0, 0.03], [0.09, 0.034], [0.17, 0.02], [0.24, -0.004], [0.2, -0.02], [0.11, -0.03], [0, -0.032]]);
+  const tip = shape([[0.165, 0.021], [0.24, -0.004], [0.2, -0.02], [0.16, -0.013]]);
+  const plate = (s: THREE.Shape, y: number) => new THREE.ExtrudeGeometry(s, { depth: 0.006, bevelEnabled: false }).rotateX(Math.PI / 2).translate(0, y, 0);
+  const b = new Builder();
+  b.add(plate(wing, 0.003), 0xd9dde0);
+  b.add(plate(tip, 0.0046), 0x26282b);
   return b.geometry();
 }
 /** Tier aus Teilen: Rumpf (fest), Kopf (dreht sich zum Grasen um das Genick), vier Beine (schwingen beim Laufen) */
@@ -100,13 +187,30 @@ function walk(tt: number, period: number, ph: number, mv = 0.35): Walk {
 }
 
 /** Höchstzahlen je Art (der Platz wächst bei Bedarf bis dahin) */
-const MAXN = { fish: 2000, ripples: 500, animal: 400, deer: 300, worker: 300, workerLegs: 1600, boats: 200 };
+const MAXN = { fish: 200, shades: 2000, patches: 220, rings: 800, drops: 1200, gulls: 160, animal: 400, deer: 300, worker: 300, workerLegs: 1600, boats: 200 };
+/** Höhe der Fischschatten und Ringe: knapp über den höchsten Wellen (sonst schneiden die Wellen Stücke heraus) */
+const WY = 0.1;
+/** Sprung: Dauer in der Luft (s); Ringe laufen so lange aus (s); Spritzer fliegen so lange (s) */
+const JUMP = 0.75, RING_T = 1.35, DROP_T = 0.5;
+/** fester Zufallswert 0..1 aus einer Zahl */
+const hash = (n: number) => { const v = Math.sin(n * 12.9898 + 4.1414) * 43758.5453; return v - Math.floor(v); };
+/** Mitte eines Schwarms zur Zeit tt: der ganze Schwarm wandert langsam um seinen Platz */
+const shoalX = (s: Shoal, tt: number) => s.x + Math.sin(tt * 0.11 + s.jump) * 0.35;
+const shoalZ = (s: Shoal, tt: number) => s.z + Math.cos(tt * 0.09 + s.jump * 1.3) * 0.3;
+/** Lage eines Fisches zur Zeit tt (schreibt in FP, kein Speichermüll je Bild) */
+const FP = { x: 0, z: 0 };
+function fishAt(s: Shoal, f: Shoal['fish'][number], tt: number) {
+  const a = f.ph + tt * f.w;
+  FP.x = shoalX(s, tt) + Math.cos(a) * f.r; FP.z = shoalZ(s, tt) + Math.sin(a) * f.r * 0.7;
+  return FP;
+}
 
 interface Animal { def: AnimalDef; body: THREE.InstancedMesh; head: THREE.InstancedMesh; legs: THREE.InstancedMesh; n: number; max: number }
-interface Shoal { x: number; z: number; ox: number; oy: number; k: number; fish: { r: number; w: number; ph: number; d: number }[]; jump: number }
+/** Fanggrund: Mitte, Block, Feld k, Fische (Bahnhalbmesser, Tempo, Lage, Tiefe), Sprungtakt (jump = Versatz, jp = Abstand in s) */
+interface Shoal { x: number; z: number; ox: number; oy: number; k: number; fish: { r: number; w: number; ph: number; d: number }[]; jump: number; jp: number }
 interface Herd { x: number; z: number; k: number; ph: number; spd: number; tracks: [number, number][][] }
 
-const TMP = { m: new THREE.Matrix4(), q: new THREE.Quaternion(), v: new THREE.Vector3(), s: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0), base: new THREE.Matrix4(), loc: new THREE.Matrix4(), rot: new THREE.Matrix4() };
+const TMP = { m: new THREE.Matrix4(), q: new THREE.Quaternion(), v: new THREE.Vector3(), s: new THREE.Vector3(), up: new THREE.Vector3(0, 1, 0), base: new THREE.Matrix4(), loc: new THREE.Matrix4(), rot: new THREE.Matrix4(), e: new THREE.Euler(), c: new THREE.Color() };
 /** Teil eines Tieres: Grundlage × (Gelenkpunkt × Drehung um die Querachse) */
 function placePart(mesh: THREE.InstancedMesh, i: number, px: number, py: number, pz: number, rx: number) {
   if (i >= mesh.instanceMatrix.count) return;
@@ -132,7 +236,16 @@ export class LifeLayer {
   private boats: THREE.InstancedMesh;
   private shoals: Shoal[] = [];
   private beats = new Map<number, number>();
-  private ripples: THREE.InstancedMesh;
+  /** Fischschatten, Schwarm-Flecken, Kräuselringe, Spritzer, Möwen (Rumpf und beide Flügel) */
+  private shades: THREE.InstancedMesh;
+  private patches: THREE.InstancedMesh;
+  private rings: THREE.InstancedMesh;
+  private drops: THREE.InstancedMesh;
+  private gulls: THREE.InstancedMesh;
+  private wingsR: THREE.InstancedMesh;
+  private wingsL: THREE.InstancedMesh;
+  private nr = 0;
+  private nd = 0;
   private herds: Herd[] = [];
 
   constructor(private g: Game, private height: (x: number, z: number) => number) {
@@ -151,13 +264,25 @@ export class LifeLayer {
     this.workers = { nichts: mk(workerGeo('nichts'), 32), stamm: mk(workerGeo('stamm'), 32), wild: mk(workerGeo('wild'), 16) };
     this.workerLegs = mk(legGeo(0.035, WORKER_LEG, 0x4a3a2a, 0x2a2018), 128);
     this.boats = mk(boatGeo(), 16);
-    // Kräuselringe über Fischschwärmen – zeigen von Weitem gute Fanggründe
-    this.ripples = new THREE.InstancedMesh(new THREE.RingGeometry(0.42, 0.5, 28).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xe8f4ff, transparent: true, opacity: 0.45, depthWrite: false }), 64);
-    this.ripples.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.ripples.frustumCulled = false; this.ripples.count = 0; this.ripples.visible = false; this.ripples.renderOrder = 2;
-    this.group.add(this.ripples);
-    this.plain = [this.fish, this.ripples, this.boats, this.workers.nichts, this.workers.stamm, this.workers.wild, this.workerLegs];
+    // auf dem Wasser: über die Wasserfläche gelegt (danach gezeichnet), ohne Tiefe zu schreiben
+    const onWater = (geo: THREE.BufferGeometry, mat: THREE.Material, n: number, order: number) => {
+      const m = new THREE.InstancedMesh(geo, mat, n);
+      m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      m.frustumCulled = false; m.count = 0; m.visible = false; m.renderOrder = order;
+      this.group.add(m);
+      return m;
+    };
+    this.patches = onWater(patchGeo(), new THREE.MeshBasicMaterial({ color: 0x03202c, vertexColors: true, transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide }), 16, 2);
+    this.shades = onWater(fishShadeGeo(), new THREE.MeshBasicMaterial({ color: 0x082a36, vertexColors: true, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide }), 64, 3);
+    // Ringe und Spritzer hellen das Wasser auf (Licht spiegelt sich auf der bewegten Oberfläche); Ausblenden über die Farbe
+    const glow = (vc: boolean) => new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: vc, transparent: true, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending });
+    this.rings = onWater(ringGeo(), glow(true), 32, 4);
+    this.drops = onWater(new THREE.SphereGeometry(0.016, 6, 4), glow(false), 64, 4);
+    for (const m of [this.rings, this.drops]) m.setColorAt(0, TMP.c.setRGB(1, 1, 1));
+    this.gulls = mk(gullBodyGeo(), 8, false);
+    this.wingsR = mk(gullWingGeo(1), 8, false);
+    this.wingsL = mk(gullWingGeo(-1), 8, false);
+    this.plain = [this.fish, this.shades, this.patches, this.rings, this.drops, this.gulls, this.wingsR, this.wingsL, this.boats, this.workers.nichts, this.workers.stamm, this.workers.wild, this.workerLegs];
     this.rebuild();
   }
 
@@ -199,8 +324,10 @@ export class LifeLayer {
         // feste Zufallswerte je Fanggrund, damit Schwärme beim Neuaufbau nicht springen
         let a = best * 9.137;
         const rnd = () => { a = Math.sin(a) * 43758.5453; return a - Math.floor(a); };
-        const fish = Array.from({ length: 10 }, () => ({ r: 0.25 + rnd() * 0.8, w: (0.5 + rnd() * 0.7) * (rnd() < 0.5 ? -1 : 1), ph: rnd() * 6.28, d: 0.02 + rnd() * 0.05 }));
-        this.shoals.push({ x: (best % N) + 0.5, z: ((best / N) | 0) + 0.5, ox: x, oy: y, k: best, fish, jump: rnd() * 10 });
+        // ein Schwarm zieht in eine Richtung (alle Fische gleichsinnig), jeder auf etwas anderer Bahn und Tiefe
+        const dir = rnd() < 0.5 ? -1 : 1;
+        const fish = Array.from({ length: 12 }, () => ({ r: 0.2 + rnd() * 0.75, w: (0.45 + rnd() * 0.35) * dir, ph: rnd() * 6.28, d: rnd() }));
+        this.shoals.push({ x: (best % N) + 0.5, z: ((best / N) | 0) + 0.5, ox: x, oy: y, k: best, fish, jump: rnd() * 10, jp: 7 + rnd() * 6 });
       }
     }
   }
@@ -272,39 +399,7 @@ export class LifeLayer {
       return;
     }
     for (const A of this.animalList) A.n = 0;
-    // Fischschwärme: Anzahl sichtbarer Fische = aktueller Bestand des Fanggrunds
-    let nf = 0;
-    if (cam.dist <= 30) for (const s of this.shoals) {
-      if (Math.abs(s.x - cx0) >= R || Math.abs(s.z - cz0) >= R) continue;
-      const fill = g.fishCap[s.k] > 0 ? g.fish[s.k] / g.fishCap[s.k] : 0;
-      const show = Math.round(s.fish.length * fill);
-      if (nf + show > this.fish.instanceMatrix.count) ensureCapacity(this.fish, nf + show, MAXN.fish);
-      for (let i = 0; i < show && nf < MAXN.fish; i++) {
-        const f = s.fish[i];
-        const a = f.ph + t * f.w;
-        const x = s.x + Math.cos(a) * f.r, z = s.z + Math.sin(a) * f.r * 0.7;
-        let y = -f.d + Math.sin(t * 2 + i) * 0.01;
-        // ab und zu springt ein Fisch aus dem Wasser
-        if (i === 0) { const jt = (t + s.jump) % 9; if (jt < 0.7) y = Math.sin((jt / 0.7) * Math.PI) * 0.3; }
-        place(this.fish, nf++, x, y, z, a + (f.w > 0 ? Math.PI : 0), 1.8);
-      }
-    }
-    flushInstances(this.fish, Math.min(nf, this.fish.instanceMatrix.count));
-    // je Schwarm zwei Kräuselringe, die sich ausbreiten (nur bei gutem Bestand)
-    let nr = 0;
-    for (const s of this.shoals) {
-      if (Math.abs(s.x - cx0) >= R || Math.abs(s.z - cz0) >= R) continue;
-      const fill = g.fishCap[s.k] > 0 ? g.fish[s.k] / g.fishCap[s.k] : 0;
-      if (fill < 0.35 || nr + 2 > MAXN.ripples) continue;
-      if (nr + 2 > this.ripples.instanceMatrix.count) ensureCapacity(this.ripples, nr + 2, MAXN.ripples);
-      for (let j = 0; j < 2; j++) {
-        const ph = ((t * 0.35 + s.jump * 0.1 + j * 0.5) % 1);
-        const sc = (0.4 + ph * 1.6) * (0.6 + fill * 0.6);
-        TMP.m.compose(TMP.v.set(s.x + Math.sin(s.jump) * 0.3, 0.07, s.z), TMP.q.identity(), TMP.s.set(sc, 1, sc));
-        this.ripples.setMatrixAt(nr++, TMP.m);
-      }
-    }
-    flushInstances(this.ripples, nr);
+    this.updateShoals(t, cam, R);
 
     // Hirsche am Waldrand, so viele wie Wild da ist: laufen auf freiem Boden hin und her, bleiben stehen und äsen
     for (const h of this.herds) {
@@ -400,6 +495,161 @@ export class LifeLayer {
     flushInstances(W.nichts, wN); flushInstances(W.stamm, wS); flushInstances(W.wild, wW);
     flushInstances(this.workerLegs, nl);
     for (const A of this.animalList) { flushInstances(A.body, A.n); flushInstances(A.head, A.n); flushInstances(A.legs, A.n * 4); }
+  }
+
+  /**
+   * Fischschwärme zeichnen. Je mehr Fische der Fanggrund gerade hat, desto mehr Fischschatten, desto öfter
+   * kommt ein Fisch an die Oberfläche, und über vollen Fanggründen kreisen Möwen.
+   */
+  private updateShoals(t: number, cam: { x: number; z: number; dist: number }, R: number) {
+    const g = this.g;
+    const drops = cam.dist <= 30, birds = cam.dist <= 60, jumpFish = cam.dist <= 34;
+    // Fischschatten bis ganz hinaus (von Weitem nur jeder zweite Fisch: spart Rechenzeit, der Schwarm bleibt erkennbar)
+    const step = cam.dist > 34 ? 2 : 1;
+    // der dunkle Fleck gehört zur Nahansicht (von Weitem sähe er aus wie ein Wolkenschatten): mit dem Zoom ausblenden
+    const pm = this.patches.material as THREE.MeshBasicMaterial;
+    pm.opacity = 0.18 * (1 - Math.min(1, Math.max(0, (cam.dist - 14) / 12)));
+    const patch = pm.opacity > 0.005;
+    // von Weitem: Fische kommen öfter an die Oberfläche (etwas größere Ringe), damit man Fanggründe erkennt
+    const farK = Math.min(1, Math.max(0, (cam.dist - 18) / 30));
+    const rises = farK > 0.4 ? 3 : 2;
+    let nf = 0, ns = 0, np = 0, ng = 0;
+    this.nr = 0; this.nd = 0;
+    const { m, q, v, s: sc, up, e } = TMP;
+    for (const s of this.shoals) {
+      if (Math.abs(s.x - cam.x) >= R || Math.abs(s.z - cam.z) >= R) continue;
+      const fill = g.fishCap[s.k] > 0 ? g.fish[s.k] / g.fishCap[s.k] : 0;
+      if (fill < 0.05) continue;
+      const sx = shoalX(s, t), sz = shoalZ(s, t);
+      // dunkler Fleck des Schwarms (größer bei vollem Fanggrund, atmet leicht)
+      if (patch && np < MAXN.patches) {
+        if (np >= this.patches.instanceMatrix.count) ensureCapacity(this.patches, np + 1, MAXN.patches);
+        const k = (0.65 + 0.55 * fill) * (1 + Math.sin(t * 0.5 + s.jump) * 0.06);
+        m.compose(v.set(sx, WY - 0.004, sz), q.setFromAxisAngle(up, s.jump + t * 0.05), sc.set(k * 1.15, 1, k * 0.85));
+        this.patches.setMatrixAt(np++, m);
+      }
+      const show = Math.round(s.fish.length * fill);
+      // Sprung: der erste Fisch springt ab und zu (nur bei gutem Bestand)
+      const jt = (t + s.jump) % s.jp;
+      const jumps = show > 0 && fill >= 0.3;
+      const jumping = jumps && jt < JUMP;
+      for (let i = 0; i < show && ns < MAXN.shades; i += step) {
+        if (i === 0 && jumping) continue;
+        const f = s.fish[i];
+        const a = f.ph + t * f.w;
+        const x = sx + Math.cos(a) * f.r, z = sz + Math.sin(a) * f.r * 0.7;
+        // Schwimmrichtung = Bahnrichtung, dazu das Hin und Her des Schwanzschlags
+        const head = Math.atan2(-Math.sin(a) * f.w, Math.cos(a) * 0.7 * f.w) + Math.sin(t * 7 + i * 1.7) * 0.13;
+        // tiefere Fische etwas größer und unschärfer
+        const k = 1.15 + f.d * 0.3;
+        if (ns >= this.shades.instanceMatrix.count) ensureCapacity(this.shades, ns + 1, MAXN.shades);
+        m.compose(v.set(x, WY, z), q.setFromAxisAngle(up, head), sc.set(k * (1 + f.d * 0.25), 1, k));
+        this.shades.setMatrixAt(ns++, m);
+      }
+      if (jumps) {
+        const f = s.fish[0];
+        const t0 = t - jt; // Absprung
+        if (jumping && jumpFish && nf < MAXN.fish) {
+          const { x, z } = fishAt(s, f, t);
+          const a = f.ph + t * f.w;
+          const head = Math.atan2(-Math.sin(a) * f.w, Math.cos(a) * 0.7 * f.w);
+          const ph = jt / JUMP;
+          // Bogen aus dem Wasser: Kopf erst nach oben, dann nach unten, dabei zappeln
+          const y = Math.sin(ph * Math.PI) * 0.32;
+          if (nf >= this.fish.instanceMatrix.count) ensureCapacity(this.fish, nf + 1, MAXN.fish);
+          m.compose(v.set(x, y, z), q.setFromEuler(e.set(-Math.cos(ph * Math.PI) * 0.9, head, Math.sin(t * 9) * 0.2, 'YXZ')), sc.set(1.6, 1.6, 1.6));
+          this.fish.setMatrixAt(nf++, m);
+        }
+        // Spritzer und Ring beim Herausspringen und (stärker) beim Eintauchen
+        this.jumpSplash(s, t0, jt, 0.6, drops, 0);
+        this.jumpSplash(s, t0 + JUMP, jt - JUMP, 1, drops, 0.5);
+      }
+      // Fische kommen an die Oberfläche: je Schwarm zwei (von Weitem drei) Takte, mehr Bestand = öfter
+      for (let j = 0; j < rises; j++) {
+        const P = 2.4 + hash(s.k * 0.731 + j) * 2.6;
+        const qq = (t + s.jump * 3.1 + j * 1.37) / P;
+        const n = Math.floor(qq), u = (qq - n) * P;
+        if (u > RING_T || hash(n * 7.13 + s.k * 0.37 + j * 0.11) > fill * 1.15) continue;
+        const a = hash(n * 3.7 + s.k + j) * Math.PI * 2, r = 0.85 * Math.sqrt(hash(n * 5.3 + s.k * 1.3 + j));
+        const tt = t - u;
+        this.ring(shoalX(s, tt) + Math.cos(a) * r, shoalZ(s, tt) + Math.sin(a) * r * 0.7, u, 0.3 * (1 + farK * 0.25), 0.2 * (1 + farK * 0.3));
+      }
+      // über manchen vollen Fanggründen kreisen Möwen (nicht über jedem, sonst wirkt es wie ein Zeichen)
+      if (birds && fill >= 0.6 && hash(s.k * 0.173) < 0.45) {
+        const cnt = 1 + (hash(s.k * 0.291) < 0.3 ? 1 : 0);
+        for (let j = 0; j < cnt && ng < MAXN.gulls; j++) {
+          const dir = (s.k + j) % 2 ? 1 : -1;
+          const rr = 1.1 + j * 0.35, w = (0.5 + j * 0.08) * dir;
+          const th = t * w + s.jump + j * 2.4;
+          const x = sx + Math.cos(th) * rr, z = sz + Math.sin(th) * rr * 0.85;
+          const y = 1.2 + j * 0.25 + Math.sin(t * 0.4 + j + s.jump) * 0.12;
+          const head = Math.atan2(-Math.sin(th) * w, Math.cos(th) * 0.85 * w);
+          // Flügelschlag in Abständen, dazwischen gleiten (Flügel leicht angehoben)
+          const cyc = (t + s.jump * 2 + j * 1.9) % 5.5;
+          const flap = cyc < 1.3 ? Math.sin(cyc * 13) * 0.55 + 0.1 : 0.14 + Math.sin(t * 2.2 + j) * 0.04;
+          if (ng >= this.gulls.instanceMatrix.count) {
+            ensureCapacity(this.gulls, ng + 1, MAXN.gulls); ensureCapacity(this.wingsR, ng + 1, MAXN.gulls); ensureCapacity(this.wingsL, ng + 1, MAXN.gulls);
+          }
+          // in die Kurve gelegt (zur Kreismitte geneigt); von Weitem etwas größer, damit man sie noch sieht
+          const gs = 0.65 + farK * 0.35;
+          TMP.base.compose(v.set(x, y, z), q.setFromEuler(e.set(0, head, 0.32 * dir, 'YXZ')), sc.set(gs, gs, gs));
+          this.gulls.setMatrixAt(ng, TMP.base);
+          this.wing(this.wingsR, ng, 1, flap);
+          this.wing(this.wingsL, ng, -1, flap);
+          ng++;
+        }
+      }
+    }
+    flushInstances(this.fish, nf);
+    flushInstances(this.shades, ns);
+    flushInstances(this.patches, np);
+    flushInstances(this.rings, this.nr);
+    flushInstances(this.drops, this.nd);
+    flushInstances(this.gulls, ng); flushInstances(this.wingsR, ng); flushInstances(this.wingsL, ng);
+  }
+
+  /** Flügel am Gelenk neben dem Rumpf (TMP.base), um flap angehoben */
+  private wing(mesh: THREE.InstancedMesh, i: number, side: 1 | -1, flap: number) {
+    TMP.loc.makeTranslation(side * 0.018, 0.012, 0.005).multiply(TMP.rot.makeRotationZ(side * flap));
+    TMP.m.multiplyMatrices(TMP.base, TMP.loc);
+    mesh.setMatrixAt(i, TMP.m);
+  }
+
+  /** Ring und Spritzer eines springenden Fisches: at = Zeitpunkt des Auf-/Eintauchens, u = Sekunden seitdem */
+  private jumpSplash(s: Shoal, at: number, u: number, k: number, drops: boolean, seed: number) {
+    if (u < 0 || u > RING_T) return;
+    const { x, z } = fishAt(s, s.fish[0], at);
+    this.ring(x, z, u, 0.42 * k + 0.12, 0.32 * k);
+    if (drops && u < DROP_T) this.splash(x, z, u, k, s.k + seed);
+  }
+
+  /** weich auslaufender Ring an (x, z), u Sekunden nach dem Entstehen; size = größter Halbmesser, k = Helligkeit */
+  private ring(x: number, z: number, u: number, size: number, k: number) {
+    if (this.nr >= MAXN.rings) return;
+    const rest = 1 - u / RING_T;
+    const r = size * (0.12 + 0.88 * (1 - rest * rest));
+    const b = k * rest * rest * Math.min(1, u * 8);
+    if (this.nr >= this.rings.instanceMatrix.count) ensureCapacity(this.rings, this.nr + 1, MAXN.rings);
+    TMP.m.compose(TMP.v.set(x, WY + 0.002, z), TMP.q.identity(), TMP.s.set(r, 1, r));
+    this.rings.setMatrixAt(this.nr, TMP.m);
+    this.rings.setColorAt(this.nr++, TMP.c.setRGB(b * 0.9, b * 0.94, b));
+  }
+
+  /** Wassertropfen, die beim Springen hochfliegen und zurückfallen */
+  private splash(x: number, z: number, u: number, k: number, seed: number) {
+    const n = k >= 1 ? 7 : 4;
+    const fade = 1 - u / DROP_T;
+    for (let i = 0; i < n && this.nd < MAXN.drops; i++) {
+      const a = hash(seed * 1.7 + i) * Math.PI * 2, sp = (0.25 + hash(seed + i * 3.1) * 0.35) * k, vy = (0.9 + hash(seed * 0.3 + i) * 0.6) * (0.7 + 0.3 * k);
+      const y = WY + vy * u - 4.2 * u * u;
+      if (y < WY - 0.02) continue;
+      if (this.nd >= this.drops.instanceMatrix.count) ensureCapacity(this.drops, this.nd + 1, MAXN.drops);
+      const s = 0.7 + hash(seed * 2.1 + i) * 0.7;
+      TMP.m.compose(TMP.v.set(x + Math.cos(a) * sp * u, y, z + Math.sin(a) * sp * u), TMP.q.identity(), TMP.s.set(s, s * 1.4, s));
+      this.drops.setMatrixAt(this.nd, TMP.m);
+      const b = 0.75 * fade;
+      this.drops.setColorAt(this.nd++, TMP.c.setRGB(b * 0.9, b * 0.95, b));
+    }
   }
 
   private waterCache = new Map<number, [number, number] | null>();
