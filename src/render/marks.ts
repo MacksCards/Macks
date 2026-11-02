@@ -93,7 +93,8 @@ export class OwnerMarks {
     this.polesDirty = true;
   }
 
-  /** je gezeichnetem Bild: Tücher wehen lassen (alle in derselben Windrichtung) */
+  /** je gezeichnetem Bild: Tücher wehen lassen (alle in derselben Windrichtung).
+   *  t = Ruhe-Uhr (cloth.ts): steht in der Pause still, damit die Fahnen dann nicht ruckeln. */
   update(t: number) {
     const n = [0, 0], m = this.m, s = this.v;
     let visible = 0;

@@ -13,6 +13,7 @@ import { createWater } from './water';
 import { borderGeometry, borderMaterial } from './border';
 import { LAND_Y, Terrain, TileRect } from './terrain';
 import { Vegetation, windTime } from './vegetation';
+import { calmClock, tickCalm } from './cloth';
 import { ModelLibrary } from './glb';
 import { ShipLayer } from './ships';
 import { CartLayer } from './carts';
@@ -24,7 +25,7 @@ import { Cloth, MarkDef, OwnerMarks, Pole, POLE_H, POLE_H_SMALL } from './marks'
 import { Smoke } from './smoke';
 import { SignLayer, paintCluster, paintIsland, paintUnit, paintWarn } from './signs';
 import { BuildAnims } from './buildanim';
-import { PlaceHelp } from './placehelp';
+import { GroundRing, PlaceHelp } from './placehelp';
 import type { RenderLayer } from './layers';
 import { SelectionMarks } from './selmark';
 import {
@@ -86,6 +87,8 @@ const MILL_BLADES = (() => {
   b.add(new THREE.CylinderGeometry(0.05, 0.065, 0.12, 8), wood, 0, 0, 0.0, 0, Math.PI / 2);
   return b.geometry();
 })();
+/** Gebäude, die zum Wasser schauen und vor denen Schiffe liegen: Fahne auf der Landseite (siehe landSideMark) */
+const LAND_SIDE_FLAG = new Set<BuildingId>(['kontor', 'werft', 'grosswerft']);
 /** Meshy-Gebäude, die eine große Fahne in Besitzerfarbe tragen (wie die Code-Modelle) */
 const BIG_FLAG = new Set<BuildingId>(['kontor', 'markt', 'werft', 'grosswerft', 'burg', 'grosseburg', 'festung', 'holzturm', 'wachturm', 'triumphbogen']);
 
@@ -122,8 +125,6 @@ export class View {
   private resumeRise = new Map<number, number>();
   /** true, solange buildWorld die Gebäude aufstellt (dann keine Bau-Animation) */
   private settingUp = false;
-  /** Fläche im Arbeitsradius, gefärbt nach Ergiebigkeit (beim Antippen eines Betriebs) */
-  private effDisc: THREE.Mesh;
   private carts!: CartLayer;
   private life!: LifeLayer;
   private seenTex!: THREE.DataTexture;
@@ -143,7 +144,10 @@ export class View {
   private ghostMatBad = buildingMaterial({ transparent: true, opacity: 0.7, color: 0xff8a7a, emissive: 0x3c1410 });
   /** Rahmen der Grundfläche, Bäume dort ausblenden (Bau-Vorschau) */
   private place = new PlaceHelp();
-  private radiusRing: THREE.Mesh;
+  /** Ring des Arbeitsbereichs und Fläche im Arbeitsradius, gefärbt nach Ergiebigkeit (beim Antippen eines Betriebs) */
+  private workRing = new GroundRing();
+  /** Geländehöhe (für Dinge, die dem Boden folgen) */
+  private hAt = (x: number, z: number) => (this.terrain ? this.terrain.heightAt(x, z) : LAND_Y);
   private selectRing: THREE.Mesh;
   private raycaster = new THREE.Raycaster();
   private groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -LAND_Y);
@@ -207,14 +211,8 @@ export class View {
 
     this.scene.add(this.place.group);
 
-    this.radiusRing = new THREE.Mesh(
-      new THREE.RingGeometry(0.97, 1, 72).rotateX(-Math.PI / 2),
-      // über Bäumen und Häusern sichtbar (ohne Tiefenvergleich), damit man den Arbeitsbereich auch im Wald sieht
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false, depthTest: false }),
-    );
-    this.radiusRing.visible = false;
-    this.radiusRing.renderOrder = 3;
-    this.scene.add(this.radiusRing);
+    // Ring des Arbeitsbereichs und Scheibe der Ergiebigkeit: folgen dem Gelände (placehelp.ts)
+    this.scene.add(this.workRing.group);
 
     this.selectRing = new THREE.Mesh(
       new THREE.RingGeometry(0.8, 1, 4, 1, Math.PI / 4).rotateX(-Math.PI / 2),
@@ -223,14 +221,6 @@ export class View {
     this.selectRing.visible = false;
     this.selectRing.renderOrder = 3;
     this.scene.add(this.selectRing);
-
-    this.effDisc = new THREE.Mesh(
-      new THREE.CircleGeometry(1, 72).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.13, depthWrite: false }),
-    );
-    this.effDisc.visible = false;
-    this.effDisc.renderOrder = 2;
-    this.scene.add(this.effDisc);
 
     this.marks = new OwnerMarks(this.mat);
     this.scene.add(this.marks.group);
@@ -281,6 +271,7 @@ export class View {
     for (const v of this.views.values()) this.scene.remove(v.mesh);
     this.views.clear();
     this.marks.clear();
+    this.workRing.reset();
     this.anims.clear();
     this.smoke.clear();
     this.resumeRise.clear();
@@ -831,6 +822,10 @@ export class View {
   private ownerMark(glb: THREE.Object3D, b: Building): MarkDef {
     const big = BIG_FLAG.has(b.type);
     const cloth = big ? Cloth.Flag : Cloth.Pennant, scale = big ? 1.25 : 1;
+    if (LAND_SIDE_FLAG.has(b.type)) {
+      const m = this.landSideMark(glb, b, cloth, scale, big);
+      if (m) return m;
+    }
     const at = glb.userData.flagAt as [number, number, number] | undefined;
     if (at) {
       const f = glb.localToWorld(new THREE.Vector3(at[0], at[1] - 0.01, at[2]));
@@ -841,6 +836,42 @@ export class View {
     const foot = glb.localToWorld(new THREE.Vector3(px, py - 0.03, pz));
     return { cloth, x: foot.x, y: foot.y + h - 0.02, z: foot.z, scale, pole: big ? Pole.Big : Pole.Small, px: foot.x, py: foot.y, pz: foot.z };
   }
+
+  /**
+   * Fahne auf der Landseite eines Gebäudes, das zum Wasser schaut (Kontor, Werften): Am Kontor ankern Schiffe
+   * direkt vor der Wasserseite – hing die Fahne dort (am Mast des Modells), lag sie in der üblichen Schrägansicht
+   * genau auf den Segeln des Schiffs („zwei blaue Flecken über dem Schiff“). Jetzt steht ein eigener Mast auf dem
+   * Dach, auf der vom Wasser abgewandten Seite. Die Stelle wird einmal beim Aufbau gesucht: senkrecht von oben
+   * auf das Modell „getastet“, höchste Stelle der hinteren Dachhälfte. null = nichts gefunden (dann wie bisher).
+   * (Das Modell schaut mit seiner Vorderseite, lokal +z, zum Wasser – siehe facing().)
+   */
+  private landSideMark(glb: THREE.Object3D, b: Building, cloth: Cloth, scale: number, big: boolean): MarkDef | null {
+    glb.updateMatrixWorld(true);
+    // je Modell nur einmal tasten (Lage im Modell merken; alle Kontore desselben Modells sind gleich)
+    const key = this.lib.shownKey(b.type, b.tier) ?? b.type;
+    let local = this.landSideAt.get(key);
+    if (local === undefined) {
+      const s = BUILDINGS[b.type].size;
+      const rc = this.raycaster, down = new THREE.Vector3(0, -1, 0), from = new THREE.Vector3();
+      let best: THREE.Vector3 | null = null;
+      for (const fz of [-0.12, -0.2, -0.28]) for (const fx of [-0.24, -0.12, 0, 0.12, 0.24]) {
+        glb.localToWorld(from.set(fx * s, 30, fz * s));
+        rc.set(from, down);
+        const hit = rc.intersectObject(glb, true)[0];
+        if (hit && (!best || hit.point.y > best.y + 0.02)) best = hit.point.clone();
+      }
+      local = best && best.y >= glb.position.y + 0.4 ? glb.worldToLocal(best) : null;
+      this.landSideAt.set(key, local);
+    }
+    if (!local) return null;
+    const best = glb.localToWorld(local.clone());
+    const pole = big ? Pole.Big : Pole.Small, h = big ? POLE_H : POLE_H_SMALL;
+    const fy = best.y - 0.03;
+    return { cloth, x: best.x, y: fy + h - 0.02, z: best.z, scale, pole, px: best.x, py: fy, pz: best.z };
+  }
+
+  /** Fahnenplatz auf der Landseite je Modell (Lage im Modell; null = keiner gefunden), siehe landSideMark */
+  private landSideAt = new Map<string, THREE.Vector3 | null>();
 
   /** Drehende Teile am Meshy-Modell (Mühle: Flügel an der Nabe, die in manifest.json steht) */
   private glbSpinners(glb: THREE.Object3D): BView['spin'] {
@@ -990,20 +1021,27 @@ export class View {
     sl.end();
   }
 
+  /** Fußpunkt des (ersten) Auswahl-Pfeils in der Welt: Oberkante des angewählten Dings (für das Zoomen per Knopf) */
+  readonly selAnchor = { on: false, p: new THREE.Vector3() };
+
   /** goldener Pfeil über dem angewählten Gebäude, Schiff bzw. den angewählten Soldaten */
   private updateSelMarks(t: number) {
     const sm = this.selMarks;
     sm.begin();
+    const an = this.selAnchor;
+    an.on = false;
+    const anchor = (x: number, y: number, z: number) => { if (!an.on) { an.on = true; an.p.set(x, y, z); } };
     const b = this.selB, v = b && this.views.get(b.id);
     if (v && v.mesh.visible) {
       // steht ein Warnsymbol über dem Gebäude, schwebt der Pfeil darüber (nicht davor)
       const sign = !!v.sign && this.rig.dist < CLUSTER_DIST && !this.anims.rising(b!.id);
       sm.add(v.mesh.position.x, v.mesh.position.y + v.top + (sign ? 0.4 : 0), v.mesh.position.z, false, sign ? 17 : 0);
+      anchor(v.mesh.position.x, v.mesh.position.y + v.top, v.mesh.position.z);
     }
     const sel = this.ships.selected;
-    if (sel !== null) for (const s of this.ships.shown) if (s.s.id === sel) { sm.add(s.x, s.top, s.z); break; }
+    if (sel !== null) for (const s of this.ships.shown) if (s.s.id === sel) { sm.add(s.x, s.top, s.z); anchor(s.x, s.top, s.z); break; }
     const us = this.units.selected;
-    if (us.size) for (const s of this.units.shown) if (us.has(s.u.id)) sm.add(s.x, s.top + 0.1, s.z, true);
+    if (us.size) for (const s of this.units.shown) if (us.has(s.u.id)) { sm.add(s.x, s.top + 0.1, s.z, true); anchor(s.x, s.top + 0.1, s.z); }
     sm.end(t, this.camera, this.renderer.domElement.clientHeight || 400);
   }
 
@@ -1055,7 +1093,7 @@ export class View {
       this.ghost = null;
       this.ghostType = null;
       this.place.hide();
-      this.radiusRing.visible = false;
+      this.workRing.show(0, 0, 0, 0, this.hAt);
       return;
     }
     const d = BUILDINGS[type];
@@ -1075,15 +1113,11 @@ export class View {
 
   showRadius(r: number, x = 0, z = 0, color = 0xffffff) {
     this.dirty = true;
-    if (!r) { this.radiusRing.visible = false; return; }
-    this.radiusRing.visible = true;
-    (this.radiusRing.material as THREE.MeshBasicMaterial).color.setHex(color);
-    this.radiusRing.scale.set(r, 1, r);
-    this.radiusRing.position.set(x, LAND_Y + 0.06, z);
+    this.workRing.show(r, x, z, color, this.hAt);
   }
 
   setSelected(b: Building | null) {
-    this.effDisc.visible = false;
+    this.workRing.showDisc(0, 0, 0, 0, this.hAt);
     this.selB = b;
     if (!b) { this.selectRing.visible = false; this.showRadius(0); return; }
     const d = BUILDINGS[b.type];
@@ -1097,10 +1131,7 @@ export class View {
       // (wie die Skala beim Bauen: grün ergiebig, gelb mäßig, rot kaum etwas da)
       const col = effColor(b.eff);
       this.showRadius(rad, cx, cz, col);
-      (this.effDisc.material as THREE.MeshBasicMaterial).color.setHex(col);
-      this.effDisc.scale.set(rad, 1, rad);
-      this.effDisc.position.set(cx, LAND_Y + 0.05, cz);
-      this.effDisc.visible = true;
+      this.workRing.showDisc(rad, cx, cz, col, this.hAt);
     } else this.showRadius(rad, cx, cz, d.work && d.prod ? 0xffb347 : 0xffffff);
   }
 
@@ -1253,8 +1284,16 @@ export class View {
   frame(t: number, gameDt: number) {
     const dt = Math.min(0.1, Math.max(0, t - this.lastT));
     this.lastT = t;
+    // Ruhe-Uhr (cloth.ts): läuft beim Spielen mit der echten Zeit, steht in Pause/Menü still. Nach ihr laufen
+    // Wasser, Wind in Bäumen und Gras, Fahnen, Schiffe, Pfeil, fallende Bäume und Funken/Feuer – in der Pause
+    // steht so das ganze Bild still (wie das Spiel) statt bei wenigen Bildern je Sekunde zu ruckeln.
+    // Ausnahme: Wird in der Pause gebaut, laufen Staub und fallende Bäume mit dem Aufbau mit (dann wird ohnehin
+    // jedes Bild gezeichnet).
+    const c0 = calmClock.value;
+    tickCalm(t);
+    const cdt = this.anims.busy ? dt : calmClock.value - c0;
     this.flushChanges();
-    this.animateFalling(dt);
+    this.animateFalling(cdt);
     this.growT += dt;
     if (this.growT > 1.5) { this.growT = 0; this.veg.updateGrowth(); }
     this.ships.update(t);
@@ -1265,18 +1304,18 @@ export class View {
     this.lifeT += gameDt;
     this.life.update(this.lifeT, cam);
     this.units.update(t, cam);
-    this.damage(dt);
+    this.damage(cdt);
     const vh = this.renderer.domElement.clientHeight || 400;
-    this.fx.update(dt, vh);
-    this.marks.update(t);
+    this.fx.update(cdt, vh);
+    this.marks.update(calmClock.value);
     this.anims.update(dt);
     // Rauch: läuft in echter Zeit, steht aber in der Pause still (wie das ganze Spiel)
     const sdt = gameDt > 0 ? dt : 0;
     this.emitSmoke(sdt);
     this.smoke.update(sdt, vh);
     for (const l of this.layers) l.update(t, gameDt, cam);
-    this.waterUniforms.uTime.value = t;
-    windTime.value = t;
+    this.waterUniforms.uTime.value = calmClock.value;
+    windTime.value = calmClock.value;
     this.spinParts(gameDt);
     this.updateCamera();
     this.updateSigns();
