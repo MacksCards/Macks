@@ -6,18 +6,21 @@ import type { Game, ShotKind } from '../game';
 import { T } from '../world';
 import { flushInstances } from './instances';
 
-/** Teilchen-Arten */
-const enum K { Rauch, Staub, Gischt, Blitz, Feuer, Funke, Splitter }
+/** Teilchen-Arten (Flamme = Feuerzunge, Qualm = dunkle Rauchsäule über einem Brand) */
+const enum K { Rauch, Staub, Gischt, Blitz, Feuer, Funke, Splitter, Flamme, Qualm }
 
-interface Look { c0: number; c1: number; s0: number; s1: number; a: number; grav: number; drag: number; rise: number }
+/** wind: Abdrift nach der Seite (Felder je Sekunde) – Flammen bleiben auf dem Dach, Rauch zieht ab */
+interface Look { c0: number; c1: number; s0: number; s1: number; a: number; grav: number; drag: number; rise: number; wind: number }
 const LOOK: Record<K, Look> = {
-  [K.Rauch]: { c0: 0xe6e2da, c1: 0x8f8a83, s0: 0.35, s1: 1.5, a: 0.7, grav: 0, drag: 2.2, rise: 0.35 },
-  [K.Staub]: { c0: 0xa88c66, c1: 0x6f5e48, s0: 0.3, s1: 1.1, a: 0.75, grav: 0.6, drag: 2.5, rise: 0.1 },
-  [K.Gischt]: { c0: 0xffffff, c1: 0xd4e6ee, s0: 0.16, s1: 0.4, a: 0.95, grav: 7, drag: 0.4, rise: 0 },
-  [K.Blitz]: { c0: 0xfff4c0, c1: 0xff7a1a, s0: 0.7, s1: 0.3, a: 1, grav: 0, drag: 0, rise: 0 },
-  [K.Feuer]: { c0: 0xffc850, c1: 0xc8300e, s0: 0.42, s1: 0.12, a: 1, grav: 0, drag: 1, rise: 0.9 },
-  [K.Funke]: { c0: 0xfff6c8, c1: 0xffa040, s0: 0.09, s1: 0.04, a: 1, grav: 5, drag: 0.5, rise: 0 },
-  [K.Splitter]: { c0: 0x6a5038, c1: 0x4a3828, s0: 0.09, s1: 0.08, a: 1, grav: 6, drag: 0.3, rise: 0 },
+  [K.Rauch]: { c0: 0xe6e2da, c1: 0x8f8a83, s0: 0.35, s1: 1.5, a: 0.7, grav: 0, drag: 2.2, rise: 0.35, wind: 0.12 },
+  [K.Staub]: { c0: 0xa88c66, c1: 0x6f5e48, s0: 0.3, s1: 1.1, a: 0.75, grav: 0.6, drag: 2.5, rise: 0.1, wind: 0.12 },
+  [K.Gischt]: { c0: 0xffffff, c1: 0xd4e6ee, s0: 0.16, s1: 0.4, a: 0.95, grav: 7, drag: 0.4, rise: 0, wind: 0 },
+  [K.Blitz]: { c0: 0xfff4c0, c1: 0xff7a1a, s0: 0.7, s1: 0.3, a: 1, grav: 0, drag: 0, rise: 0, wind: 0 },
+  [K.Feuer]: { c0: 0xffc850, c1: 0xc8300e, s0: 0.42, s1: 0.12, a: 1, grav: 0, drag: 1, rise: 0.9, wind: 0.04 },
+  [K.Funke]: { c0: 0xfff6c8, c1: 0xffa040, s0: 0.09, s1: 0.04, a: 1, grav: 5, drag: 0.5, rise: 0, wind: 0 },
+  [K.Splitter]: { c0: 0x6a5038, c1: 0x4a3828, s0: 0.09, s1: 0.08, a: 1, grav: 6, drag: 0.3, rise: 0, wind: 0 },
+  [K.Flamme]: { c0: 0xffc04a, c1: 0xb02a0a, s0: 0.95, s1: 0.42, a: 1, grav: 0, drag: 2.5, rise: 1.1, wind: 0.03 },
+  [K.Qualm]: { c0: 0x2a2520, c1: 0x7d776f, s0: 0.45, s1: 1.9, a: 0.8, grav: 0, drag: 0.45, rise: 0.5, wind: 0.3 },
 };
 
 class Particles {
@@ -31,7 +34,8 @@ class Particles {
   /** seit dem letzten Bild neu entstanden (dann muss hochgeladen werden, auch wenn vorher nichts lebte) */
   private spawned = false;
 
-  constructor(n: number, additive: boolean) {
+  /** flame = Feuerzungen: unten breit und hell, oben spitz und rot, die Ränder züngeln (statt runder Kugeln) */
+  constructor(n: number, additive: boolean, private flame = false) {
     this.n = n;
     this.pos = new Float32Array(n * 3); this.col = new Float32Array(n * 3);
     this.size = new Float32Array(n); this.alpha = new Float32Array(n);
@@ -45,17 +49,35 @@ class Particles {
     const mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
       blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
-      uniforms: { uScale: { value: 400 } },
+      uniforms: { uScale: { value: 400 }, uTime: { value: 0 } },
       vertexShader: /* glsl */ `
         attribute vec3 pcol; attribute float psize; attribute float palpha;
-        uniform float uScale; varying vec3 vC; varying float vA;
+        uniform float uScale; varying vec3 vC; varying float vA; varying float vS;
         void main() {
           vC = pcol; vA = palpha;
+          vS = fract(sin(float(gl_VertexID) * 12.9898) * 43758.5453);
           vec4 mv = modelViewMatrix * vec4(position, 1.0);
           gl_Position = projectionMatrix * mv;
           gl_PointSize = palpha <= 0.0 ? 0.0 : psize * uScale / -mv.z;
         }`,
-      fragmentShader: /* glsl */ `
+      fragmentShader: flame ? /* glsl */ `
+        uniform float uTime;
+        varying vec3 vC; varying float vA; varying float vS;
+        void main() {
+          vec2 c = gl_PointCoord - 0.5;
+          float y = c.y + 0.5; // 0 = Spitze oben, 1 = Fuß unten
+          float wob = sin(y * 9.0 - uTime * (9.0 + vS * 5.0) + vS * 40.0) * 0.07 * (1.0 - y)
+                    + sin(y * 23.0 - uTime * 17.0 + vS * 11.0) * 0.025 * (1.0 - y);
+          float w = 0.04 + 0.34 * pow(y, 0.62);
+          float dx = abs(c.x + wob) / w;
+          float body = smoothstep(1.0, 0.4, dx) * smoothstep(0.0, 0.32, y) * smoothstep(1.0, 0.74, y);
+          float a = body * vA;
+          if (a < 0.01) discard;
+          float core = smoothstep(0.8, 0.0, dx) * smoothstep(0.3, 0.88, y);
+          vec3 col = mix(vC, vec3(1.0, 0.94, 0.66), core * 0.8);
+          gl_FragColor = vec4(col, a);
+          #include <colorspace_fragment>
+        }` : /* glsl */ `
         varying vec3 vC; varying float vA;
         void main() {
           vec2 c = gl_PointCoord - 0.5;
@@ -102,15 +124,16 @@ class Particles {
       const dr = Math.max(0, 1 - L.drag * dt);
       this.vel[i * 3] *= dr; this.vel[i * 3 + 2] *= dr;
       this.vel[i * 3 + 1] = this.vel[i * 3 + 1] * dr - L.grav * dt + L.rise * dt;
-      this.pos[i * 3] += (this.vel[i * 3] + (L.rise ? 0.12 : 0)) * dt; // leichter Wind
+      this.pos[i * 3] += (this.vel[i * 3] + L.wind) * dt; // leichter Wind
       this.pos[i * 3 + 1] += this.vel[i * 3 + 1] * dt;
-      this.pos[i * 3 + 2] += (this.vel[i * 3 + 2] + (L.rise ? 0.05 : 0)) * dt;
+      this.pos[i * 3 + 2] += (this.vel[i * 3 + 2] + L.wind * 0.4) * dt;
       if (L.grav && this.pos[i * 3 + 1] < -0.05) this.age[i] = 1;
       const t = Math.min(1, a);
       this.c0.setHex(L.c0); this.c1.setHex(L.c1); this.c0.lerp(this.c1, t);
       this.col[i * 3] = this.c0.r; this.col[i * 3 + 1] = this.c0.g; this.col[i * 3 + 2] = this.c0.b;
       this.size[i] = L.s0 + (L.s1 - L.s0) * t;
-      this.alpha[i] = a >= 1 ? 0 : L.a * Math.min(1, a * 12) * (1 - t) ** (this.kind[i] === K.Rauch ? 1.2 : 0.8);
+      const k = this.kind[i];
+      this.alpha[i] = a >= 1 ? 0 : L.a * Math.min(1, a * (k === K.Qualm ? 4 : 12)) * (1 - t) ** (k === K.Rauch ? 1.2 : k === K.Qualm ? 0.6 : 0.8);
     }
     this.live = live;
     this.points.visible = live > 0;
@@ -124,7 +147,9 @@ class Particles {
       a.needsUpdate = true;
     }
     g.setDrawRange(lo, n);
-    (this.points.material as THREE.ShaderMaterial).uniforms.uScale.value = vh * 0.9;
+    const u = (this.points.material as THREE.ShaderMaterial).uniforms;
+    u.uScale.value = vh * 0.9;
+    if (this.flame) u.uTime.value += dt;
   }
 }
 
@@ -174,6 +199,8 @@ export class Fx {
   bars = new HpBars();
   private soft = new Particles(1400, false);
   private glow = new Particles(700, true);
+  /** Feuerzungen brennender Gebäude (eigene Form, siehe Particles) */
+  private flames = new Particles(500, true, true);
   private balls: Ball[] = [];
   private ballMesh: THREE.InstancedMesh;
   private delayed: Delayed[] = [];
@@ -187,7 +214,7 @@ export class Fx {
     this.ballMesh.visible = false;
     this.ballMesh.frustumCulled = false;
     for (let i = 0; i < 96; i++) this.balls.push({ on: false, fx: 0, fy: 0, fz: 0, tx: 0, ty: 0, tz: 0, t: 0, dur: 1, arc: 0, water: false, hit: false });
-    this.group.add(this.soft.points, this.glow.points, this.ballMesh, this.bars.group);
+    this.group.add(this.soft.points, this.flames.points, this.glow.points, this.ballMesh, this.bars.group);
   }
 
   setGame(g: Game, height: (x: number, z: number) => number) { this.g = g; this.height = height; }
@@ -295,16 +322,24 @@ export class Fx {
     }
   }
 
-  /** Feuer und Rauch an einer Stelle (für beschädigte Gebäude und Schiffe), stark = 0..1 */
+  /** Feuer und Rauch an einer Stelle (für beschädigte Gebäude und Schiffe), stark = 0..1; spread = halbe Breite
+   *  der Fläche, auf der es brennt (die Flammen bleiben darauf – nichts schwebt neben dem Dach) */
   burn(key: string, x: number, y: number, z: number, strength: number, dt: number, spread = 0.3) {
     let a = (this.burnAcc.get(key) ?? Math.random()) + dt * (2 + strength * 10);
     while (a >= 1) {
       a -= 1;
-      const ox = (Math.random() - 0.5) * spread * 2, oz = (Math.random() - 0.5) * spread * 2;
-      // kräftige, flackernde Flammen (mehrere Zungen je Schub), dazu Glutfunken
-      if (strength > 0.2) for (let n = 0; n < 2 + Math.round(strength * 2); n++) this.glow.spawn(K.Feuer, x + ox + (Math.random() - 0.5) * spread, y, z + oz + (Math.random() - 0.5) * spread, (Math.random() - 0.5) * 0.15, 0.35 + Math.random() * 0.45, (Math.random() - 0.5) * 0.15, 0.8 + Math.random() * 0.8 * strength + 0.3);
-      if (strength > 0.4 && Math.random() < 0.3) this.glow.spawn(K.Funke, x + ox, y + 0.1, z + oz, (Math.random() - 0.5) * 0.6, 0.8 + Math.random() * 0.8, (Math.random() - 0.5) * 0.6, 0.12);
-      this.soft.spawn(K.Rauch, x + ox, y + 0.15, z + oz, 0, 0.25 + Math.random() * 0.2, 0, 2.5 + Math.random() * 2);
+      const ox = (Math.random() - 0.5) * spread * 1.4, oz = (Math.random() - 0.5) * spread * 1.4;
+      if (strength > 0.2) {
+        // Feuerzungen: unten breit und hell, oben spitz und rot, flackernd; dazu ein Glutschein am Fuß
+        for (let n = 0; n < 2 + Math.round(strength * 2); n++) {
+          const fx = x + ox + (Math.random() - 0.5) * spread * 0.5, fz = z + oz + (Math.random() - 0.5) * spread * 0.5;
+          this.flames.spawn(K.Flamme, fx, y - 0.05, fz, (Math.random() - 0.5) * 0.08, 0.25 + Math.random() * 0.35, (Math.random() - 0.5) * 0.08, 0.55 + Math.random() * 0.5 * strength + 0.2);
+        }
+        if (Math.random() < 0.35) this.glow.spawn(K.Feuer, x + ox, y - 0.08, z + oz, 0, 0.12, 0, 0.5);
+        if (strength > 0.4 && Math.random() < 0.3) this.glow.spawn(K.Funke, x + ox, y + 0.25, z + oz, (Math.random() - 0.5) * 0.6, 0.9 + Math.random() * 0.9, (Math.random() - 0.5) * 0.6, 0.18);
+        // dunkle, dichte Rauchsäule, die hoch aufsteigt und mit dem Wind abzieht
+        if (Math.random() < 0.7) this.soft.spawn(K.Qualm, x + ox * 0.5, y + 0.45, z + oz * 0.5, (Math.random() - 0.5) * 0.15, 0.4 + Math.random() * 0.3, (Math.random() - 0.5) * 0.15, 3 + Math.random() * 1.6);
+      } else this.soft.spawn(K.Rauch, x + ox, y + 0.15, z + oz, 0, 0.25 + Math.random() * 0.2, 0, 2.5 + Math.random() * 2);
     }
     this.burnAcc.set(key, a);
   }
@@ -345,6 +380,7 @@ export class Fx {
     }
     if (n || this.ballMesh.count) flushInstances(this.ballMesh, n);
     this.soft.update(dt, viewportHeight);
+    this.flames.update(dt, viewportHeight);
     this.glow.update(dt, viewportHeight);
   }
 }

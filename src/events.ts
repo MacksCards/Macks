@@ -48,8 +48,10 @@ export const FIRE = {
   spreadChance: 0.3,
   /** … auf Häuser bis zu diesem Abstand (Feldmitten) */
   spreadDist: 2,
-  /** solange der Spieler noch keine Feuerwehr bauen kann, helfen die Nachbarn mit Eimern: weniger Funkenflug */
+  /** solange der Spieler noch keine Feuerwehr bauen kann, helfen die Nachbarn mit Eimern: weniger Funkenflug … */
   spreadNoBrigade: 1 / 3,
+  /** … und sie löschen den Brand nach so vielen Sekunden selbst (das Haus bleibt beschädigt stehen) */
+  buckets: 35,
   /** Steinhaus bzw. Pflasterweg dazwischen: so viel seltener */
   stone: 0.5,
   paved: 0.5,
@@ -116,6 +118,10 @@ export const CURSE = { factor: 3, seconds: 1200 } as const;
 
 /** Häufigkeit je Einstellung */
 export const RATE: Record<'aus' | 'mild' | 'normal', number> = { aus: 0, mild: 0.5, normal: 1 };
+/** Funkenflug je Einstellung (Anteil von FIRE.spreadChance). „mild“ (Standard): ein Brand springt im Mittel auf
+ *  weniger als ein halbes Nachbarhaus über – vorher fraß er sich durch dichte Pionier-Blöcke (je Brand 3–5 Häuser).
+ *  „aus“ gilt für Brände aus dem Kampf. */
+export const SPREAD: Record<'aus' | 'mild' | 'normal', number> = { aus: 0.15, mild: 0.15, normal: 1 };
 
 /** brennen nie ab (Lager der Insel) */
 const NO_FIRE = new Set<BuildingId>(['kontor', 'markt']);
@@ -197,6 +203,7 @@ function st(g: Game): State {
 
 const between = (g: Game, r: readonly [number, number]) => r[0] + g.rng() * (r[1] - r[0]);
 const rate = (g: Game) => RATE[g.opts.ereignisse] ?? RATE.mild;
+const spread = (g: Game) => SPREAD[g.opts.ereignisse] ?? SPREAD.mild;
 /** Fluch-Faktor eines Spielers (1 = kein Fluch) */
 const curseF = (g: Game, owner: number) => ((st(g).curse.get(owner) ?? -1) > g.time ? CURSE.factor : 1);
 /** zählt dieser Spieler für Ereignisse? (nicht Piraten, Händler, Ureinwohner, Besiegte) */
@@ -303,8 +310,8 @@ export function ignite(g: Game, b: Building): boolean {
   if (b.owner === HUMAN) {
     const fw = covered(g, b, 'feuerwehr');
     const hint = fw ? 'die Feuerwehr rückt aus.'
-      : g.isUnlocked('feuerwehr') ? 'keine Feuerwehr in der Nähe – ohne sie brennt es in einer Minute ab!'
-        : 'ohne Feuerwehr brennt es in einer Minute ab. Eine Feuerwehr gibt es ab 15 Siedlern.';
+      : reachedBrigade(g, b.owner) ? 'keine Feuerwehr in der Nähe – ohne sie brennt es in einer Minute ab!'
+        : 'die Nachbarn löschen mit Eimern. Eine Feuerwehr gibt es ab 15 Siedlern.';
     say(g, `feuer:${b.island}`, 25, `🔥 Feuer auf ${isleName(g, b.island)}! ${b.type === 'haus' ? 'Ein Haus' : BUILDINGS[b.type].name} brennt – ${hint}`, 'bad', atB(g, b));
   }
   return true;
@@ -361,6 +368,15 @@ function tickFires(g: Game, dt: number) {
     } else {
       f.ext = 0; f.hpE = undefined;
       hp -= (max * FIRE.startHp / FIRE.burn) * dt;
+      // noch keine Feuerwehr baubar: die Nachbarn löschen mit Eimern (das Haus bleibt beschädigt stehen)
+      if (f.t >= FIRE.buckets && normal(g, b.owner) && !reachedBrigade(g, b.owner) && hp > 0) {
+        b.hp = hp;
+        s.fires.delete(id);
+        s.repair.add(id);
+        s.count.geloescht++;
+        if (b.owner === HUMAN) say(g, `eimer:${b.island}`, 15, `🪣 Die Nachbarn haben den Brand auf ${isleName(g, b.island)} mit Eimern gelöscht. Später schützt eine Feuerwehr.`, 'good', atB(g, b));
+        continue;
+      }
     }
     if (hp <= 0) { burnDown(g, b); continue; }
     f.hp = hp; b.hp = hp;
@@ -387,7 +403,7 @@ function spreadFire(g: Game, b: Building) {
   const early = normal(g, b.owner) && !reachedBrigade(g, b.owner);
   for (const o of housesAround(g, b, FIRE.spreadDist, true)) {
     if (s.fires.has(o.id)) continue;
-    let p = FIRE.spreadChance * (wooden(o) ? 1 : FIRE.stone) * (early ? FIRE.spreadNoBrigade : 1);
+    let p = FIRE.spreadChance * spread(g) * (wooden(o) ? 1 : FIRE.stone) * (early ? FIRE.spreadNoBrigade : 1);
     // Pflasterweg zwischen den Häusern bremst den Funkenflug
     if (pavedBetween(g, cx, cy, ...g.center(o))) p *= FIRE.paved;
     if (g.rng() < p) {
@@ -422,6 +438,8 @@ function fireOutbreak(g: Game, dt: number, houses: Map<number, Building[]>) {
     let pop = 0;
     for (const h of list) pop += h.residents;
     if (pop < FIRE.minPop) continue;
+    // „mild“: kein Brandausbruch, bevor man sich mit einer Feuerwehr schützen kann
+    if (r < RATE.normal && !reachedBrigade(g, owner)) continue;
     // mittleres Brandrisiko der Stadt: ungeschützt, unzufrieden und dicht gebaut brennt es öfter
     const w = list.map((h) => (s.fires.has(h.id) ? 0 : fireWeight(g, h)));
     const mean = w.reduce((a, c) => a + c, 0) / list.length;
@@ -677,9 +695,10 @@ export function infoLines(g: Game, b: Building): string[] {
   const f = s.fires.get(b.id);
   if (f) {
     if (covered(g, b, 'feuerwehr')) out.push(`🔥 Brennt – die Feuerwehr löscht (noch etwa ${Math.max(1, Math.ceil(f.need - f.ext))} s)`);
+    else if (normal(g, b.owner) && !reachedBrigade(g, b.owner)) out.push(`🔥 Brennt – die Nachbarn löschen mit Eimern (noch etwa ${Math.max(1, Math.ceil(FIRE.buckets - f.t))} s). Feuerwehr ab 15 Siedlern.`);
     else {
       const left = Math.max(1, Math.ceil(f.hp / (g.maxHp(b) * FIRE.startHp / FIRE.burn)));
-      out.push(`🔥 Brennt – Feuerwehr fehlt! In etwa ${left} s abgebrannt${g.isUnlocked('feuerwehr') ? '' : ' (Feuerwehr ab 15 Siedlern)'}`);
+      out.push(`🔥 Brennt – Feuerwehr fehlt! In etwa ${left} s abgebrannt`);
     }
   }
   const k = s.sick.get(b.id);

@@ -1273,6 +1273,7 @@ export class View {
       if (s.frac < 1) bars.bar(s.x, 0.08 + 1.35 * s.scale, s.z, s.frac);
       if (s.frac < 0.5) fx.burn('s' + s.s.id, s.x, 0.35, s.z, 1 - s.frac * 2, dt, 0.25);
     }
+    const charNow = new Set<number>();
     for (const b of g.buildings) {
       if (b.hp === undefined) continue;
       const v = this.views.get(b.id);
@@ -1281,12 +1282,62 @@ export class View {
       if (frac >= 1) continue;
       const p = v.mesh.position, s = BUILDINGS[b.type].size;
       bars.bar(p.x, p.y + v.top + 0.25, p.z, frac);
-      // (S3) laufender Brand (events.ts): kräftige Flammen gleich vom Ausbruch an, beim Löschen kleiner
+      // (S3) laufender Brand (events.ts): Feuerzungen auf dem Dach und eine dunkle Rauchsäule gleich vom Ausbruch an,
+      // beim Löschen kleiner; Dach und Wände sind angekohlt, bis das Haus ausgebessert ist
       const fire = fireStrength(g, b);
-      if (fire > 0) fx.burn('b' + b.id, p.x, p.y + v.top * 0.75, p.z, fire, dt, s * 0.28);
-      else if (frac < 0.75) fx.burn('b' + b.id, p.x, p.y + v.top * 0.75, p.z, frac < 0.5 ? 1 - frac * 2 : 0.1, dt, s * 0.28);
+      // (die Flammen sitzen knapp über dem First: Bildpunkt-Teilchen werden als Ganzes gegen die Tiefe geprüft – läge
+      // ihre Mitte im Dach, verschwänden sie von oben gesehen ganz)
+      if (fire > 0) fx.burn('b' + b.id, p.x, p.y + v.top * 0.9 + 0.25, p.z, fire, dt, s * 0.3);
+      else if (frac < 0.75) fx.burn('b' + b.id, p.x, p.y + v.top * 0.9 + 0.25, p.z, frac < 0.5 ? 1 - frac * 2 : 0.1, dt, s * 0.3);
+      if (fire > 0 || frac < 0.6) { charNow.add(b.id); this.char(b.id, v.mesh, true); }
     }
+    for (const [id, mesh] of this.charred) if (!charNow.has(id)) this.char(id, mesh, false);
     bars.end();
+  }
+
+  /** angekohlte Gebäude: Gebäude-Id → gezeigtes Modell (dessen Stoffe gerade dunkel getauscht sind) */
+  private charred = new Map<number, THREE.Object3D>();
+  /** je Stoff eine angekohlte Fassung (einmal angelegt, von allen brennenden Gebäuden geteilt) */
+  private charMats = new WeakMap<THREE.Material, THREE.Material>();
+
+  /** Gebäude angekohlt zeigen (dunkle, rußige Stoffe) bzw. wieder normal */
+  private char(id: number, mesh: THREE.Object3D, on: boolean) {
+    const old = this.charred.get(id);
+    if (on && old === mesh) return;
+    if (old && old !== mesh) this.swapChar(old, false);
+    if (on) { this.swapChar(mesh, true); this.charred.set(id, mesh); }
+    else { this.swapChar(mesh, false); this.charred.delete(id); }
+  }
+
+  private swapChar(root: THREE.Object3D, on: boolean) {
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      if (on) {
+        if (m.userData.unchar) return;
+        m.userData.unchar = m.material;
+        m.material = Array.isArray(m.material) ? m.material.map((x) => this.charOf(x)) : this.charOf(m.material);
+      } else if (m.userData.unchar) {
+        m.material = m.userData.unchar as THREE.Material | THREE.Material[];
+        delete m.userData.unchar;
+      }
+    });
+  }
+
+  private charOf(mat: THREE.Material): THREE.Material {
+    let c = this.charMats.get(mat);
+    if (!c) {
+      c = mat.clone();
+      // clone() übernimmt die Shader-Ergänzungen nicht (z. B. weiche Schattierung der Code-Modelle)
+      c.onBeforeCompile = mat.onBeforeCompile;
+      c.customProgramCacheKey = mat.customProgramCacheKey;
+      const sm = c as THREE.MeshStandardMaterial;
+      // Ruß: deutlich dunkler und ins Braun-Schwarze, matt
+      if (sm.color) sm.color.multiplyScalar(0.55).lerp(new THREE.Color(0x2a211a), 0.25);
+      if (sm.roughness !== undefined) sm.roughness = 1;
+      this.charMats.set(mat, c);
+    }
+    return c;
   }
 
   private growT = 0;

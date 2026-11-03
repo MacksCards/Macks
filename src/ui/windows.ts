@@ -3,7 +3,7 @@
 // Den Rahmen (Kopf mit ✕, scrollender Inhalt, Hauptknopf fest unten) baut ui.dialog() im Kern.
 import './windows.css';
 import { atWar, pirateAdvice, restart } from '../combat';
-import { HUMAN } from '../game';
+import { HUMAN, type Game } from '../game';
 import { sound } from '../audio';
 import type { UI } from '../ui';
 import { $, el } from './util';
@@ -235,7 +235,7 @@ export class Windows {
       const layer = this.mapLayer === 'fisch' ? '<p class="sub">Hell türkis = viel Fisch, dunkel = abgefischt. Fischerhütten an hellen Stellen bauen.</p>'
         : this.mapLayer === 'wald' ? '<p class="sub">Hellgrün = ausgewachsener Wald, dunkel = gefällt oder jung.</p>' : '';
       card.innerHTML = `<p class="sub">Tippe auf eine Insel für ihre Info. Tippe aufs Meer, um dorthin zu schauen.</p>${layer}
-        <p class="legend"><span><i style="background:#4a86ff"></i>Dein Land, ⚓ Kontor</span><span><i style="background:#ffe066"></i>Deine Schiffe</span><span><i style="background:#9fd0ff"></i>Deine Soldaten</span><span><i style="background:#ff3b2f"></i>Feinde im Krieg</span><span><i style="background:#111;border:1px solid #fff"></i>Piraten</span>${ui.trade.ready ? '<span><i style="background:#f4f1e8"></i>Händler</span>' : ''}<span><i style="background:#2c3846;border:1px solid #556"></i>Unentdeckt</span></p>
+        <p class="legend"><span><i style="background:#4a86ff"></i>Dein Land, ⚓ Kontor</span><span><i style="background:#ffe066"></i>Deine Schiffe</span><span><i style="background:#9fd0ff"></i>Deine Soldaten</span>${rivalLegend(g)}<span><i style="background:#ff3b2f"></i>Feinde im Krieg</span><span><i style="background:#111;border:1px solid #fff"></i>Piraten</span>${ui.trade.ready ? '<span><i style="background:#f4f1e8"></i>Händler</span>' : ''}<span><i style="background:#2c3846;border:1px solid #556"></i>Unentdeckt</span></p>
         <p class="legend">${GOOD.erz.icon} Erz · ${GOOD.gold.icon} Gold · Pflanzen auf 100 %: ${(Object.keys(PFLANZEN) as Pflanze[]).map((p) => `${PFLANZEN[p].icon} ${PFLANZEN[p].name}`).join(' · ')}</p>`;
       return;
     }
@@ -325,4 +325,11 @@ export class Windows {
     // Neues Spiel mit Einstellungen (ui/settings.ts); Abbrechen führt hierher zurück
     $('#lostNew').addEventListener('click', () => ui.settings.open(() => this.showLost()));
   }
+}
+
+/** Zeichenerklärung der Gegner: jeder in seiner Farbe (Land, Kontor, Schiffe im Frieden) – nie Rot oder Gelb, die
+ *  heißen „Feind im Krieg“ bzw. „deine Schiffe“ */
+function rivalLegend(g: Game): string {
+  return g.players.filter((p) => p.ai && !p.defeated && !p.trader && !p.natives && !p.pirate)
+    .map((p) => `<span><i style="background:#${p.color.toString(16).padStart(6, '0')}"></i>${p.name}</span>`).join('');
 }

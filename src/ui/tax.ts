@@ -107,16 +107,19 @@ export function cashHint(g: Game): string {
   return '';
 }
 
-/** Abschnitt „Steuern“ (Kontor und Statistik): nur Stufen, die es schon gibt (Regel 8) */
-export function taxSectionHtml(L: Live, g: Game, island: number, intro = true): string {
+/** Abschnitt „Steuern“ (Kontor und Statistik): nur Stufen, die es schon gibt (Regel 8). Der Satz gilt auf allen
+ *  Inseln – Gesicht und tragbarer Satz sind darum überall das Mittel aller Häuser der Stufe (wie im Hausfenster) */
+export function taxSectionHtml(L: Live, g: Game, intro = true): string {
   const reached = reachedTiers(g);
   if (!reached.some(Boolean)) return '';
   let h = intro ? `<p class="sub">Höhere Steuern bringen mehr Geld, machen aber unzufrieden. Fehlen Waren, tragen die Bewohner weniger. Unter dem Satz: Einnahmen der Stufe mit ${STEP} % weniger · jetzt · mit ${STEP} % mehr.</p>` : '';
-  TIERS.forEach((_, t) => { if (reached[t]) h += taxRowHtml(L, g, t, bearableOfTier(g, t, island)); });
+  TIERS.forEach((_, t) => { if (reached[t]) h += taxRowHtml(L, g, t, bearableOfTier(g, t)); });
   return h;
 }
 
-/** Steuerzeile für ein einzelnes Haus (Gesicht nach diesem Haus, Vorschau für die ganze Stufe) */
+/** Steuerzeile im Hausfenster: Der Satz gilt für die ganze Stufe – darum zeigen Gesicht und „tragbar etwa …“ wie
+ *  im Kontor und in der Statistik das Mittel aller Häuser dieser Stufe (vorher stand hier der Wert dieses einen
+ *  Hauses, und dieselbe Stufe hatte zur selben Zeit zwei verschiedene „tragbare“ Sätze) */
 export function houseTaxHtml(L: Live, g: Game, h: Building): string {
-  return taxRowHtml(L, g, h.tier, g.bearableTax(h), `Steuer der ${TIERS[h.tier].name}`);
+  return taxRowHtml(L, g, h.tier, bearableOfTier(g, h.tier), `Steuer der ${TIERS[h.tier].name}`);
 }

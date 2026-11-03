@@ -69,3 +69,20 @@ export class Live {
 
 /** Text sicher in HTML einsetzen (Zeilen anderer Spielteile, Namen) */
 export const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
+
+/**
+ * Vorlage im Infofenster zeigen: gleicher Aufbau wie zuletzt → nur Zahlen und Balken austauschen (false);
+ * anderer Aufbau → neu bauen (true: dann die Knöpfe neu verbinden). setInfo = UI.setInfo (Inhalt + Fußleiste).
+ */
+export function showLive(setInfo: (html: string, foot?: string) => boolean, L: Live, tpl: string, foot = ''): boolean {
+  const body = document.getElementById('infoBody') as (HTMLElement & { _h?: string; _live?: string; _liveH?: string }) | null;
+  const info = document.getElementById('info');
+  if (!body || !info) return setInfo(L.html(tpl), L.html(foot));
+  const key = tpl + '\u0000' + foot;
+  if (body._live === key && body._h !== undefined && body._h === body._liveH) { L.patch(info); return false; }
+  const fresh = setInfo(L.html(tpl), L.html(foot));
+  body._live = key;
+  body._liveH = body._h;
+  if (!fresh) L.patch(info);
+  return fresh;
+}

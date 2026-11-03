@@ -13,7 +13,7 @@ import { flows, ledger } from '../stats';
 import { sound } from '../audio';
 import type { UI } from '../ui';
 import { $, costText, fmt, soft } from './util';
-import { Live, esc } from './live';
+import { Live, esc, showLive } from './live';
 import { bindTax, cashHint, houseTaxHtml, taxSectionHtml } from './tax';
 
 /** Reiter im Kontor: Lager (immer), Handel (sobald ui/trade.ts Inhalt hat), Bilanz, Ausbau */
@@ -146,14 +146,7 @@ export class InfoPanel {
    * anderer Aufbau → neu bauen (true: dann die Knöpfe neu verbinden)
    */
   private show(L: Live, tpl: string, foot = ''): boolean {
-    const body = $('#infoBody') as HTMLElement & { _h?: string; _live?: string; _liveH?: string };
-    const key = tpl + '\u0000' + foot;
-    if (body._live === key && body._h !== undefined && body._h === body._liveH) { L.patch($('#info')); return false; }
-    const fresh = this.ui.setInfo(L.html(tpl), L.html(foot));
-    body._live = key;
-    body._liveH = body._h;
-    if (!fresh) L.patch($('#info'));
-    return fresh;
+    return showLive((h, f) => this.ui.setInfo(h, f), L, tpl, foot);
   }
 
   /** Gebäude eines anderen Spielers */
@@ -299,7 +292,7 @@ export class InfoPanel {
     const net = inc.tax - inc.upkeep + handel;
     h += `<div class="mrow sum${two ? '' : ' one'}"><span>= Überschuss</span>${two ? `<b ${L.cls(me.tax - me.betriebe - me.dienste - me.militaer >= 0 ? 'pos' : 'neg')}>${L.v(sign(me.tax - me.betriebe - me.dienste - me.militaer))}</b>` : ''}<b ${L.cls(net >= 0 ? 'pos' : 'neg')}>${L.v(sign(net))}</b></div>`;
     h += `<p ${L.cls('sub neg cash')}>${L.v(cashHint(g))}</p>`;
-    h += `<h4>💰 Steuern</h4>${taxSectionHtml(L, g, k.island) || '<p class="sub">Steuern zahlen die Bewohner deiner Wohnhäuser.</p>'}`;
+    h += `<h4>💰 Steuern</h4>${taxSectionHtml(L, g) || '<p class="sub">Steuern zahlen die Bewohner deiner Wohnhäuser.</p>'}`;
     const foot = this.ui.stats.ready ? `<button class="btn" id="kStats">📊 Alle Zahlen<small>Bilanz, Waren, Bevölkerung</small></button>` : '';
     return { body: h, foot };
   }
@@ -435,7 +428,7 @@ export class InfoPanel {
     const food = Math.max(0, Math.min(1, b.need.nahrung ?? 1));
     const hungry = g.hungry(b);
     let h = `<h3>🏠 Haus der ${tier.name}</h3>
-      <div class="row"><span>Bewohner <b>${L.v(`${b.residents} / ${tier.maxResidents}`)}</b></span><span>${L.v(face)} Zufrieden <b>${L.v(`${Math.round(b.happy * 100)} %`)}</b></span></div>
+      <div class="row hhead"><span>Bewohner <b>${L.v(`${b.residents}\u00a0/\u00a0${tier.maxResidents}`)}</b></span><span>${L.v(face)} Zufrieden <b>${L.v(`${Math.round(b.happy * 100)}\u00a0%`)}</b></span></div>
       ${L.bar(b.happy, b.happy > 0.85 ? '#6c3' : b.happy > 0.45 ? '#eb3' : '#d43')}
       <div class="row"><span>🍖 Nahrung</span><b ${L.cls(hungry ? 'neg' : '')}>${L.v(hungry ? 'Hunger!' : `${Math.round(food * 100)} %`)}</b></div>
       ${L.bar(food, hungry ? '#e2553f' : food < 0.85 ? '#e8b93a' : '#7cc95a')}

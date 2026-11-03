@@ -8,7 +8,7 @@
 const g0 = globalThis as unknown as Record<string, unknown>;
 g0.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 import { BUILDINGS } from '../src/data';
-import { Game, HUMAN, SaveData } from '../src/game';
+import { Game, HUMAN, QUESTS, SaveData } from '../src/game';
 import { spawnUnit } from '../src/combat';
 import { MAX_SPAN, clampSpan, everBuilt, fieldPlan, formation, groupSize, groupUnits, markBuilt, saveGroup, setFormation } from '../src/bedienung';
 import { T } from '../src/world';
@@ -122,6 +122,33 @@ function freeRect(g: Game, w: number, h: number): [number, number] | null {
     break;
   }
   check('Testplatz für das Häuserfeld gefunden', done);
+}
+
+// ---------- 2b. Rückgängig nach einer erfüllten Aufgabe: Belohnung geht zurück, Aufgabe wieder offen ----------
+{
+  const { g, k } = world(5);
+  const l = g.lagerOf(HUMAN, k.island)!;
+  l.holz = 200;
+  g.players[HUMAN].money = 10000;
+  const qi = QUESTS.findIndex((q) => q.title === 'Erste Siedlung');
+  g.quest = qi;
+  const at = freeRect(g, 17, 4) ?? freeRect(g, 8, 4);
+  const plan = at ? fieldPlan(at, [at[0] + 16, at[1] + 3]) : { houses: [] as [number, number][], roads: [] };
+  const before = new Set(g.buildings);
+  g.placeMany('haus', plan.houses.slice(0, 7));
+  g.checkQuest();
+  check('Testaufbau: 7 Häuser – Aufgabe „Erste Siedlung“ noch offen', g.quest === qi, `${g.quest}/${qi}`);
+  g.placeMany('haus', plan.houses.slice(7, 8));
+  const last = g.buildings.filter((b) => !before.has(b) && b.type === 'haus').pop()!;
+  const m0 = g.players[HUMAN].money;
+  g.checkQuest();
+  const reward = g.players[HUMAN].money - m0;
+  check('8. Haus erfüllt die Aufgabe, Belohnung gezahlt', g.quest === qi + 1 && reward > 0, `+${reward}`);
+  const u = g.undoBuild([last]);
+  check('Rückgängig: Aufgabe wieder offen und Belohnung zurück (nur die Baukosten bleiben erstattet)', u.ok && g.quest === qi && g.players[HUMAN].money === m0, `Aufgabe ${g.quest}, Taler ${g.players[HUMAN].money}/${m0}`);
+  g.placeMany('haus', plan.houses.slice(7, 8));
+  g.checkQuest();
+  check('… neu gebaut: Aufgabe wieder erfüllt', g.quest === qi + 1);
 }
 
 // ---------- 3. Merkzettel im Spielstand: „NEU“, Gruppen, Aufstellung ----------

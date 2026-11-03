@@ -35,7 +35,12 @@ const listen = (g: Game) => { g.ev = { ...g.ev, message: (t: string) => { msgs.p
   // Meldung 74: Info ohne Ort, gelesen; Meldung 73: gut, mit Ort, ungelesen
   check('Ort, Art und gelesen bleiben erhalten', l2[29].at === undefined && l2[29].kind === 'info' && l2[29].read
     && !!l2[28].at && l2[28].at.x === 73 && l2[28].at.y === 74 && l2[28].kind === 'good' && !l2[28].read);
-  check('wichtige Meldungen erkannt', ub.important('⚠️ Nahrung reicht nur noch 1 Minute', 'bad') && ub.important('🏴‍☠️ Piraten gesichtet!', 'bad')
+  check('alltägliche ⚠️-Hinweise bleiben nicht stehen (Lager voll, Ware fehlt, reicht nur noch)', !ub.important('⚠️ Nahrung reicht nur noch 1 Minute', 'bad')
+    && !ub.important('⚠️ Lager voll: Steine 60/60 auf Möwenfels. Verkaufe etwas oder baue einen Marktplatz für mehr Platz.', 'bad')
+    && !ub.important('⚠️ Auf Möwenfels fehlt Alkohol – die Bewohner werden unzufrieden.', 'bad'));
+  check('Vorwarnung vor Krieg, Brand und Pest bleiben stehen', ub.important('⚠️ Morwenna Grey rüstet zum Krieg gegen dich! Baue Türme.', 'bad')
+    && ub.important('🔥 Feuer auf Möwenfels!', 'bad') && ub.important('💀 Pest auf Möwenfels!', 'bad'));
+  check('wichtige Meldungen erkannt', ub.important('🏴‍☠️ Piraten gesichtet!', 'bad')
     && ub.important('⚔️ Baron erklärt dir den Krieg!', 'bad') && ub.important('🏳️ Bankrott – zu lange zu hohe Schulden.', 'bad')
     && !ub.important('Holzfäller fertig', 'info') && !ub.important('⚠️ Test', 'good'));
   // kaputter Eintrag im Spielstand wird übergangen

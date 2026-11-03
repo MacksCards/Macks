@@ -9,7 +9,7 @@ import { ignite } from './events';
 import { Building, Check, Game, HUMAN, MsgAt, Player, Ship, ShotKind, Unit } from './game';
 import { findLandPath } from './path';
 import { T, rng } from './world';
-import { persoenlichkeit, reizung, sollTruppen } from './ai';
+import { hasKontorCargo, persoenlichkeit, reizung, sollTruppen } from './ai';
 import type { Brain } from './ai';
 import { kiGrenzen } from './schwierigkeit';
 import { dockAt, route, sofort } from './trade';
@@ -80,7 +80,7 @@ function st(g: Game): State {
   if (!s) {
     s = {
       lastHit: new Map(), shipChase: new Map(), raids: new Map(), rescueT: 0, recruitT: new Map(), shipT: new Map(), sepT: 0, aiT: 0, alarmT: -99, pirateThinkT: 0,
-      white: new Set(), flee: new Set(), patrol: new Map(), noPath: new Map(), region: null, doctors: null, budget: PATH_BUDGET, fellMsgT: -99,
+      white: new Set(g.ships.filter((x) => x.white).map((x) => x.id)), flee: new Set(), patrol: new Map(), noPath: new Map(), region: null, doctors: null, budget: PATH_BUDGET, fellMsgT: -99,
     };
     states.set(g, s);
   }
@@ -139,9 +139,11 @@ export function hostile(g: Game, a: number, b: number, ordered = false): boolean
 
 // ---------- Weiße Flagge ----------
 
-/** Weiße Flagge hissen (on = true) oder einholen. Gilt nur, solange das Spiel läuft (wie im Vorbild nicht gespeichert). */
+/** Weiße Flagge hissen (on = true) oder einholen. Steht im Spielstand (Ship.white): Nach dem Laden weht sie weiter –
+ *  sonst zählte ein Kriegsschiff mit Flagge vor einem Gegner-Kontor sofort als Reizung (KI2). */
 export function setWhiteFlag(g: Game, s: Ship, on: boolean) {
   const S = st(g);
+  if (on) s.white = true; else delete s.white;
   if (on) {
     S.white.add(s.id);
     // eigene Kanonen schweigen: laufender Angriff endet
@@ -420,9 +422,13 @@ function conquer(g: Game, b: Building, by: number) {
 }
 
 /**
- * Ist ein Spieler besiegt? Gebäude zählen (beim Computergegner nur ein Kontor – ohne Kontor ist er handlungsunfähig),
- * Schiffe nur, wenn sie bewaffnet sind oder Material für ein neues Kontor geladen haben (KI2). Beim Spieler zählt
- * jedes Gebäude, und ohne Kontor schickt das Spiel ihm ein Schiff mit Baumaterial (rescue).
+ * Ist ein Spieler besiegt? Gebäude zählen (beim Computergegner nur Kontor und Marktplatz – sie halten sein Land;
+ * ohne sie ist er handlungsunfähig), Schiffe nur, wenn sie bewaffnet sind oder Material für ein neues Kontor geladen
+ * haben (KI2). Steht nach dem Kontor noch ein Marktplatz, bleibt der Gegner im Spiel: Der Krieg geht weiter, der
+ * Marktplatz lässt sich erobern (die Gebäude in seinem Gebiet gehen dann mit über) oder zerstören. Erst wenn auch der
+ * letzte Marktplatz fällt, ist er besiegt – seine übrigen Häuser und Betriebe stehen dann auf herrenlosem Land und
+ * verfallen (das Land wird frei). Beim Spieler zählt jedes Gebäude, und ohne Kontor schickt das Spiel ihm ein Schiff
+ * mit Baumaterial (rescue).
  * by: wer zuletzt zugeschlagen hat (−1 = niemand, der Gegner gibt auf).
  */
 export function checkDefeat(g: Game, owner: number, by: number) {
@@ -431,12 +437,21 @@ export function checkDefeat(g: Game, owner: number, by: number) {
   if (!p || p.pirate || p.trader || p.natives || p.defeated) return;
   const kc = BUILDINGS.kontor.cost;
   const useful = (s: Ship) => s.owner === owner && (!p.ai || (s.guns ?? 0) > 0 || (g.shipCargo(s, 'holz') >= (kc.holz ?? 0) && g.shipCargo(s, 'werkzeug') >= (kc.werkzeug ?? 0)));
-  const land = g.buildings.some((b) => b.owner === owner && (!p.ai || b.type === 'kontor'));
+  const land = g.buildings.some((b) => b.owner === owner && (!p.ai || b.type === 'kontor' || b.type === 'markt'));
   if (land || g.ships.some(useful)) return;
   p.defeated = true;
   p.warnAt = undefined;
   for (const u of g.units.filter((x) => x.owner === owner)) killUnit(g, u);
   for (const q of g.players) q.war = (q.war ?? []).filter((x) => x !== owner);
+  // Computergegner: was noch steht (Häuser, Betriebe, Türme), hat kein Land mehr – es verfällt, das Land wird frei
+  if (p.ai) {
+    const rest = g.buildings.filter((b) => b.owner === owner);
+    if (rest.length) {
+      g.forceRemoveMany(rest);
+      g.ev.roads();
+      g.ev.message(`🏚️ Die verlassenen Gebäude von ${p.name} verfallen – das Land ist wieder frei.`, 'info', atB(g, rest[0]));
+    }
+  }
   if (owner === HUMAN) { g.ev.message('🏳️ Du hast alles verloren.', 'bad'); return; }
   if (by < 0) { g.ev.message(`${p.name} ist aus dem Spiel ausgeschieden`, 'info'); return; }
   if (by !== HUMAN) { g.ev.message(`${p.name} wurde von ${g.players[by]?.name ?? 'Feinden'} besiegt`, 'info'); return; }
@@ -704,7 +719,7 @@ export function shipAttack(g: Game, s: Ship, targetId: number) {
   s.target = targetId;
   const S = st(g);
   // wer angreift, holt die weiße Flagge ein
-  S.white.delete(s.id);
+  S.white.delete(s.id); delete s.white;
   S.shipChase.set(s.id, { ordered: true, repath: 0 });
 }
 
@@ -1175,8 +1190,9 @@ function tickPirates(g: Game, dt: number) {
 // aus eigenem Antrieb je nach Charakter (Zeitpunkt gestreut), sonst bei Reizung (Kontor auf seiner Insel,
 // Soldaten auf seinem Land, Kriegsschiff vor seinem Kontor) – immer erst mit Vorwarnung.
 
-/** Kasse, die beim Ausbilden und Schiffbau mindestens bleibt */
-const MIL_RESERVE = 2000;
+/** Kasse, die beim Ausbilden und Schiffbau mindestens bleibt (die Gegner haben meist 1 000 bis 3 000 Taler –
+ *  mit einer höheren Grenze bildete kaum einer je einen Soldaten aus) */
+const MIL_RESERVE = 800;
 /** so oft (Sekunden) denkt das Militär der Gegner */
 const MIL_THINK = 5;
 
@@ -1328,7 +1344,10 @@ function raid(g: Game, owner: number, mine: Unit[], soll: number) {
   const idle = mine.filter((u) => u.ship === undefined && u.target === undefined && !u.path.length && u.board === undefined);
   if (!r) {
     if (idle.length < Math.max(4, Math.round(soll * 0.5)) || g.rng() > 0.15) return;
-    const free = g.ships.filter((s) => s.owner === owner && !s.path.length && !route(g, s));
+    // nicht das Schiff einer laufenden Erweiterung (es wartet am Kontor mit Material für ein neues Kontor) und kein
+    // Schiff mit Kontor-Material an Bord – das ginge sonst mit unter, wenn der Angriff scheitert
+    const erw = (g.players[owner]?.brain as Brain | undefined)?.erw?.ship;
+    const free = g.ships.filter((s) => s.owner === owner && !s.path.length && !route(g, s) && s.id !== erw && !hasKontorCargo(g, s));
     const ship = free.find((s) => (s.type ?? '').startsWith('krieg')) ?? free.find((s) => (s.type ?? 'handel_klein').startsWith('handel'));
     if (!ship) return;
     const goal = g.buildings.filter((b) => b.owner === HUMAN && (b.type === 'kontor' || b.type === 'markt'))

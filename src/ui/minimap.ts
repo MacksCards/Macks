@@ -53,7 +53,8 @@ export function paintWorld(g: Game, img: ImageData, layer: MapLayer = 'none') {
   }
 }
 
-/** Farbe eines Schiffs oder Soldaten auf der Karte: eigene gelb, Piraten schwarz, Händler weiß, Feinde rot */
+/** Farbe eines Schiffs oder Soldaten auf der Karte: eigene gelb, Piraten schwarz, Händler weiß, Feinde im Krieg rot,
+ *  sonst die Farbe des Gegners (Violett, Rosa, Grün – nie Rot oder Gelb, siehe game.ts) */
 export function markColor(g: Game, owner: number): string {
   const p = g.players[owner];
   if (owner === HUMAN) return '#ffe066';
@@ -83,6 +84,21 @@ export function seenCount(g: Game): number {
   return n;
 }
 
+/** Kennzahl des sichtbaren Weltbilds: entdeckte Felder, Besitz und Bodenart auf entdecktem Land (ein Durchlauf).
+ *  Bauen ohne neues Gebiet (Häuser, Betriebe) oder Gegner auf unentdeckten Inseln ändern sie nicht – dann bleibt
+ *  das Weltbild der Minikarte, wie es ist. */
+export function worldKey(g: Game): string {
+  const s = g.seen, o = g.own, t = g.tiles;
+  let n = 0, h = 0;
+  for (let k = 0; k < s.length; k++) {
+    if (!s[k]) continue;
+    n++;
+    // Besitz und Bodenart (gerodeter Wald) des Feldes
+    h = (Math.imul(h, 31) + (o[k] + 2) * 16 + t[k]) | 0;
+  }
+  return `${s.length}:${n}:${h}`;
+}
+
 let discCache: { g: Game; key: number; set: Set<number> } | null = null;
 /** Inseln, von denen schon Land entdeckt ist (zwischengespeichert, solange nichts Neues entdeckt wurde) */
 export function discovered(g: Game): Set<number> {
@@ -101,6 +117,10 @@ export class Minimap {
   /** Weltbild 1 Bildpunkt je Feld; neu nur, wenn Land entdeckt oder gebaut wurde */
   private world: HTMLCanvasElement | null = null;
   private worldKey = '';
+  /** Bilddaten des Weltbilds (wiederverwendet) */
+  private img: ImageData | null = null;
+  /** so oft wurde das Weltbild neu gemalt (für Messungen) */
+  worldDraws = 0;
   private lastDraw = -1e9;
   private lastRect = 0;
   private blink = false;
@@ -157,20 +177,22 @@ export class Minimap {
   }
 
   /** neues Spiel: Weltbild verwerfen */
-  reset() { this.world = null; this.worldKey = ''; this.lastDraw = -1e9; }
+  reset() { this.world = null; this.img = null; this.worldKey = ''; this.lastDraw = -1e9; }
 
   private draw() {
     const g = this.ui.g, N = g.size;
-    // Weltbild nur neu, wenn sich Entdecktes oder Gebautes geändert hat
-    const key = `${N}:${seenCount(g)}:${g.buildVersion}:${g.buildings.length}`;
+    // Weltbild nur neu, wenn sich Entdecktes oder der Besitz auf entdecktem Land geändert hat (nicht bei jedem Bau
+    // irgendwo); die Bilddaten werden dabei wiederverwendet statt jedes Mal neu angelegt
+    const key = worldKey(g);
     if (!this.world || this.world.width !== N || key !== this.worldKey) {
       this.worldKey = key;
       const w = this.world && this.world.width === N ? this.world : Object.assign(document.createElement('canvas'), { width: N, height: N });
       const wc = w.getContext('2d')!;
-      const img = wc.createImageData(N, N);
-      paintWorld(g, img);
-      wc.putImageData(img, 0, 0);
+      if (!this.img || this.img.width !== N) this.img = wc.createImageData(N, N);
+      paintWorld(g, this.img);
+      wc.putImageData(this.img, 0, 0);
       this.world = w;
+      this.worldDraws++;
     }
     const W = this.size(this.cv), s = W / N;
     const ctx = this.cv.getContext('2d')!;

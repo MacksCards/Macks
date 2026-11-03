@@ -201,7 +201,9 @@ export class StatsWindow implements Part {
       const why = idle ? `produziert nichts${WHY[b.status] ? ` – ${WHY[b.status]}` : ''}`
         : d.prod ? `arbeitet zu ${Math.round(b.active * 100)} %`
         : b.type === 'werft' || b.type === 'grosswerft' ? (b.job ? 'baut ein Schiff' : 'kein Auftrag')
-        : d.category === 'militaer' ? 'Militär' : b.type === 'kontor' ? 'Lager und Hafen' : 'versorgt die Bewohner';
+        : d.category === 'militaer' ? 'Militär' : b.type === 'kontor' ? 'Lager und Hafen'
+        : b.type === 'feuerwehr' ? 'schützt vor Feuer' : b.type === 'arzt' ? 'schützt vor der Pest' : b.type === 'galgen' ? 'schützt vor Dieben'
+        : b.type === 'markt' ? 'Marktkarren und Gebiet' : 'versorgt die Bewohner';
       return { b, up: g.upkeepOf(b), idle, why };
     }).sort((a, c) => Number(c.idle) - Number(a.idle) || c.up - a.up).slice(0, 5);
     if (cost.length) {
@@ -225,7 +227,7 @@ export class StatsWindow implements Part {
     let h = `<p ${L.cls('sthint neg')}>${L.v(cashHint(g))}</p>`;
     h += `<div class="row"><span>Steuern zusammen</span><b>${L.v(`${fmt(inc.tax + 0.5)} Taler je Minute`)}</b></div>`;
     h += `<div class="row"><span>Unterhalt zusammen</span><b>${L.v(`${fmt(inc.upkeep + 0.5)} Taler je Minute`)}</b></div>`;
-    h += taxSectionHtml(L, g, -1);
+    h += taxSectionHtml(L, g);
     h += `<p class="stnote">😊 = tragen sie gern · 😐 = gerade noch · 😠 = zu hoch, Bewohner ziehen aus. Fehlende Waren senken, was sie tragen.</p>`;
     return h;
   }

@@ -11,7 +11,7 @@ import {
   PERSOENLICHKEITEN, aiPop, canMake, charakter, denkzeit, hausGrenze, persoenlichkeit, popGrenze, reizung, sollTruppen, thinkAI, waffenBedarf,
 } from '../src/ai';
 import type { Brain } from '../src/ai';
-import { checkDefeat, ensurePirates, pirates, spawnUnit, tickAIMilitary } from '../src/combat';
+import { atWar, checkDefeat, declareWar, ensurePirates, pirates, setWhiteFlag, spawnUnit, tickAIMilitary, whiteFlag } from '../src/combat';
 import { BUILDINGS, TIERS } from '../src/data';
 import { Game, HUMAN, Player, Ship } from '../src/game';
 import { kiGrenzen } from '../src/schwierigkeit';
@@ -154,11 +154,23 @@ const run = (g: Game, sec: number, dt = 0.25) => { for (let i = 0; i < sec / dt;
   const q = ai(g2, 1);
   run(g2, 9 * 60);
   for (const s of g2.ships) if (s.owner === q.id) s.slots = s.slots.map(() => ({ g: null, n: 0 }));
+  // Ein Marktplatz hält das Land: Kontor weg, Marktplatz steht → nicht besiegt, Krieg bleibt möglich (Eroberung)
+  if (!g2.buildings.some((o) => o.owner === q.id && o.type === 'markt')) {
+    const kk = g2.kontor(q.id)!;
+    for (let dy = -9; dy <= 9 && !g2.buildings.some((o) => o.owner === q.id && o.type === 'markt'); dy++) for (let dx = -9; dx <= 9; dx++) if (g2.place('markt', kk.x + dx, kk.y + dy, q.id).ok) break;
+  }
+  check('Testaufbau: Gegner hat einen Marktplatz', g2.buildings.some((o) => o.owner === q.id && o.type === 'markt'));
+  declareWar(g2, HUMAN, q.id);
   for (const b of g2.buildings.filter((o) => o.owner === q.id && o.type === 'kontor')) g2.forceRemove(b);
   for (let i = 0; i < 4; i++) thinkAI(g2, q, 3);
   const pir = pirates(g2)!;
   check('ohne Kontor und Material: Schiff segelt unter Piratenflagge', g2.ships.some((s) => s.owner === pir.id && s.name === 'Seeadler') && !g2.ships.some((s) => s.owner === q.id));
-  check('… und der Gegner scheidet aus (mit Meldung)', !!q.defeated && m2.some((t) => t.includes('Piratenflagge')), m2.filter((t) => t.includes(q.name)).join(' | '));
+  check('… aber solange ein Marktplatz steht, ist der Gegner nicht besiegt und der Krieg geht weiter', !q.defeated && atWar(g2, HUMAN, q.id));
+  const before2 = g2.buildings.filter((o) => o.owner === q.id).length;
+  for (const b of g2.buildings.filter((o) => o.owner === q.id && o.type === 'markt')) g2.forceRemove(b);
+  checkDefeat(g2, q.id, HUMAN);
+  check('… fällt auch der letzte Marktplatz, scheidet er aus (mit Meldung)', !!q.defeated && m2.some((t) => t.includes('Piratenflagge')) && m2.some((t) => t.includes(`${q.name} ist besiegt`)), m2.filter((t) => t.includes(q.name)).join(' | '));
+  check('… und seine übrigen Gebäude verfallen (keine eingefrorene Stadt)', before2 > 1 && !g2.buildings.some((o) => o.owner === q.id), `${before2} → ${g2.buildings.filter((o) => o.owner === q.id).length}`);
   // checkDefeat: leere, unbewaffnete Schiffe zählen nicht mehr
   const g3 = Game.create(5, 1);
   quiet(g3);
@@ -212,6 +224,11 @@ const run = (g: Game, sec: number, dt = 0.25) => { for (let i = 0; i < sec / dt;
   // weiße Flagge reizt nicht
   me.guns = 6;
   check('mit weißer Flagge keine Reizung', reizung(g, p, 5, () => true) === null);
+  // … auch nach Speichern und Laden: die Flagge weht weiter (steht im Spielstand)
+  setWhiteFlag(g, me, true);
+  const g2 = Game.fromSave(JSON.parse(JSON.stringify(g.serialize())));
+  const me2 = g2.ships.find((s) => s.id === me.id)!;
+  check('weiße Flagge bleibt nach dem Laden gehisst', whiteFlag(g2, me2));
 }
 
 // ---------- 9. Soll-Truppen und Ausbildung mit Waffen aus dem Lager ----------

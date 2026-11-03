@@ -212,7 +212,8 @@ export class BuildTool {
         const r = g.demolishArea(this.cornerA[0], this.cornerA[1], this.cornerB[0], this.cornerB[1], true);
         const any = r.buildings + r.roads > 0;
         const what = any ? `${r.buildings} Gebäude, ${r.roads} ${r.roads === 1 ? 'Weg' : 'Wege'}` : 'Nichts Eigenes im Bereich';
-        const back = Object.keys(r.refund).length ? ` – Rückerstattung ${costText(r.refund)}` : '';
+        // Rückerstattung immer nennen – auch wenn es nichts gibt (Wege geben kein Material zurück)
+        const back = Object.keys(r.refund).length ? ` – Rückerstattung ${costText(r.refund)}` : ` – keine Rückerstattung${r.buildings ? '' : ' (Wege geben nichts zurück)'}`;
         this.setHint(`<b>💥 ${what}</b>${any ? `<span class="cost">${back}</span>` : ''}<small>${r.kept ? 'Das Kontor bleibt stehen. ' : ''}${any ? '✓ reißt ab (mit Rückfrage) – oder neue zweite Ecke tippen.' : 'Neue zweite Ecke tippen.'}</small>`);
         okOn = any;
       }
@@ -580,7 +581,7 @@ export class BuildTool {
     if (!a || !b) return;
     const r = g.demolishArea(a[0], a[1], b[0], b[1], true);
     if (!r.buildings && !r.roads) return;
-    const back = Object.keys(r.refund).length ? ` Du bekommst ${costText(r.refund)} zurück.` : '';
+    const back = Object.keys(r.refund).length ? ` Du bekommst ${costText(r.refund)} zurück.` : ` Zurück gibt es nichts${r.buildings ? '' : ' (Wege geben kein Material zurück)'}.`;
     ui.ask(`💥 ${r.buildings} Gebäude und ${r.roads} ${r.roads === 1 ? 'Weg' : 'Wege'} abreißen?`, `Alles im roten Bereich wird abgerissen.${back}${r.kept ? ' Das Kontor bleibt stehen.' : ''}`, '💥 Abreißen', () => {
       const res = g.demolishArea(a[0], a[1], b[0], b[1]);
       ui.toast(`💥 ${res.buildings} Gebäude und ${res.roads} ${res.roads === 1 ? 'Weg' : 'Wege'} abgerissen`, 'info');

@@ -79,6 +79,7 @@ const sys = ev.system;
 // ---------- Feuer ohne Feuerwehr ----------
 {
   const { g, msgs, isl, kontor, l } = world(4711, { ereignisse: 'aus' });
+  g.best[1] = 100; // Feuerwehr wäre baubar (keine gebaut): dann brennt es ab
   const [kx, ky] = g.center(kontor);
   const h = put(g, 'haus', isl, kx + 7, ky, { max: 10 });
   h.residents = 3;
@@ -134,6 +135,7 @@ const sys = ev.system;
   check('Brandschaden wird danach ausgebessert (wieder unbeschädigt)', h.hp === undefined, `${h.hp}`);
   // Feuerwehr ohne Weg: hilft nicht
   const { g: g2, isl: i2, kontor: k2 } = world(4711, { ereignisse: 'aus' });
+  g2.best[1] = 100; // Feuerwehr baubar – sonst löschten die Nachbarn mit Eimern
   const [k2x, k2y] = g2.center(k2);
   const fw2 = put(g2, 'feuerwehr', i2, k2x + 9, k2y, { min: 6, max: 12, ok: (b) => !g2.linked.has(b.id) });
   const [f2x, f2y] = g2.center(fw2);
@@ -145,9 +147,42 @@ const sys = ev.system;
   check('… und das Haus brennt ab', !g2.byId.has(h2.id));
 }
 
-// ---------- Feuer springt über (Stein und Pflaster bremsen) ----------
+// ---------- Noch keine Feuerwehr baubar: die Nachbarn löschen mit Eimern ----------
 {
-  const { g, isl, kontor } = world(4711, { ereignisse: 'aus' });
+  const { g, msgs, isl, kontor } = world(4711, { ereignisse: 'aus' });
+  const [kx, ky] = g.center(kontor);
+  const h = put(g, 'haus', isl, kx + 7, ky, { max: 10 });
+  h.residents = 3;
+  check('ignite vor der Feuerwehr: das Haus brennt', ev.ignite(g, h) && ev.burning(g, h));
+  check('Info: „die Nachbarn löschen mit Eimern“', ev.infoLines(g, h).some((s) => s.includes('Eimern')), ev.infoLines(g, h).join(' | '));
+  run(g, ev.FIRE.buckets + 1);
+  check(`Nach ${ev.FIRE.buckets} s haben die Nachbarn gelöscht – das Haus steht noch (beschädigt)`, g.byId.has(h.id) && !ev.burning(g, h) && (h.hp ?? 0) > 0);
+  check('Meldung „mit Eimern gelöscht“', msgs.some((x) => x.text.includes('mit Eimern gelöscht')));
+  run(g, 120);
+  check('… und wird danach ausgebessert', g.byId.has(h.id) && h.hp === undefined);
+}
+
+// ---------- „mild“ (Standard): Funkenflug selten – ein Brand frisst keine Pionier-Blöcke mehr ----------
+{
+  // Erwartung je Brand ohne Feuerwehr (60 s, drei Funkenflüge): Nachbarn × 3 × 30 % × 0,15 – bei 4 Nachbarn ≈ 0,5
+  check('„mild“: Funkenflug 15 % von „normal“', ev.SPREAD.mild === 0.15 && ev.SPREAD.normal === 1);
+  const { g, isl, kontor } = world(4711, { ereignisse: 'mild' });
+  g.best[1] = 100; // Feuerwehr baubar, aber keine gebaut
+  const [kx, ky] = g.center(kontor);
+  const a = put(g, 'haus', isl, kx + 8, ky, { max: 12 });
+  const nb = put(g, 'haus', isl, a.x + 2, a.y, { max: 3, ok: (b) => Math.abs(b.x - a.x) + Math.abs(b.y - a.y) === 2 });
+  g.rng = () => 0.2; // reicht bei „normal“ (30 %), bei „mild“ (4,5 %) nicht
+  ev.ignite(g, a);
+  run(g, 20.5);
+  check('„mild“: Wurf 0,2 springt nicht über', !ev.burning(g, nb));
+  g.rng = () => 0.04;
+  run(g, 20);
+  check('„mild“: Wurf 0,04 schon', ev.burning(g, nb));
+}
+
+// ---------- Feuer springt über (Stein und Pflaster bremsen; Einstellung „normal“) ----------
+{
+  const { g, isl, kontor } = world(4711, { ereignisse: 'normal' });
   g.best[1] = 100; // Feuerwehr wäre baubar: voller Funkenflug
   const [kx, ky] = g.center(kontor);
   const a = put(g, 'haus', isl, kx + 8, ky, { max: 12 });
@@ -159,7 +194,7 @@ const sys = ev.system;
   run(g, 20.5);
   check('Holzhaus daneben fängt mit 30 % Feuer (Wurf 0,2)', ev.burning(g, nb));
   // Steinhaus (Bürger) daneben: nur halb so oft → Wurf 0,2 reicht nicht
-  const { g: g2, isl: i2, kontor: k2 } = world(4711, { ereignisse: 'aus' });
+  const { g: g2, isl: i2, kontor: k2 } = world(4711, { ereignisse: 'normal' });
   g2.best[1] = 100;
   const [k2x, k2y] = g2.center(k2);
   const a2 = put(g2, 'haus', i2, k2x + 8, k2y, { max: 12 });
@@ -173,7 +208,7 @@ const sys = ev.system;
   run(g2, 20);
   check('… mit Wurf 0,1 (unter 15 %) schon', ev.burning(g2, nb2));
   // Pflasterweg dazwischen: ein Feld Lücke mit Steinweg
-  const { g: g3, isl: i3, kontor: k3 } = world(4711, { ereignisse: 'aus' });
+  const { g: g3, isl: i3, kontor: k3 } = world(4711, { ereignisse: 'normal' });
   g3.best[1] = 100;
   const [k3x, k3y] = g3.center(k3);
   const a3 = put(g3, 'haus', i3, k3x + 8, k3y, { max: 12, ok: (b) => g3.inMap(b.x + 2, b.y) && !g3.occ[g3.idx(b.x + 2, b.y)] && !g3.occ[g3.idx(b.x + 2, b.y + 1)] && g3.islandOf[g3.idx(b.x + 2, b.y)] === i3 });
@@ -196,8 +231,9 @@ const sys = ev.system;
 
 // ---------- Brandausbruch: Häufigkeit aus / mild / normal, ab 20 Einwohnern, Fluch ----------
 {
-  const outbreak = (opts: Partial<GameOptions>, residents: number, secs: number, withCurse = false) => {
+  const outbreak = (opts: Partial<GameOptions>, residents: number, secs: number, withCurse = false, brigade = true) => {
     const { g, isl, kontor } = world(99, opts);
+    if (brigade) g.best[1] = 100; // Feuerwehr baubar (Siedler erreicht)
     const [kx, ky] = g.center(kontor);
     // Feuerwehr direkt am Kontor: Brände gehen aus, das Zählen bleibt sauber
     put(g, 'feuerwehr', isl, kx, ky, { max: 4, ok: (b) => g.linked.has(b.id) });
@@ -222,6 +258,8 @@ const sys = ev.system;
   const normal = outbreak({ ereignisse: 'normal' }, 30, 7200);
   const fluch = outbreak({ ereignisse: 'mild' }, 30, 7200, true);
   check('„aus“: kein Brand in 2 Stunden', aus.c === 0);
+  const frueh = outbreak({ ereignisse: 'mild' }, 30, 7200, false, false);
+  check('„mild“: kein Brand, solange noch keine Feuerwehr baubar ist', frueh.c === 0, `${frueh.c}`);
   check('Unter 20 Einwohnern: kein Brand', wenig.c === 0);
   // geschützt (Feuerwehr), zufrieden, locker: halbes Risiko → normal alle 16–30 min, mild alle 32–60 min
   check('„normal“ mit Feuerwehr: 3–8 Brände in 2 Stunden', normal.c >= 3 && normal.c <= 8, `${normal.c}`);

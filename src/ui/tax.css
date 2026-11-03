@@ -10,7 +10,7 @@
 .taxrow .taxlbl small { grid-column: 1; font-size: 12px; color: var(--pergament-2); line-height: 1.2; }
 .taxrow .taxval { text-align: center; font-size: 16px; font-variant-numeric: tabular-nums; }
 .taxrow .btn.sq { font-size: 22px; line-height: 1; }
-.taxrow .taxprev { grid-column: 1; font-size: 11px; color: var(--pergament-2); text-align: right; }
+.taxrow .taxprev { grid-column: 1; font-size: 12px; color: var(--pergament-2); text-align: right; }
 .taxrow .taxp { font-size: 12px; text-align: center; font-variant-numeric: tabular-nums; color: var(--pergament-2); white-space: nowrap; }
 .taxrow .taxp.now { color: var(--pergament); font-weight: 700; }
 .taxrow .taxp.neg { color: #f08a72; }

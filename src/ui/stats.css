@@ -28,7 +28,7 @@
 .stc .chip.active { background: var(--holz-3); border-color: var(--gold); }
 /* Tabellen */
 .sttab { width: 100%; border-collapse: collapse; font-size: 13px; }
-.sttab th { font-weight: 400; font-size: 11px; color: var(--pergament-2); text-align: right; padding: 0 4px 2px; white-space: nowrap; }
+.sttab th { font-weight: 400; font-size: 12px; color: var(--pergament-2); text-align: right; padding: 0 4px 2px; white-space: nowrap; }
 .sttab th:first-child { text-align: left; }
 .sttab td { padding: 3px 4px; text-align: right; border-bottom: 1px solid rgba(110, 84, 52, .35); white-space: nowrap; }
 .sttab td:first-child { text-align: left; white-space: normal; }
@@ -42,7 +42,7 @@
 .sttab .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: 0; }
 /* Verlauf */
 .stbars { display: block; width: 100%; height: 64px; background: rgba(0, 0, 0, .2); border-radius: 6px; }
-.staxis { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--pergament-2); }
+.staxis { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--pergament-2); }
 /* antippbare Zeilen (springen zum Gebäude), 44 px */
 .jrow {
   display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%; min-height: var(--tap);

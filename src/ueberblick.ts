@@ -35,11 +35,16 @@ export const LOG_MAX = 60;
 /** so viele kommen in den Spielstand */
 export const LOG_SAVE = 30;
 
-/** wichtige Meldungen (Warnung, Krieg, Piraten, Bankrott): bleiben stehen, bis man sie antippt */
+/**
+ * Wichtige Meldungen bleiben stehen, bis man sie antippt (N6): Krieg (Kriegserklärung und Vorwarnung „rüstet zum
+ * Krieg“), Piraten, Eroberung, Brand, Pest, Bankrott und Verlust. Alltägliche Hinweise mit ⚠️ (Lager voll, Ware fehlt
+ * oder reicht nur noch kurz, Bewohner ziehen weg, Kasse) blenden sich nach ein paar Sekunden aus – sie stehen
+ * weiter im Meldungsverlauf hinter der Glocke 🔔.
+ */
 export function important(text: string, kind: MsgKind): boolean {
   if (kind !== 'bad') return false;
   // (S3) Brand und Pest brauchen schnelles Handeln: bleiben stehen wie Kriegsmeldungen
-  return /^(⚠️|🚨|🏳️|🚩|🏴‍☠️|⚔️ .* erklärt dir|🔥 Feuer auf|💀 Pest auf)/u.test(text) || /Bankrott|verloren/.test(text);
+  return /^(🚨|🏳️|🚩|🏴‍☠️|⚔️ .* erklärt dir|🔥 Feuer auf|💀 Pest auf)/u.test(text) || /rüstet zum Krieg|Bankrott|verloren/.test(text);
 }
 
 // ---------- Aufgaben ----------

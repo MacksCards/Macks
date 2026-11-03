@@ -11,9 +11,13 @@
 //    ließ Waren liegen). Staut es sich, baut die KI einen weiteren Marktplatz – jeder bringt einen Karren mit.
 //  - Nahrung: Gezählt wird, was die angeschlossenen Betriebe wirklich liefern. Neue Häuser gibt es nur,
 //    solange die Nahrung auch die Bewohner satt macht, die noch einziehen werden.
-//  - Kasse: Beim Händler kauft die KI nur, was dem nächsten Bau fehlt, und nur, solange danach
-//    noch 2 500 Taler bleiben. Im Minus darf im Spiel niemand bauen (auch kein Wohnhaus); dann
-//    verkauft die KI Überschüsse (Holz, Werkzeug …), bis wieder Guthaben da ist.
+//  - Kasse: Waren für die Bewohner kauft die KI beim Händlerschiff nur mit voller Kasse, Baustoffe (Holz,
+//    Werkzeug, Steine) schon mit wenig Geld – beim Händler kosten sie 105 %, am Kontor sofort 140 % (der
+//    Sofort-Kauf von Werkzeug war der größte Kostenfresser). Im Minus darf im Spiel niemand bauen (auch kein
+//    Wohnhaus); dann verkauft die KI Überschüsse (Holz, Werkzeug …), bis wieder Guthaben da ist. Hungern
+//    Häuser, kauft sie Nahrung am Kontor nach.
+//  - Rüsten: Ab 200 Siedlern rüstet die Eroberin, die anderen bei Gefahr oder als große Stadt; fehlen Burg
+//    oder Soldaten, spart die KI dafür (mustArm).
 //  - Marktkarren: Sie holen zuerst, wovon am meisten bereitliegt – also Holz. Ist das Holzlager voll,
 //    reißt die KI überzählige Holzfäller ab, sonst bliebe die Nahrung liegen.
 //  - Rechenzeit: Die Gegner denken versetzt (nicht alle im selben Rechenschritt), prüfen zuerst
@@ -89,6 +93,8 @@ const NOTGROSCHEN = 300;
 /** Material, das das Schiff für ein neues Kontor und die ersten Betriebe mitnimmt */
 const COLONY_LOAD: [GoodId, number][] = [['holz', 30], ['werkzeug', 8], ['stein', 16]];
 const INF = 1 << 29;
+/** Baustoffe: brauchen jeder Bau und jeder Aufstieg (beim Händler schon mit wenig Geld in der Kasse) */
+const BAUSTOFFE = new Set<GoodId>(['holz', 'werkzeug', 'stein']);
 
 // ---------- Charakter ----------
 
@@ -184,7 +190,7 @@ export interface Brain extends AIState {
   /** Denkzeit schon versetzt (damit nicht alle Gegner im selben Rechenschritt denken) */
   off?: boolean;
   /** Gebäudeart (oder 'raster' / 'abriss') → Spielzeit, ab der nach einem vergeblichen Versuch (oder einem Abriss) wieder gesucht wird */
-  wait?: Partial<Record<BuildingId | 'raster' | 'abriss' | 'handel' | 'route' | 'lager', number>>;
+  wait?: Partial<Record<BuildingId | 'raster' | 'abriss' | 'handel' | 'route' | 'lager' | 'essen', number>>;
   /** Überfahrt zur gewählten Insel in Etappen: nächste Etappenziele, zuletzt der Ankerplatz am Kontor */
   route?: [number, number][];
   /** Insel gewählt, Fahrt wird im nächsten Denkschritt geplant (verteilt die Rechenarbeit) */
@@ -453,7 +459,7 @@ function toPirates(g: Game, p: Player, say: boolean) {
     s.target = undefined;
     s.patrol = undefined;
   }
-  if (say) g.ev.message(`🏴‍☠️ ${p.name} hat kein Land mehr – ${mine.length === 1 ? 'sein Schiff segelt' : 'seine Schiffe segeln'} jetzt unter Piratenflagge.`, 'bad', { x: mine[0].x, y: mine[0].y });
+  if (say) g.ev.message(`🏴‍☠️ ${p.name} hat kein Kontor mehr – ${mine.length === 1 ? 'sein Schiff segelt' : 'seine Schiffe segeln'} jetzt unter Piratenflagge.`, 'bad', { x: mine[0].x, y: mine[0].y });
 }
 
 // ---------- Tempo, Grenzen ----------
@@ -872,6 +878,7 @@ function build(g: Game, p: Player) {
   // 5. Bedarf feststellen; Aufträge beim Händlerschiff (alle 30 Sekunden): Mangelware kaufen, Überschüsse verkaufen
   assess(g, p, c);
   tradeOrders(g, p, c, true);
+  feed(g, p, c);
   restock(g, p, c);
   // 6. Weitere Insel nötig? (Phase „erweitern“ läuft dann in eigenen Denkschritten)
   maybeExpand(g, p, b, c);
@@ -894,7 +901,9 @@ function restock(g: Game, p: Player, c: City) {
     for (const k of BUILD_GOODS) if ((cost[k] ?? 0) > c.lager[k]) lack.set(k, Math.max(lack.get(k) ?? 0, (cost[k] ?? 0) * 4));
   }
   for (const [k, n] of lack) sofort(g, p.id, c.island, k, Math.min(6, n, Math.floor(c.cap * 0.5 - c.lager[k])));
-  if (p.money < reserve(p) + 500) return;
+  // Aufstiegswaren (z. B. Tabakwaren für die ersten Bürger): schon mit 1 500 Talern in der Kasse – mit der vollen
+  // Reserve kam es fast nie dazu, und die Gegner blieben bei den Siedlern stehen
+  if (p.money < 1500) return;
   const goods = new Map<GoodId, number>();
   for (const h of c.houses) {
     if (h.tier >= kiGrenzen(g).stufe || h.residents < TIERS[h.tier].maxResidents || h.happy < 0.85) continue;
@@ -903,7 +912,24 @@ function restock(g: Game, p: Player, c: City) {
     for (const r of g.upgradeGoods(h)) if (!r.ok) goods.set(r.good, Math.max(goods.get(r.good) ?? 0, Math.ceil(r.need - r.have)));
     if (goods.size >= 2) break;
   }
-  for (const [gd, n] of goods) sofort(g, p.id, c.island, gd, Math.min(15, n, Math.floor((p.money - reserve(p)) / ((PRICES[gd]?.kaufen ?? 999) * 1.4))));
+  for (const [gd, n] of goods) sofort(g, p.id, c.island, gd, Math.min(15, n, Math.floor((p.money - 1000) / ((PRICES[gd]?.kaufen ?? 999) * 1.4))));
+}
+
+/** Hunger: Hungern schon Häuser (oder ist das Lager fast leer, während die Betriebe zu wenig liefern), kauft die KI
+ *  Nahrung am Kontor (wie der Spieler, mit Aufschlag) – höchstens für 2 Minuten Fehlmenge, alle 30 Sekunden.
+ *  Sonst ziehen die Bewohner aus, und die Stadt schrumpft, bis neue Betriebe stehen. */
+function feed(g: Game, p: Player, c: City) {
+  const b = p.brain as Brain;
+  if (g.time < (b.wait?.essen ?? 0) || p.money < NOTGROSCHEN + 200) return;
+  const eat = c.pop * PER_HEAD;
+  if (eat < 1 || c.lager.nahrung >= eat * (c.hungry ? 2 : 0.5)) return;
+  (b.wait ??= {}).essen = g.time + 30;
+  const lack = Math.max(eat - c.foodNow, c.hungry > 0 ? eat * 0.3 : 0);
+  if (lack <= 0) return;
+  // höchstens ein Drittel des freien Geldes – Nahrung zu kaufen ist teuer, eigene Betriebe sind besser
+  const pr = (PRICES.nahrung?.kaufen ?? 18) * 1.4;
+  const n = Math.floor(Math.min(lack * 2, c.cap * 0.6 - c.lager.nahrung, (p.money - NOTGROSCHEN) / 3 / pr));
+  if (n > 0) sofort(g, p.id, c.island, 'nahrung', n);
 }
 
 /** Überschüsse, die die KI im Minus verkauft: Ware und die Menge, die sie für die nächsten Bauten behält */
@@ -1018,16 +1044,28 @@ function decide(g: Game, p: Player, c: City): boolean {
   c.mode = 'wachsen';
   // Steine für Aufstiege, Plantagen und große Gebäude: ein Steinbruch, sobald erlaubt
   if (!n('steinbruch') && c.pop >= 40 && hasBerg(g, c.island) && place(g, p, c, 'steinbruch')) return true;
-  // die Eroberin rüstet zuerst
-  if (persoenlichkeit(p).ruestetFrueh && military(g, p, c)) return true;
+  // Werkzeug selbst schmieden, sobald es erlaubt ist (Schmiede ab 100, Erzmine ab 120 Siedlern): Werkzeug braucht
+  // jeder Bau und jeder Aufstieg, gekauft kostet es am meisten Geld. Auf Inseln mit Erz die ganze Kette, sonst
+  // nur die Schmiede – das Eisen bringt dann der Händler (1 Eisen → 2 Werkzeug, billiger als Werkzeug zu kaufen).
+  if ((c.out.werkzeug ?? 0) < 1.5 && c.lager.werkzeug < 30) {
+    if (canMake(g, p, 'werkzeug', c.island, true) && growChain(g, p, c, 'werkzeug')) return true;
+    if (!(c.n.schmiede ?? 0) && allowed(g, p, 'schmiede') && !canMake(g, p, 'eisen', c.island, true) && place(g, p, c, 'schmiede')) return true;
+  }
+  // Rüsten: die Eroberin ab 200 Siedlern, die anderen bei Gefahr (Krieg, Vorwarnung, Ärger) oder als große Stadt.
+  // Fehlen dann Burg oder Soldaten, kommt das Militär vor allem anderen – und solange das Geld dafür nicht reicht,
+  // spart die KI (nur noch Nötiges wird gebaut), damit Burg, Waffen und Sold bezahlbar werden. Ohne dieses Sparen
+  // gaben die Gegner jeden Taler für Betriebe aus und hatten im Krieg keinen einzigen Soldaten.
+  const ruesten = mustArm(g, p, c);
+  if (ruesten && military(g, p, c)) return true;
+  // die Eroberin braucht für ihre Kriegsschiffe eine Werft – sobald die Burg steht, gehört sie zum Rüsten
+  if (ruesten && persoenlichkeit(p).ruestetFrueh && (c.n.burg ?? 0) && shipyard(g, p, c)) return true;
+  if (ruesten && p.money < reserve(p) * 0.5 + 1000) return false;
+  // Werft und zweites Schiff (die Eroberin baut dort auch ihre Kriegsschiffe)
+  if (shipyard(g, p, c)) return true;
   // Kontor ausbauen: mehr Lagerplatz und mehr Plätze für Aufträge beim Händler
   if (upgradeKontor(g, p, c)) return true;
   // Bedarfs-Planer: Dienste und Warenketten für die heutigen Stufen und den nächsten Aufstieg
   if (planNeeds(g, p, c)) return true;
-  // Werkzeug selbst schmieden (auf Inseln mit Erz), sobald die Stadt groß genug ist
-  if (g.maxPop(1, p.id) >= WERFT_SETTLERS && p.money > 4000 && (c.out.werkzeug ?? 0) < 1.5 && canMake(g, p, 'werkzeug', c.island, true) && growChain(g, p, c, 'werkzeug')) return true;
-  // Werft und zweites Schiff
-  if (shipyard(g, p, c)) return true;
   // Burg, Türme, Waffenschmieden
   if (military(g, p, c)) return true;
   return false;
@@ -1490,7 +1528,10 @@ function services(g: Game, p: Player, c: City, lim: number, grow: boolean): bool
   // die Dienste des nächsten Aufstiegs erst, wenn dessen Waren schon kommen (sonst kosten sie nur Unterhalt)
   const kol = colonySupply(g, p, p.brain as Brain);
   const has = (gd: GoodId) => (c.out[gd] ?? 0) + (kol[gd] ?? 0) >= 0.5 || c.lager[gd] >= 10;
-  const goodsReady = TIERS.map((t) => (t.next?.goods ?? []).some((group) => group.some(has)));
+  // (Siedler → Bürger: auch, wenn schon viele Siedler-Häuser voll und zufrieden warten – die Aufstiegsware kauft
+  // dann restock beim Händler, sonst kämen Wirtshaus und Schule nie)
+  const waiting = c.houses.filter((h) => h.tier === 1 && h.residents >= TIERS[1].maxResidents && h.happy >= 0.85).length;
+  const goodsReady = TIERS.map((t, i) => (t.next?.goods ?? []).some((group) => group.some(has)) || (i === 1 && waiting >= 8));
   for (const h of c.houses) {
     const cov = g.coverage.get(h.id);
     const list = h.tier < lim && grow && goodsReady[h.tier] ? [...TIERS[h.tier].services, ...(TIERS[h.tier].next?.services ?? [])] : TIERS[h.tier].services;
@@ -1498,9 +1539,15 @@ function services(g: Game, p: Player, c: City, lim: number, grow: boolean): bool
   }
   // Dienste für den nächsten Aufstieg schon ab 4 Häusern, die ihn brauchen (ein Platz deckt dann mindestens 4 ab)
   const order = [...need].filter(([, n]) => n >= 4).sort((a, b) => b[1] - a[1]);
+  // Dienste sind für den Aufstieg unverzichtbar (ohne Wirtshaus und Schule keine Bürger): sie gelten als nötig –
+  // dafür muss nicht die halbe Reserve in der Kasse liegen, ein Polster von 1 000 Talern genügt
   for (const [s] of order) {
-    if (!allowed(g, p, s) || p.money < (BUILDINGS[s].cost.taler ?? 0) + reserve(p) * 0.5) continue;
-    if (place(g, p, c, s)) return true;
+    if (!allowed(g, p, s) || p.money < (BUILDINGS[s].cost.taler ?? 0) + 1000) continue;
+    const mode = c.mode;
+    c.mode = 'noetig';
+    const ok = place(g, p, c, s);
+    c.mode = mode;
+    if (ok) return true;
   }
   return false;
 }
@@ -1538,15 +1585,31 @@ function upgradeKontor(g: Game, p: Player, c: City): boolean {
 function shipyard(g: Game, p: Player, c: City): boolean {
   if (g.maxPop(1, p.id) < WERFT_SETTLERS) return false;
   const w = c.mine.find((o) => o.type === 'werft' || o.type === 'grosswerft');
-  if (!w) return p.money > (persoenlichkeit(p).ruestetFrueh ? 2500 : 4000) && place(g, p, c, 'werft');
+  // Werft (1 100 Taler): mit etwas Polster in der Kasse – die Eroberin früher (sie baut dort Kriegsschiffe)
+  if (!w) return p.money > (persoenlichkeit(p).ruestetFrueh ? 1600 : 2000) && place(g, p, c, 'werft');
   const traders = g.ships.filter((s) => s.owner === p.id && (s.type ?? 'handel_klein').startsWith('handel')).length;
-  if (w.job || traders >= 2 || p.money < reserve(p) + 1000) return false;
+  if (w.job || traders >= 2 || p.money < 1400) return false;
   const sd = SHIPS.handel_klein;
   for (const [gd, n] of [['holz', sd.cost.holz], ['stoff', sd.cost.stoff]] as [GoodId, number][]) {
     const lack = Math.ceil(n - c.lager[gd]);
     if (lack > 0 && sofort(g, p.id, c.island, gd, lack) < lack) return false;
   }
   return g.orderShip(w, 'handel_klein').ok;
+}
+
+/** Muss der Gegner jetzt rüsten? Ab 200 Siedlern (dann darf er Burg und Soldaten haben): die Eroberin immer, die
+ *  anderen bei Gefahr (Krieg, Vorwarnung, Ärger über den Spieler) oder ab 350 Einwohnern – und nur, solange Burg
+ *  oder Soldaten fehlen (unter 60 % der Soll-Zahl). */
+function mustArm(g: Game, p: Player, c: City): boolean {
+  if (g.maxPop(1, p.id) < MIL_SETTLERS) return false;
+  const b = p.brain as Brain, per = persoenlichkeit(p);
+  const threat = atWar(g, p.id, HUMAN) || p.warnAt !== undefined || (b.aerger ?? 0) >= per.geduld * 0.5;
+  if (!per.ruestetFrueh && !threat && c.pop < 350) return false;
+  if (!g.buildings.some((o) => o.owner === p.id && BUILDINGS[o.type].trains)) return true;
+  let units = 0;
+  for (const u of g.units) if (u.owner === p.id) units++;
+  for (const o of g.buildings) if (o.owner === p.id) units += o.train?.length ?? 0;
+  return units < sollTruppen(g, p) * 0.6;
 }
 
 /** Burg und Wachtürme ab 200 Siedlern (die Eroberin gleich, die anderen bei Gefahr oder großer Stadt), dazu
@@ -1556,7 +1619,8 @@ function military(g: Game, p: Player, c: City): boolean {
   const b = p.brain as Brain, per = persoenlichkeit(p);
   const threat = atWar(g, p.id, HUMAN) || p.warnAt !== undefined || (b.aerger ?? 0) >= per.geduld * 0.5;
   if (!per.ruestetFrueh && !threat && c.pop < 350) return false;
-  if (p.money < reserve(p) + 600) return false;
+  // Burg 600 Taler, Turm 200–300: dafür muss nicht die ganze Reserve in der Kasse liegen (sonst rüstet nie jemand)
+  if (p.money < (threat ? 900 : 1300)) return false;
   const n = (t: BuildingId) => c.n[t] ?? 0;
   if (!n('burg') && !n('grosseburg') && !n('festung') && place(g, p, c, 'burg')) return true;
   if (n('holzturm') + n('wachturm') < per.tuerme + (threat ? 2 : 0) && place(g, p, c, n('steinbruch') || c.lager.stein >= 6 ? 'wachturm' : 'holzturm')) return true;
@@ -1611,6 +1675,8 @@ function tradeOrders(g: Game, p: Player, c: City, home: boolean) {
     for (const [gd, t] of Object.entries(waffenBedarf(g, p)) as [GoodId, number][]) if ((c.out[gd] ?? 0) < 0.3) want(gd, t);
   }
   if ((c.out.werkzeug ?? 0) < 0.5) want('werkzeug', home ? 15 + Math.min(25, c.houses.length / 4) : 8);
+  // Schmiede ohne eigenes Eisen (Insel ohne Erz): Eisen beim Händler
+  if ((c.n.schmiede ?? 0) && (c.out.eisen ?? 0) < 1) want('eisen', 16);
   if (c.lager.holz < 15 && (c.out.holz ?? 0) < 6) want('holz', home ? 30 : 15);
   if (!(c.n.steinbruch ?? 0)) want('stein', home ? 20 : 12);
   // nicht verkaufen: was die Bewohner brauchen, Baustoffe, Waffen und was die Kolonien heimschicken
@@ -1624,10 +1690,13 @@ function tradeOrders(g: Game, p: Player, c: City, home: boolean) {
     if (full && (!keep.has(gd) || (gd === 'holz' && c.lager.holz >= c.cap - 1))) sell.set(gd, Math.round(c.cap * 0.4));
   }
   // nur kaufen, was die Kasse hergibt: je Ware höchstens die Hälfte dessen, was über der Reserve liegt
-  // (Waren beim Händler zu kaufen ist teuer – auf Dauer müssen eigene Betriebe her)
+  // (Waren beim Händler zu kaufen ist teuer – auf Dauer müssen eigene Betriebe her). Baustoffe (Holz, Werkzeug,
+  // Steine) braucht jeder Bau und jeder Aufstieg ohnehin: die gibt es schon mit wenig Geld in der Kasse – beim
+  // Händler kosten sie nur 105 %, am Kontor sofort dagegen 140 % (das war der größte Kostenfresser der KI).
   const spare = Math.max(0, p.money - reserve(p)) * 0.5;
+  const spareBau = Math.max(0, p.money - NOTGROSCHEN - 400) * 0.5;
   for (const [gd, limit] of [...buy]) {
-    const afford = Math.floor(c.lager[gd]) + Math.floor(spare / priceRange(gd, true)[1]);
+    const afford = Math.floor(c.lager[gd]) + Math.floor((BAUSTOFFE.has(gd) || gd === 'eisen' ? spareBau : spare) / priceRange(gd, true)[1]);
     if (afford <= c.lager[gd] + 1) buy.delete(gd); else buy.set(gd, Math.min(limit, afford));
   }
   // alte Aufträge, die nicht mehr passen, weg; neue setzen (Kaufen: 105 %, damit der Händler sicher liefert;

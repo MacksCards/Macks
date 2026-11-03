@@ -38,7 +38,7 @@ button.stat:active { background: var(--holz-3); }
 @media (max-width: 720px) {
   .top { gap: 4px; }
   .stat { padding: 0 3px; }
-  .stat.island { max-width: 100px; }
+  .stat.island { max-width: 120px; }
   /* schmal: „Zeig mir“ etwas kleiner */
   .quest .qshow { font-size: 12px; padding: 0 7px; }
   .stat.island .nm { font-size: 13px; }
@@ -71,12 +71,12 @@ button.stat:active { background: var(--holz-3); }
 .top .good.scarce b { color: #ffb3a5; opacity: 1; }
 @keyframes scarce { 50% { background: rgba(200, 50, 30, .75); } }
 /* Trendpfeil aus dem Verlauf */
-.top .good .tr { position: absolute; top: 1px; right: 2px; font: 700 10px/1 var(--body); font-style: normal; }
+.top .good .tr { position: absolute; top: 1px; right: 2px; font: 700 12px/1 var(--body); font-style: normal; }
 .top .good .tr[data-t="up"] { color: var(--gut); }
 .top .good .tr[data-t="down"] { color: var(--schlecht); }
 /* „📦 Alle“: ganzes Lager */
 .top .good.all { flex: none; border: 1px solid var(--rand); background: var(--holz-2); touch-action: manipulation; }
-.top .good.all b { font-size: 11px; }
+.top .good.all b { font-size: 12px; }
 /* Sprechblase unter einer Ware */
 .goodtip {
   position: absolute; z-index: 6; max-width: calc(100vw - 12px); padding: 6px 10px; border-radius: 8px;
@@ -121,7 +121,9 @@ button.stat:active { background: var(--holz-3); }
 .quest {
   position: absolute; bottom: calc(8px + var(--in-b));
   left: calc(var(--in-l) + var(--left-w) + 18px); right: calc(var(--in-r) + var(--mm) + 18px);
-  width: -webkit-fit-content; width: fit-content; max-width: 600px; margin: 0 auto;
+  width: -webkit-fit-content; width: fit-content; margin: 0 auto;
+  /* nie breiter als der freie Platz zwischen Baumenü und Minikarte (sonst schöbe sich der Text unter die Knöpfe) */
+  max-width: min(600px, calc(100vw - var(--in-l) - var(--left-w) - var(--in-r) - var(--mm) - 36px));
   display: flex; align-items: stretch; gap: 0;
   background: rgba(43, 33, 24, .93); border: 1px solid var(--rand); border-radius: 10px; overflow: hidden;
 }
@@ -137,9 +139,18 @@ button.stat:active { background: var(--holz-3); }
 .quest b { color: var(--gold); }
 .quest .prog { color: var(--pergament-2); font-variant-numeric: tabular-nums; margin-left: 4px; }
 .quest .qshow { flex: none; min-width: var(--tap); border: 0; border-left: 1px solid var(--rand); border-radius: 0; font-size: 13px; padding: 0 10px; white-space: nowrap; }
-/* bei offenem Infofenster nur im freien Bereich links davon (und neben den Kartenknöpfen) */
-.info:not(.hidden):not(.folded) ~ .quest { right: calc(var(--in-r) + var(--info-w) + var(--nav-w) + 24px); }
-.info.slim:not(.hidden):not(.folded) ~ .quest { right: calc(var(--in-r) + 220px + var(--nav-w) + 24px); }
+/* bei offenem Infofenster nur im freien Bereich links davon (und neben den Kartenknöpfen) – auch wenn das Fenster
+   breiter wird (Handel-Reiter): die Leiste schrumpft mit, der Text wird gekürzt, nichts liegt unter + / − */
+.info:not(.hidden):not(.folded) ~ .quest {
+  right: calc(var(--in-r) + var(--info-w) + var(--nav-w) + 24px);
+  max-width: min(600px, calc(100vw - var(--in-l) - var(--left-w) - var(--in-r) - var(--info-w) - var(--nav-w) - 42px));
+}
+.info.slim:not(.hidden):not(.folded) ~ .quest {
+  right: calc(var(--in-r) + 220px + var(--nav-w) + 24px);
+  max-width: min(600px, calc(100vw - var(--in-l) - var(--left-w) - var(--in-r) - 220px - var(--nav-w) - 42px));
+}
+/* schmal neben dem Infofenster: nur 👉 (die Beschriftung „Zeig mir“ bleibt als Vorlesetext) */
+@media (max-width: 760px) { .info:not(.hidden):not(.folded) ~ .quest .qst { display: none; } }
 
 /* ---------- Kartenknöpfe und Minikarte unten rechts ---------- */
 #hud { --mm: 96px; --nav-w: 94px; }
@@ -147,11 +158,11 @@ button.stat:active { background: var(--holz-3); }
 .nav {
   position: absolute; right: calc(6px + var(--in-r)); bottom: calc(12px + var(--mm) + var(--in-b));
   width: var(--nav-w); display: grid; grid-template-columns: var(--tap) var(--tap); gap: 6px; justify-content: space-between;
-  transition: right .2s ease;
 }
 .nav .btn { pointer-events: auto; font-size: 24px; line-height: 1; background: rgba(43, 33, 24, .9); }
 .nav #mapBtn, .nav #logBtn, .nav #fleetBtn { font-size: 20px; }
-/* die Knöpfe weichen dem Infofenster aus (die Minikarte ist dann ausgeblendet) */
+/* die Knöpfe weichen dem Infofenster aus (die Minikarte ist dann ausgeblendet) – sofort, ohne Übergang: sonst
+   lagen sie beim Öffnen einen Augenblick über dem Fenster und verdeckten z. B. „Abreißen“ */
 .info:not(.hidden):not(.folded) ~ .nav { right: calc(12px + var(--in-r) + var(--info-w)); bottom: calc(6px + var(--in-b)); }
 .info.slim:not(.hidden):not(.folded) ~ .nav { right: calc(12px + var(--in-r) + 220px); }
 .compass { position: relative; }
@@ -168,7 +179,6 @@ button.stat:active { background: var(--holz-3); }
 }
 .minimap canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .info:not(.hidden):not(.folded) ~ .minimap { display: none; }
-@media (prefers-reduced-motion: reduce) { .nav { transition: none; } }
 
 /* ---------- Pause ---------- */
 .pbanner {
@@ -179,6 +189,18 @@ button.stat:active { background: var(--holz-3); }
 }
 .pbanner small { font: 600 14px var(--body); letter-spacing: 0; color: var(--pergament-2); margin-top: 2px; }
 body.paused .pbanner { display: flex; }
+/* Infofenster offen: in der Pause geht Nachsehen und Handeln weiter – das Banner wird zu einem kleinen Schild oben
+   in der Mitte des freien Bereichs und liegt unter dem Fenster (es verdeckte sonst Reiter, Händlerzeile und „Kaufen“) */
+body.info-open:not(.info-folded) .pbanner {
+  z-index: 1; top: calc(var(--top) + 6px); padding: 2px 14px 3px; border-width: 1px; font-size: 20px; letter-spacing: .05em;
+  left: calc((var(--in-l) + var(--left-w) + 100vw - var(--in-r) - var(--info-w)) / 2);
+}
+body.info-open:not(.info-folded) .pbanner small { display: none; }
+/* Baumenü offen: kein Banner über oder hinter den Karten – die Pause zeigen dann der goldene Rand der Oberleiste
+   und der Knopf ▶️ oben rechts */
+body:has(#buildPanel:not(.hidden)) .pbanner { display: none; }
+/* beim Bauen steht oben der Bauhinweis: das Schild rückt darunter */
+body.building.paused .pbanner { top: calc(var(--top) + 52px); }
 
 /* ---------- Start-Hilfen ---------- */
 /* Pfeil zur nächsten unerkundeten Insel (am Bildrand oder über der Insel) */

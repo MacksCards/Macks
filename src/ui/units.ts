@@ -12,6 +12,7 @@ import { GROUPS, formation, groupSize, groupUnits, saveGroup, setFormation } fro
 import { sound } from '../audio';
 import type { UI } from '../ui';
 import { $ } from './util';
+import { Live, esc, showLive } from './live';
 
 /** so lange (ms) drückt man einen Gruppenknopf, um die Auswahl zu speichern */
 const LONG_MS = 550;
@@ -42,13 +43,16 @@ export class UnitsPanel {
       else if (u.path.length || u.board !== undefined || u.dest) walking++;
     }
     const one = list.length === 1 ? UNITS[list[0].type] : null;
+    // Vorlage (ui/live.ts): Zustand, Lage, Zahlen und Balken werden nur ausgetauscht – Inhalt und Fußleiste
+    // (✋ Halt, 🚪 Ausmustern) bleiben dieselben Knöpfe, auch im Gefecht und auf dem Marsch (kein verlorener Tipp)
+    const L = new Live();
     // kompakt, damit alle Knöpfe auch auf kleinen iPhones (375 px hoch) ohne Wischen zu sehen sind
-    let h = `<h3>${one ? `${one.icon} ${one.name}` : `⚔️ ${list.length} Soldaten`}</h3>`;
+    let h = `<h3>${one ? `${one.icon} ${one.name}` : `⚔️ ${L.v(list.length)} Soldaten`}</h3>`;
     const pc = Math.min(100, Math.round((hp / Math.max(1, max)) * 10) * 10);
     const lage = fighting ? '⚔️ kämpft' : felling ? '🪓 fällt Bäume' : walking ? '🚶 unterwegs' : '🛡️ wartet';
-    const kinds = one ? '' : [...by].map(([t, n]) => `<span title="${UNITS[t].plural}">${UNITS[t].icon} ${n}</span>`).join('');
-    h += `<div class="ustat">${kinds}<span>❤️ ${pc} %</span><b>${lage}</b></div>`;
-    h += `<div class="bar thin"><i style="width:${pc}%;background:${pc > 60 ? '#7cc95a' : pc > 30 ? '#e8b93a' : '#e2553f'}"></i></div>`;
+    const kinds = one ? '' : [...by].map(([t, n]) => `<span title="${UNITS[t].plural}">${UNITS[t].icon} ${L.v(n)}</span>`).join('');
+    h += `<div class="ustat">${kinds}<span>❤️ ${L.v(`${pc} %`)}</span><b>${L.v(lage)}</b></div>`;
+    h += L.bar(pc / 100, pc > 60 ? '#7cc95a' : pc > 30 ? '#e8b93a' : '#e2553f').replace('class="bar"', 'class="bar thin"');
     // Auswahl erweitern: in der Nähe, alle, gleiche Art, Rahmen
     const land = this.landUnits();
     const types = new Set(list.map((u) => u.type));
@@ -56,16 +60,16 @@ export class UnitsPanel {
     const near = land.filter((u) => !list.includes(u) && Math.hypot(u.x - list[0].x, u.y - list[0].y) < 10).length;
     const btn = (id: string, icon: string, label: string, aria: string, extra = '') => `<button class="btn" id="${id}" aria-label="${aria}"${extra}><b>${icon}</b><small>${label}</small></button>`;
     let sel = '';
-    if (near && near < land.length - list.length) sel += btn('uNear', '👥', `+${near} Nähe`, `${near} Soldaten in der Nähe dazunehmen`);
-    if (land.length > list.length) sel += btn('uAll', '👥', `Alle ${land.length}`, `Alle ${land.length} Soldaten wählen`);
-    if (same > list.length && same < land.length) sel += btn('uSame', '🎯', `Art ${same}`, `Alle ${same} Soldaten gleicher Art wählen`);
+    if (near && near < land.length - list.length) sel += btn('uNear', '👥', `+${L.v(near)} Nähe`, 'Soldaten in der Nähe dazunehmen');
+    if (land.length > list.length) sel += btn('uAll', '👥', `Alle ${L.v(land.length)}`, 'Alle Soldaten wählen');
+    if (same > list.length && same < land.length) sel += btn('uSame', '🎯', `Art ${L.v(same)}`, 'Alle Soldaten gleicher Art wählen');
     sel += btn('uFrame', '⬚', 'Rahmen', 'Rahmen: zwei Ecken tippen');
     h += `<div class="ubtns u3">${sel}</div>`;
     // Gruppen 1–3 (antippen = wählen, lang drücken = speichern)
     h += `<div class="ubtns u3 ugrp">`;
     for (let i = 0; i < GROUPS; i++) {
       const n = groupSize(g, i);
-      h += `<button class="btn grp" data-grp="${i}" aria-label="Gruppe ${i + 1}${n ? `, ${n} Soldaten` : ', leer'} – lang drücken speichert"><b>${i + 1}</b><small>${n ? `${n} 🪖` : 'leer'}</small></button>`;
+      h += `<button class="btn grp" data-grp="${i}" aria-label="Gruppe ${i + 1} – lang drücken speichert"><b>${i + 1}</b><small>${L.v(n ? `${n} 🪖` : 'leer')}</small></button>`;
     }
     h += '</div>';
     // Aufstellung beim Laufen, Arzt
@@ -79,7 +83,7 @@ export class UnitsPanel {
     h += `<p class="sub">Gruppe lang drücken = jetzige Auswahl speichern. Tippe aufs Land, um hinzulaufen · auf Feinde, um anzugreifen · auf Wald, um Bäume zu fällen · auf dein Schiff, um einzusteigen.</p>`;
     // feste Fußleiste: Halt und Ausmustern
     const foot = `<button class="btn" id="uStop">✋ Halt</button><button class="btn danger" id="uDismiss">🚪 Ausmustern</button>`;
-    if (!ui.setInfo(h, foot)) return;
+    if (!showLive((a, b) => ui.setInfo(a, b), L, h, foot)) return;
     this.bindUnits(list);
   }
 
@@ -171,12 +175,14 @@ export class UnitsPanel {
 
   renderFleet(list: Ship[]) {
     const ui = this.ui;
+    // Vorlage (ui/live.ts): Zustand je Schiff, Lebenspunkte und Kanonen werden nur ausgetauscht
+    const L = new Live();
     let h = `<h3>⛵ ${list.length} Schiffe</h3>`;
     for (const s of list) {
       const sd = SHIPS[s.type ?? 'handel_klein'];
       const pc = Math.round(((s.hp ?? sd.hp) / sd.hp) * 10) * 10;
       const state = s.target !== undefined ? '⚔️' : s.patrol ? '🔁' : s.path.length ? '🚢' : '⚓';
-      h += `<div class="fship"><span><b>${state} ${s.name}</b><small>❤️ ${pc} % · 💣 ${s.guns ?? 0}</small></span><button class="btn" data-only="${s.id}" aria-label="Nur ${s.name} wählen">nur dieses</button></div>`;
+      h += `<div class="fship"><span><b>${L.v(state)} ${esc(s.name)}</b><small>❤️ ${L.v(`${pc} %`)} · 💣 ${L.v(s.guns ?? 0)}</small></span><button class="btn" data-only="${s.id}" aria-label="Nur ${esc(s.name)} wählen">nur dieses</button></div>`;
     }
     h += `<div class="ubtns"><button class="btn" id="fFrame">⬚ Rahmen<small>zwei Ecken</small></button></div>`;
     h += `<p class="sub">Tippe aufs Meer: die Schiffe fahren in einer Linie dorthin. Auf Feinde: alle mit Kanonen greifen gemeinsam an. Ein eigenes Schiff antippen nimmt es dazu oder heraus.</p>`;
@@ -186,7 +192,7 @@ export class UnitsPanel {
     if (patrolling) foot += `<button class="btn" id="fPatrolEnd">🔁 Patrouille beenden</button>`;
     else if (armed.length) foot += `<button class="btn ok" id="fPatrol">🔁 Patrouille<small>${armed.length} mit Kanonen</small></button>`;
     foot += `<button class="btn" id="fStop">✋ Halt</button>`;
-    if (!ui.setInfo(h, foot)) return;
+    if (!showLive((a, b) => ui.setInfo(a, b), L, h, foot)) return;
     const g = ui.g;
     $('#infoBody').querySelectorAll<HTMLElement>('[data-only]').forEach((b) => b.addEventListener('click', () => {
       const s = g.ships.find((x) => x.id === Number(b.dataset.only));
