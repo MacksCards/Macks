@@ -10,6 +10,9 @@ const g0 = globalThis as unknown as Record<string, unknown>;
 g0.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 import { Game, HUMAN, QUESTS, type SaveData, type Unit } from '../src/game';
 import * as ub from '../src/ueberblick';
+import { cleanName } from '../src/ui/fleet';
+import { paintWorld, paintWorldDelta } from '../src/ui/minimap';
+import { metRival } from '../src/stats';
 
 let fails = 0;
 const check = (name: string, cond: boolean, info = '') => {
@@ -129,6 +132,42 @@ const listen = (g: Game) => { g.ev = { ...g.ev, message: (t: string) => { msgs.p
   delete d2.ext!.ueberblick;
   const k = Game.fromSave(d2);
   check('alter Stand mitten in Wehrhaft: weiter in der Hauptkette, Wehrhaft offen', k.quest === iW + 1 && ub.sideList(k).find((q) => q.title === 'Wehrhaft')?.done === false, `${k.quest}`);
+}
+
+// ---------- 4. (R2-Fix2) Namen, Minikarte, Gegner-Legende ----------
+{
+  const n = cleanName('Möwe <b>Test</b> mit sehr langem Namen');
+  check('Umbenennen: Auszeichnungen wie <b> fallen ganz weg (keine Reste „b“ oder „/b“)', n === 'Möwe Test mit sehr lange' && !/[<>]|\bb\b|\/b/.test(n), n);
+  check('… gewöhnliche Namen bleiben, wie sie sind', cleanName('  Seeadler   II ') === 'Seeadler II' && cleanName('3 < 4 & "x"') === '3 4 x', `${cleanName('3 < 4 & "x"')}`);
+
+  // Minikarte: nur geänderte Felder neu malen; Gegner auf unentdeckten Inseln ändern nichts
+  const g = Game.create(4711, 3);
+  const N = g.size;
+  const img = { data: new Uint8ClampedArray(N * N * 4), width: N, height: N } as unknown as ImageData;
+  const sig = new Int32Array(N * N).fill(-2);
+  const box: number[] = [];
+  const first = paintWorldDelta(g, img, sig, box);
+  const full = { data: new Uint8ClampedArray(N * N * 4), width: N, height: N } as unknown as ImageData;
+  paintWorld(g, full);
+  check('Minikarte: erstes Bild malt jedes Feld, genau wie das ganze Weltbild', first === N * N && img.data.every((v, i) => v === full.data[i]));
+  check('… ohne Änderung bleibt das Bild, wie es ist', paintWorldDelta(g, img, sig, box) === 0);
+  // ein Gegner bekommt Land auf einer Insel, die der Spieler nicht kennt
+  const isl = g.islands.find((i) => !g.islandSeen(i.id))!;
+  let k0 = -1;
+  for (let k = 0; k < N * N && k0 < 0; k++) if (g.islandOf[k] === isl.id && !g.seen[k]) k0 = k;
+  g.own[k0] = 1;
+  check('… Besitz eines Gegners im Nebel ändert nichts', paintWorldDelta(g, img, sig, box) === 0);
+  g.seen[k0] = 1;
+  const ch = paintWorldDelta(g, img, sig, box);
+  check('… wird das Feld entdeckt, malt sie genau dieses eine Feld neu', ch === 1 && box[0] === k0 % N && box[1] === Math.floor(k0 / N));
+
+  // Gegner-Legende der Weltkarte: nur entdeckte Gegner
+  const h = Game.create(4711, 3);
+  const rivals = h.players.filter((p) => p.ai && !p.pirate && !p.trader && !p.natives);
+  check('Legende: am Anfang ist kein Gegner entdeckt', rivals.every((p) => !metRival(h, p.id)));
+  h.seen.fill(1);
+  const ship = h.ships.find((s) => s.owner === rivals[0].id);
+  check('… sieht man sein Schiff, ist er entdeckt (und bleibt es)', !!ship && metRival(h, rivals[0].id) && (h.seen.fill(0), metRival(h, rivals[0].id)));
 }
 
 console.log(fails ? `\n${fails} Prüfung(en) fehlgeschlagen` : '\nAlle Prüfungen bestanden');

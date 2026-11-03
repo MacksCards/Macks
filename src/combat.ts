@@ -1282,7 +1282,8 @@ function recruit(g: Game, p: Player, mine: Unit[], plus: number) {
   // keine Waffen im Lager: Schwerter für einen Soldaten am Kontor kaufen (Sofort-Handel wie der Spieler)
   const b = burgs[0], l = g.lagerOf(p.id, b.island);
   const need = (UNITS.infanterie.cost.schwerter ?? 3) - Math.floor(l?.schwerter ?? 0);
-  if (l && need > 0 && plus > UNITS.infanterie.upkeep && p.money > MIL_RESERVE + need * (PRICES.schwerter?.kaufen ?? 122) * 1.4 + 500) sofort(g, p.id, b.island, 'schwerter', need);
+  // (R2-Fix2) Polster 100 statt 500 Taler – sonst kam die Burg fast nie zum Ausbilden
+  if (l && need > 0 && plus > UNITS.infanterie.upkeep && p.money > MIL_RESERVE + need * (PRICES.schwerter?.kaufen ?? 122) * 1.4 + 100) sofort(g, p.id, b.island, 'schwerter', need);
 }
 
 /** Kriegsschiffe: bis zu 3 aus der eigenen Werft (im Frieden die Eroberin eines, bei Krieg oder Vorwarnung mehr);
@@ -1308,7 +1309,9 @@ function warships(g: Game, p: Player, k: Building, war: boolean) {
   // die Eroberin hält schon im Frieden ein Kriegsschiff, sobald sie eine Werft hat
   const want = war ? 3 : p.warnAt !== undefined ? 2 : per.ruestetFrueh ? 1 : 0;
   const building = g.buildings.filter((b) => b.owner === p.id && b.job && b.job.ship.startsWith('krieg')).length;
-  if (navy.length + building >= Math.min(3, want) || p.money < MIL_RESERVE + 1500) return;
+  // (R2-Fix2) Geld: der Preis des Schiffs plus ein kleines Polster (im Krieg 300, sonst 900) – vorher verlangte die
+  // KI 2 300 Taler in der Kasse, die sie fast nie hatte: es gab in keiner Welt ein Kriegsschiff
+  if (navy.length + building >= Math.min(3, want) || p.money < SHIPS.krieg_klein.cost.taler + (war || p.warnAt !== undefined ? 300 : 900)) return;
   const w = g.buildings.find((b) => b.owner === p.id && (b.type === 'werft' || b.type === 'grosswerft') && !b.job);
   if (!w) return;
   const type: ShipType = w.type === 'grosswerft' && g.reached(SHIPS.krieg_gross.unlock, p.id) ? 'krieg_gross' : 'krieg_klein';

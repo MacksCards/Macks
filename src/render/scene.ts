@@ -1006,7 +1006,9 @@ export class View {
         const s = v.sign;
         if (!s || !v.mesh.visible || this.anims.rising(id)) continue;
         const p = v.mesh.position;
-        sl.add(p.x, p.y + v.top + 0.4, p.z, `w${s.icon}${s.level}`, paintWarn(s.icon, s.level), 30);
+        // 🔥 steht über der Rauchsäule und ist kleiner – es verdeckte sonst die Flammen auf dem Dach
+        const hot = s.icon === '🔥';
+        sl.add(p.x, p.y + v.top + (hot ? 1.15 : 0.4), p.z, `w${s.icon}${s.level}`, paintWarn(s.icon, s.level), hot ? 24 : 30);
       }
     } else {
       const pins: Pin[] = [];
@@ -1041,7 +1043,7 @@ export class View {
     if (v && v.mesh.visible) {
       // steht ein Warnsymbol über dem Gebäude, schwebt der Pfeil darüber (nicht davor)
       const sign = !!v.sign && this.rig.dist < CLUSTER_DIST && !this.anims.rising(b!.id);
-      sm.add(v.mesh.position.x, v.mesh.position.y + v.top + (sign ? 0.4 : 0), v.mesh.position.z, false, sign ? 17 : 0);
+      sm.add(v.mesh.position.x, v.mesh.position.y + v.top + (sign ? (v.sign!.icon === '🔥' ? 1.15 : 0.4) : 0), v.mesh.position.z, false, sign ? 17 : 0);
       anchor(v.mesh.position.x, v.mesh.position.y + v.top, v.mesh.position.z);
     }
     const sel = this.ships.selected;
@@ -1287,7 +1289,7 @@ export class View {
       const fire = fireStrength(g, b);
       // (die Flammen sitzen knapp über dem First: Bildpunkt-Teilchen werden als Ganzes gegen die Tiefe geprüft – läge
       // ihre Mitte im Dach, verschwänden sie von oben gesehen ganz)
-      if (fire > 0) fx.burn('b' + b.id, p.x, p.y + v.top * 0.9 + 0.25, p.z, fire, dt, s * 0.3);
+      if (fire > 0) fx.burn('b' + b.id, p.x, p.y + v.top * 0.9 + 0.22, p.z, fire, dt, s * 0.3, v.top * 0.22);
       else if (frac < 0.75) fx.burn('b' + b.id, p.x, p.y + v.top * 0.9 + 0.25, p.z, frac < 0.5 ? 1 - frac * 2 : 0.1, dt, s * 0.3);
       if (fire > 0 || frac < 0.6) { charNow.add(b.id); this.char(b.id, v.mesh, true); }
     }

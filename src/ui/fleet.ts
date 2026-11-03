@@ -23,7 +23,9 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 
 /** neuen Namen bereinigen: keine Zeichen, die als HTML gelten, Leerraum zusammenfassen, Länge begrenzen */
 export function cleanName(s: string): string {
-  return s.replace(/[<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX);
+  return s
+    .replace(/<\/?[a-z][^<>]*>?/gi, ' ') // ganze Auszeichnungen wie <b> oder </b> fallen weg, nicht nur die Klammern
+    .replace(/[<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX).trim();
 }
 
 export class FleetWindow implements Part {

@@ -7,6 +7,8 @@
 import './log.css';
 import type { UI } from '../ui';
 import { addLog, important, logOf, type LogEntry } from '../ueberblick';
+import { crisisOn } from '../events';
+import { HUMAN } from '../game';
 import { Art, Ort, Part, el } from './util';
 
 export type { LogEntry };
@@ -73,10 +75,42 @@ export class LogBook implements Part {
     // neueste unten (am nächsten zur Aufgabe), ältere wandern nach oben
     box.appendChild(t);
     this.trim(box, t);
+    this.besidePanel(box);
     if (imp) return; // bleibt stehen, bis man sie antippt
     const ms = Math.min(6500, 3000 + Math.max(0, plain(e.text).length - 40) * 45);
     setTimeout(() => t.classList.add('out'), ms);
     setTimeout(() => t.remove(), ms + 450);
+  }
+
+  /** Stehende Brand- und Pestmeldungen wegräumen, wenn auf der Insel nichts mehr brennt bzw. niemand mehr krank ist
+   *  (sonst stand „🔥 Feuer auf …! Ein Haus brennt“ noch lange nach dem Löschen). Ruft die Oberleiste 4 × je Sekunde. */
+  prune() {
+    const box = document.getElementById('logToasts');
+    if (!box || !box.firstChild) return;
+    this.besidePanel(box);
+    const g = this.ui.g;
+    for (const c of Array.from(box.children) as (HTMLElement & { _e?: LogEntry })[]) {
+      const e = c._e;
+      if (!e?.at || !c.classList.contains('imp')) continue;
+      const art = /^🔥 Feuer auf/u.test(e.text) ? 'feuer' : /^💀 Pest auf/u.test(e.text) ? 'pest' : null;
+      if (!art) continue;
+      const x = Math.floor(e.at.x), y = Math.floor(e.at.y);
+      if (!g.inMap(x, y)) continue;
+      if (!crisisOn(g, HUMAN, g.islandOf[g.idx(x, y)], art)) c.remove();
+    }
+  }
+
+  /** Baumenü offen: Platz rechts daneben (bis vor die Kartenknöpfe) – reicht er (≥ 200 px), stehen die Meldungen dort */
+  private besidePanel(box: HTMLElement) {
+    const p = document.getElementById('buildPanel');
+    const nav = document.querySelector<HTMLElement>('#hud .nav');
+    if (!p || p.classList.contains('hidden')) { box.classList.remove('side'); return; }
+    const pr = p.getBoundingClientRect();
+    const right = nav && nav.offsetParent ? nav.getBoundingClientRect().left : window.innerWidth;
+    const l = pr.right + 10, w = Math.min(360, right - 10 - l);
+    box.classList.toggle('side', w >= 200);
+    box.style.setProperty('--side-l', `${Math.round(l)}px`);
+    box.style.setProperty('--side-w', `${Math.round(w)}px`);
   }
 
   /** höchstens SHOWN_MAX Einblendungen: zuerst fallen gewöhnliche weg (nicht wichtige, nicht die mit Knopf) */

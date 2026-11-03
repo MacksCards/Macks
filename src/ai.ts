@@ -273,7 +273,7 @@ export function thinkAI(g: Game, p: Player, dt: number) {
   b.t = 0;
   b.turn = (b.turn ?? 0) + 1;
   // ausgeschieden: verbliebene Schiffe segeln als Piraten weiter
-  if (p.defeated) { if (g.ships.some((s) => s.owner === p.id)) toPirates(g, p, false); return; }
+  if (p.defeated) { if (g.ships.some((s) => s.owner === p.id)) toPirates(g, p, true); return; }
   switch (b.phase) {
     case 'suchen': {
       const ship = foundingShip(g, p);
@@ -436,9 +436,12 @@ function lostKontor(g: Game, p: Player, b: Brain): boolean {
   return true;
 }
 
-/** Weder Kontor noch Material: die Schiffe werden zu Piraten, der Gegner scheidet aus */
+/** Weder Kontor noch Material: die Schiffe werden zu Piraten, der Gegner scheidet aus.
+ *  Steht aber noch ein Marktplatz, bleibt der Gegner im Spiel (der Marktplatz ist eroberbar, der Krieg geht weiter) –
+ *  dann behält er auch seine Schiffe: Seine Kriegsschiffe kämpfen weiter für ihn und segeln nicht schon vorher unter
+ *  Piratenflagge (R2-Fix2; vorher wurden sie Piraten, obwohl er gar nicht ausgeschieden war). */
 function lostAll(g: Game, p: Player) {
-  if (g.kontor(p.id)) return;
+  if (g.buildings.some((o) => o.owner === p.id && (o.type === 'kontor' || o.type === 'markt'))) return;
   toPirates(g, p, true);
   checkDefeat(g, p.id, -1);
 }
@@ -459,7 +462,7 @@ function toPirates(g: Game, p: Player, say: boolean) {
     s.target = undefined;
     s.patrol = undefined;
   }
-  if (say) g.ev.message(`🏴‍☠️ ${p.name} hat kein Kontor mehr – ${mine.length === 1 ? 'sein Schiff segelt' : 'seine Schiffe segeln'} jetzt unter Piratenflagge.`, 'bad', { x: mine[0].x, y: mine[0].y });
+  if (say) g.ev.message(`🏴‍☠️ ${p.name} hat kein Land mehr – ${mine.length === 1 ? 'sein Schiff segelt' : 'seine Schiffe segeln'} jetzt unter Piratenflagge.`, 'bad', { x: mine[0].x, y: mine[0].y });
 }
 
 // ---------- Tempo, Grenzen ----------
@@ -1029,6 +1032,14 @@ function decide(g: Game, p: Player, c: City): boolean {
     // weitere Holzfäller, solange gebaut wird (Holzbedarf) oder das Holzlager fast leer ist – große Städte brauchen mehr
     if (n('holzfaeller') < 3 + Math.floor(c.houses.length / 40) && woodWanted(g, c) && place(g, p, c, 'holzfaeller')) return true;
   }
+  // (R2-Fix2) Rüsten ist nötig, sobald es ansteht (Eroberin ab 200 Siedlern, die anderen bei Gefahr oder als große
+  // Stadt): Burg, Türme und Waffen kommen dann vor neuen Häusern und Diensten. Vorher lief das Rüsten nur mit halber
+  // Reserve in der Kasse – die hatte die KI fast nie, und im Krieg hatten die meisten Gegner keinen Soldaten.
+  // (Hungern Häuser, gehen Nahrung und deren Nachkauf vor – dann rüstet die KI erst danach.)
+  if (p.money >= 0 && c.hungry < 2 && mustArm(g, p, c)) {
+    c.mode = 'noetig';
+    if (military(g, p, c)) return true;
+  }
   // Wohnhäuser bringen Steuern und kosten nur Holz – aber nur so viele, wie satt werden (auch die, die noch
   // einziehen), bis zur Hausgrenze der Insel und zur Einwohnergrenze (Tempo des Spielers)
   const fed = c.pop < 60 || c.lager.nahrung >= Math.min(2 * c.pop * PER_HEAD, c.cap * 0.3);
@@ -1057,8 +1068,10 @@ function decide(g: Game, p: Player, c: City): boolean {
   // gaben die Gegner jeden Taler für Betriebe aus und hatten im Krieg keinen einzigen Soldaten.
   const ruesten = mustArm(g, p, c);
   if (ruesten && military(g, p, c)) return true;
-  // die Eroberin braucht für ihre Kriegsschiffe eine Werft – sobald die Burg steht, gehört sie zum Rüsten
-  if (ruesten && persoenlichkeit(p).ruestetFrueh && (c.n.burg ?? 0) && shipyard(g, p, c)) return true;
+  // die Eroberin braucht für ihre Kriegsschiffe eine Werft – sobald die Burg steht, gehört sie zum Rüsten;
+  // (R2-Fix2) im Krieg und nach einer Vorwarnung braucht jeder eine (Kriegsschiffe, Truppen übers Meer)
+  const danger = atWar(g, p.id, HUMAN) || p.warnAt !== undefined;
+  if ((danger || (ruesten && persoenlichkeit(p).ruestetFrueh && (c.n.burg ?? 0))) && shipyard(g, p, c)) return true;
   if (ruesten && p.money < reserve(p) * 0.5 + 1000) return false;
   // Werft und zweites Schiff (die Eroberin baut dort auch ihre Kriegsschiffe)
   if (shipyard(g, p, c)) return true;
@@ -1669,9 +1682,9 @@ function tradeOrders(g: Game, p: Player, c: City, home: boolean) {
   if (home && !b.sparen && p.money > reserve(p) + 2000) {
     for (const [gd, lack] of Object.entries(b.mangel ?? {}) as [GoodId, number][]) want(gd, lack * 5 + 6);
   }
-  // Waffen: die Eroberin und wer bedroht ist, kaufen schon mit der Reserve in der Kasse
+  // Waffen: die Eroberin und wer bedroht ist, kaufen schon mit 30 % der Reserve in der Kasse (R2-Fix2, vorher der ganzen)
   const armed = persoenlichkeit(p).ruestetFrueh || atWar(g, p.id, HUMAN) || p.warnAt !== undefined;
-  if (home && p.money > reserve(p) + (armed ? 0 : 2000)) {
+  if (home && p.money > (armed ? reserve(p) * 0.3 : reserve(p) + 2000)) {
     for (const [gd, t] of Object.entries(waffenBedarf(g, p)) as [GoodId, number][]) if ((c.out[gd] ?? 0) < 0.3) want(gd, t);
   }
   if ((c.out.werkzeug ?? 0) < 0.5) want('werkzeug', home ? 15 + Math.min(25, c.houses.length / 4) : 8);

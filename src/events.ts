@@ -333,6 +333,17 @@ export function fireStrength(g: Game, b: Building): number {
 /** Brennt das Gebäude gerade? */
 export function burning(g: Game, b: Building): boolean { return st(g).fires.has(b.id); }
 
+/** Brennt (art 'feuer') bzw. hat die Pest (art 'pest') noch ein Gebäude des Spielers auf der Insel?
+ *  Für die Meldungen: eine stehende Brand- oder Pestmeldung verschwindet, wenn alles vorbei ist. */
+export function crisisOn(g: Game, owner: number, island: number, art: 'feuer' | 'pest'): boolean {
+  const s = st(g);
+  for (const id of (art === 'feuer' ? s.fires.keys() : s.sick.keys())) {
+    const b = g.byId.get(id);
+    if (b && b.owner === owner && b.island === island) return true;
+  }
+  return false;
+}
+
 function burnDown(g: Game, b: Building) {
   const s = st(g);
   s.fires.delete(b.id);

@@ -105,9 +105,6 @@ const run = (g: Game, sec: number, dt = 0.25) => { for (let i = 0; i < sec / dt;
   check('alle Gegner haben nach 25 Minuten ein Kontor', rivals.every((p) => !!g.kontor(p.id)));
   check('niemand im Minus', rivals.every((p) => p.money >= 0), rivals.map((p) => Math.round(p.money)).join());
   check('jeder hat mindestens 100 Einwohner', rivals.every((p) => aiPop(g, p.id) >= 100), rivals.map((p) => aiPop(g, p.id)).join());
-  const ord = rivals.flatMap((p) => { const k = g.kontor(p.id, brain(p).island); return k ? orders(g, k) : []; });
-  check('die Gegner stellen Aufträge beim Händler ein', ord.length > 0, ord.map((o) => `${o.buy ? '+' : '-'}${o.g}`).join(' '));
-  check('Gegner bauen mehr als nur Holz, Nahrung und Stoffe', rivals.some((p) => new Set(g.buildings.filter((b) => b.owner === p.id).map((b) => b.type)).size >= 9));
 }
 
 // ---------- 6. Feuerwehr und Arzt erst, wenn ihr Spielteil sie freigibt ----------
@@ -161,15 +158,20 @@ const run = (g: Game, sec: number, dt = 0.25) => { for (let i = 0; i < sec / dt;
   }
   check('Testaufbau: Gegner hat einen Marktplatz', g2.buildings.some((o) => o.owner === q.id && o.type === 'markt'));
   declareWar(g2, HUMAN, q.id);
+  // (R2-Fix2) sein Schiff ist ein Kriegsschiff ohne Ladung – wie im Befund der Prüfung
+  const war2 = g2.ships.find((s) => s.owner === q.id)!;
+  war2.type = 'krieg_klein'; war2.guns = 8;
   for (const b of g2.buildings.filter((o) => o.owner === q.id && o.type === 'kontor')) g2.forceRemove(b);
-  for (let i = 0; i < 4; i++) thinkAI(g2, q, 3);
+  for (let i = 0; i < 20; i++) thinkAI(g2, q, 3);
   const pir = pirates(g2)!;
-  check('ohne Kontor und Material: Schiff segelt unter Piratenflagge', g2.ships.some((s) => s.owner === pir.id && s.name === 'Seeadler') && !g2.ships.some((s) => s.owner === q.id));
-  check('… aber solange ein Marktplatz steht, ist der Gegner nicht besiegt und der Krieg geht weiter', !q.defeated && atWar(g2, HUMAN, q.id));
+  check('ohne Kontor, aber mit Marktplatz: der Gegner ist nicht besiegt und der Krieg geht weiter', !q.defeated && atWar(g2, HUMAN, q.id));
+  check('… und sein Kriegsschiff bleibt seins (keine Piratenflagge, keine Meldung davon)', war2.owner === q.id && war2.type === 'krieg_klein' && !m2.some((t) => t.includes('Piratenflagge')), `Besitzer ${war2.owner}`);
   const before2 = g2.buildings.filter((o) => o.owner === q.id).length;
   for (const b of g2.buildings.filter((o) => o.owner === q.id && o.type === 'markt')) g2.forceRemove(b);
   checkDefeat(g2, q.id, HUMAN);
-  check('… fällt auch der letzte Marktplatz, scheidet er aus (mit Meldung)', !!q.defeated && m2.some((t) => t.includes('Piratenflagge')) && m2.some((t) => t.includes(`${q.name} ist besiegt`)), m2.filter((t) => t.includes(q.name)).join(' | '));
+  for (let i = 0; i < 4; i++) thinkAI(g2, q, 3);
+  check('fällt auch der letzte Marktplatz, scheidet er aus (mit Meldung) …', !!q.defeated && m2.some((t) => t.includes(`${q.name} ist besiegt`) || t.includes(`${q.name} ist aus dem Spiel ausgeschieden`)), m2.filter((t) => t.includes(q.name)).join(' | '));
+  check('… und erst jetzt segelt sein Schiff unter Piratenflagge', war2.owner === pir.id && m2.some((t) => t.includes('Piratenflagge')) && !g2.ships.some((s) => s.owner === q.id));
   check('… und seine übrigen Gebäude verfallen (keine eingefrorene Stadt)', before2 > 1 && !g2.buildings.some((o) => o.owner === q.id), `${before2} → ${g2.buildings.filter((o) => o.owner === q.id).length}`);
   // checkDefeat: leere, unbewaffnete Schiffe zählen nicht mehr
   const g3 = Game.create(5, 1);

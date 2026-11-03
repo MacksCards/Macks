@@ -367,6 +367,7 @@ export class Hud {
     if (badge.textContent !== bt) badge.textContent = bt;
     $('#logBtn').setAttribute('aria-label', unread ? `Meldungen, ${unread} neu` : 'Meldungen');
     $('#fleetBtn').classList.toggle('hidden', !ui.fleet.ready);
+    if (ui.log.ready) ui.log.prune();
     this.fadeGoods();
     this.needle();
     this.minimap.update();

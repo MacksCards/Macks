@@ -2,8 +2,8 @@
 // Zeigt das entdeckte Land (eigenes blau, Gegner in ihrer Farbe), eigene Kontore, Schiffe (eigene gelb, Feinde rot,
 // Piraten schwarz, Händler weiß), feindliche Soldaten, blinkende Kämpfe und als Viereck, was gerade im Bild ist
 // (aus den vier Bildecken). Tippen oder Ziehen setzt die Kamera.
-// Leistung: Inhalt höchstens einmal je Sekunde neu (aus einem kleinen Bild der Welt, das nur neu entsteht, wenn
-// Land entdeckt oder gebaut wurde); das Sichtfeld-Viereck liegt auf einer eigenen kleinen Ebene und folgt der Kamera
+// Leistung: Inhalt höchstens einmal je Sekunde neu (aus einem kleinen Bild der Welt, in dem nur die Felder neu
+// gemalt werden, deren Anblick sich geändert hat – entdeckt, Besitz, Wald); das Sichtfeld-Viereck liegt auf einer eigenen kleinen Ebene und folgt der Kamera
 // (höchstens 10 × je Sekunde, nur wenn sie sich bewegt).
 // Die Farben und das Zeichnen der Welt nutzt auch die große Weltkarte (ui/windows.ts).
 import { atWar } from '../combat';
@@ -24,33 +24,68 @@ export type MapLayer = 'none' | 'fisch' | 'wald';
 const rgb = (c: number): [number, number, number] => [(c >> 16) & 255, (c >> 8) & 255, c & 255];
 const css = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 
+/** Farbe eines Feldes in die Bilddaten schreiben (ohne kleine Zahlenlisten je Feld – nichts für den Speicher-Aufräumer) */
+function paintTile(g: Game, d: Uint8ClampedArray, k: number, layer: MapLayer, pc: [number, number, number][]) {
+  let r: number, gr: number, b: number;
+  const t = g.tiles[k];
+  if (!g.seen[k]) { r = FOG[0]; gr = FOG[1]; b = FOG[2]; }
+  else if (layer === 'fisch') {
+    // Fischbestand je Fanggrund: dunkel = kaum Fisch, hell türkis = viel
+    if (t === T.Wasser) { const v = g.fishCap[k] * g.fish[k]; r = 20 + v * 40; gr = 50 + v * 170; b = 90 + v * 140; }
+    else { r = 92; gr = 88; b = 80; }
+  } else if (layer === 'wald') {
+    // Wald: hellgrün = ausgewachsen, dunkel = gefällt/jung
+    if (t === T.Wald || g.trees[k] > 0.02) { const v = g.trees[k]; r = 30 + v * 40; gr = 60 + v * 150; b = 30 + v * 30; }
+    else if (t === T.Wasser) { r = 30; gr = 52; b = 72; }
+    else { r = 96; gr = 90; b = 80; }
+  } else {
+    const c = LAND[t] ?? LAND[T.Gras];
+    r = c[0]; gr = c[1]; b = c[2];
+    const o = g.own[k];
+    if (t !== T.Wasser && o >= 0) {
+      const oc = o === HUMAN ? OWN : pc[o] ?? OWN;
+      r = r * 0.35 + oc[0] * 0.65; gr = gr * 0.35 + oc[1] * 0.65; b = b * 0.35 + oc[2] * 0.65;
+    }
+  }
+  const i = k * 4;
+  d[i] = r; d[i + 1] = gr; d[i + 2] = b; d[i + 3] = 255;
+}
+
 /** Weltbild Feld für Feld (1 Bildpunkt je Feld): Land, Besitz, Nebel – auf Wunsch Ergiebigkeit von Fisch oder Wald */
 export function paintWorld(g: Game, img: ImageData, layer: MapLayer = 'none') {
   const N = g.size, d = img.data;
   const pc = g.players.map((p) => rgb(p.color));
-  for (let k = 0; k < N * N; k++) {
-    let c: [number, number, number];
-    const t = g.tiles[k];
-    if (!g.seen[k]) c = FOG;
-    else if (layer === 'fisch') {
-      // Fischbestand je Fanggrund: dunkel = kaum Fisch, hell türkis = viel
-      if (t === T.Wasser) { const v = g.fishCap[k] * g.fish[k]; c = [20 + v * 40, 50 + v * 170, 90 + v * 140]; }
-      else c = [92, 88, 80];
-    } else if (layer === 'wald') {
-      // Wald: hellgrün = ausgewachsen, dunkel = gefällt/jung
-      if (t === T.Wald || g.trees[k] > 0.02) { const v = g.trees[k]; c = [30 + v * 40, 60 + v * 150, 30 + v * 30]; }
-      else c = t === T.Wasser ? [30, 52, 72] : [96, 90, 80];
-    } else {
-      c = LAND[t] ?? LAND[T.Gras];
-      const o = g.own[k];
-      if (t !== T.Wasser && o >= 0) {
-        const oc = o === HUMAN ? OWN : pc[o] ?? OWN;
-        c = [c[0] * 0.35 + oc[0] * 0.65, c[1] * 0.35 + oc[1] * 0.65, c[2] * 0.35 + oc[2] * 0.65];
-      }
-    }
-    const i = k * 4;
-    d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+  for (let k = 0; k < N * N; k++) paintTile(g, d, k, layer, pc);
+}
+
+/** Kennung dessen, was ein Feld auf der Minikarte zeigt: -1 = Nebel, sonst Besitz und Bodenart */
+const tileSig = (g: Game, k: number) => (g.seen[k] ? (g.own[k] + 2) * 16 + g.tiles[k] : -1);
+
+/**
+ * Weltbild nachführen: nur Felder, deren Anblick sich geändert hat (Entdecktes, Besitz, gerodeter oder
+ * nachgewachsener Wald), werden neu gemalt. sig merkt sich je Feld, was zuletzt gemalt wurde.
+ * Gebäude der Gegner auf unentdeckten Inseln oder Häuser auf eigenem Land ändern nichts.
+ * Schreibt in box das Rechteck der geänderten Felder [x0, y0, x1, y1] und gibt ihre Zahl zurück (0 = unverändert).
+ */
+export function paintWorldDelta(g: Game, img: ImageData, sig: Int32Array, box: number[] = []): number {
+  const n = sig.length, N = g.size, d = img.data;
+  let pc: [number, number, number][] | null = null, changed = 0;
+  let x0 = N, y0 = N, x1 = -1, y1 = -1;
+  for (let k = 0; k < n; k++) {
+    const v = tileSig(g, k);
+    if (v === sig[k]) continue;
+    sig[k] = v;
+    pc ??= g.players.map((p) => rgb(p.color));
+    paintTile(g, d, k, 'none', pc);
+    changed++;
+    const x = k % N, y = (k - x) / N;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    y1 = y;
   }
+  box[0] = x0; box[1] = y0; box[2] = x1; box[3] = y1;
+  return changed;
 }
 
 /** Farbe eines Schiffs oder Soldaten auf der Karte: eigene gelb, Piraten schwarz, Händler weiß, Feinde im Krieg rot,
@@ -84,21 +119,6 @@ export function seenCount(g: Game): number {
   return n;
 }
 
-/** Kennzahl des sichtbaren Weltbilds: entdeckte Felder, Besitz und Bodenart auf entdecktem Land (ein Durchlauf).
- *  Bauen ohne neues Gebiet (Häuser, Betriebe) oder Gegner auf unentdeckten Inseln ändern sie nicht – dann bleibt
- *  das Weltbild der Minikarte, wie es ist. */
-export function worldKey(g: Game): string {
-  const s = g.seen, o = g.own, t = g.tiles;
-  let n = 0, h = 0;
-  for (let k = 0; k < s.length; k++) {
-    if (!s[k]) continue;
-    n++;
-    // Besitz und Bodenart (gerodeter Wald) des Feldes
-    h = (Math.imul(h, 31) + (o[k] + 2) * 16 + t[k]) | 0;
-  }
-  return `${s.length}:${n}:${h}`;
-}
-
 let discCache: { g: Game; key: number; set: Set<number> } | null = null;
 /** Inseln, von denen schon Land entdeckt ist (zwischengespeichert, solange nichts Neues entdeckt wurde) */
 export function discovered(g: Game): Set<number> {
@@ -114,9 +134,11 @@ export class Minimap {
   private wrap!: HTMLElement;
   private cv!: HTMLCanvasElement;
   private vcv!: HTMLCanvasElement;
-  /** Weltbild 1 Bildpunkt je Feld; neu nur, wenn Land entdeckt oder gebaut wurde */
+  /** Weltbild 1 Bildpunkt je Feld; nur geänderte Felder werden nachgemalt */
   private world: HTMLCanvasElement | null = null;
-  private worldKey = '';
+  /** je Feld: was zuletzt gemalt wurde (siehe paintWorldDelta) */
+  private sig: Int32Array | null = null;
+  private box: number[] = [0, 0, 0, 0];
   /** Bilddaten des Weltbilds (wiederverwendet) */
   private img: ImageData | null = null;
   /** so oft wurde das Weltbild neu gemalt (für Messungen) */
@@ -177,21 +199,21 @@ export class Minimap {
   }
 
   /** neues Spiel: Weltbild verwerfen */
-  reset() { this.world = null; this.img = null; this.worldKey = ''; this.lastDraw = -1e9; }
+  reset() { this.world = null; this.img = null; this.sig = null; this.lastDraw = -1e9; }
 
   private draw() {
     const g = this.ui.g, N = g.size;
-    // Weltbild nur neu, wenn sich Entdecktes oder der Besitz auf entdecktem Land geändert hat (nicht bei jedem Bau
-    // irgendwo); die Bilddaten werden dabei wiederverwendet statt jedes Mal neu angelegt
-    const key = worldKey(g);
-    if (!this.world || this.world.width !== N || key !== this.worldKey) {
-      this.worldKey = key;
-      const w = this.world && this.world.width === N ? this.world : Object.assign(document.createElement('canvas'), { width: N, height: N });
-      const wc = w.getContext('2d')!;
-      if (!this.img || this.img.width !== N) this.img = wc.createImageData(N, N);
-      paintWorld(g, this.img);
-      wc.putImageData(this.img, 0, 0);
-      this.world = w;
+    // Weltbild nur dort neu, wo sich Entdecktes, Besitz oder Bodenart auf entdecktem Land geändert hat (nicht bei
+    // jedem Bau irgendwo); Leinwand und Bilddaten werden wiederverwendet statt jedes Mal neu angelegt
+    if (!this.world || this.world.width !== N || !this.img || !this.sig || this.sig.length !== N * N) {
+      this.world = Object.assign(document.createElement('canvas'), { width: N, height: N });
+      this.img = this.world.getContext('2d')!.createImageData(N, N);
+      this.sig = new Int32Array(N * N).fill(-2); // -2 = noch nie gemalt
+    }
+    const bx = this.box;
+    if (paintWorldDelta(g, this.img, this.sig, bx) > 0) {
+      // nur das geänderte Rechteck auf die Leinwand übertragen
+      this.world.getContext('2d')!.putImageData(this.img, 0, 0, bx[0], bx[1], bx[2] - bx[0] + 1, bx[3] - bx[1] + 1);
       this.worldDraws++;
     }
     const W = this.size(this.cv), s = W / N;

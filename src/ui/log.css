@@ -45,8 +45,22 @@
 .ltoast .x { color: var(--pergament-2); margin-left: 2px; }
 .ltoast-good { border-left-color: var(--gut); }
 .ltoast-bad { border-left-color: var(--schlecht); }
-/* wichtig: kräftiger Rand, bleibt stehen */
-.ltoast.imp { border-color: var(--schlecht); background: rgba(70, 30, 22, .95); }
+/* wichtig: kräftiger Rand, bleibt stehen – und wird nie abgeschnitten: der Text bricht auf bis zu drei Zeilen um
+   (sonst fehlte z. B. bei einer Kriegs-Vorwarnung neben dem Infofenster gerade der Name des Gegners) */
+.ltoast.imp { border-color: var(--schlecht); background: rgba(70, 30, 22, .95); padding-top: 4px; padding-bottom: 4px; }
+/* (kein Innenabstand am Text selbst: sonst schaute unter der letzten Zeile ein Stück der nächsten hervor) */
+.ltoast.imp .tx {
+  white-space: normal; overflow-wrap: anywhere; line-height: 1.25;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+}
+/* neben offenem Infofenster ist der freie Streifen schmal (667 × 375: etwa 170 px) – dann bis zu sechs Zeilen */
+.info:not(.hidden):not(.folded) ~ .ltoasts .ltoast.imp .tx { -webkit-line-clamp: 6; line-clamp: 6; font-size: 13px; }
+/* Baumenü offen: Meldungen nie über den Baukarten. Ist rechts neben dem Menü genug Platz, stehen sie dort
+   (log.ts setzt .side und die Maße), sonst warten sie unsichtbar, bis das Menü zu ist (die Glocke zählt sie) */
+body:has(#buildPanel:not(.hidden)) #logToasts:not(.side) { visibility: hidden; }
+body:has(#buildPanel:not(.hidden)) #logToasts.side { left: var(--side-l); width: var(--side-w); }
+body:has(#buildPanel:not(.hidden)) #logToasts.side .ltoast:not(.act) { padding-top: 4px; padding-bottom: 4px; }
+body:has(#buildPanel:not(.hidden)) #logToasts.side .tx { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
 .ltoast.out { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .toast, .ltoast { transition: none; } }
 

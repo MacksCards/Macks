@@ -19,7 +19,8 @@ const LOOK: Record<K, Look> = {
   [K.Feuer]: { c0: 0xffc850, c1: 0xc8300e, s0: 0.42, s1: 0.12, a: 1, grav: 0, drag: 1, rise: 0.9, wind: 0.04 },
   [K.Funke]: { c0: 0xfff6c8, c1: 0xffa040, s0: 0.09, s1: 0.04, a: 1, grav: 5, drag: 0.5, rise: 0, wind: 0 },
   [K.Splitter]: { c0: 0x6a5038, c1: 0x4a3828, s0: 0.09, s1: 0.08, a: 1, grav: 6, drag: 0.3, rise: 0, wind: 0 },
-  [K.Flamme]: { c0: 0xffc04a, c1: 0xb02a0a, s0: 0.95, s1: 0.42, a: 1, grav: 0, drag: 2.5, rise: 1.1, wind: 0.03 },
+  // Flammen steigen kaum (sie „sitzen“ auf dem Dach, statt als Flecken in die Luft zu steigen) und leben kurz
+  [K.Flamme]: { c0: 0xffb03a, c1: 0xc0280a, s0: 1.55, s1: 0.95, a: 1, grav: 0, drag: 3, rise: 0.3, wind: 0.03 },
   [K.Qualm]: { c0: 0x2a2520, c1: 0x7d776f, s0: 0.45, s1: 1.9, a: 0.8, grav: 0, drag: 0.45, rise: 0.5, wind: 0.3 },
 };
 
@@ -36,6 +37,8 @@ class Particles {
 
   /** flame = Feuerzungen: unten breit und hell, oben spitz und rot, die Ränder züngeln (statt runder Kugeln) */
   constructor(n: number, additive: boolean, private flame = false) {
+    // Feuerzungen werden normal gemischt (nicht addiert): sonst summieren sich viele Zungen zu einem weiß-gelben
+    // Leuchtfleck, und die roten Spitzen gehen verloren. Das Leuchten kommt vom Glutschein darunter (additiv).
     this.n = n;
     this.pos = new Float32Array(n * 3); this.col = new Float32Array(n * 3);
     this.size = new Float32Array(n); this.alpha = new Float32Array(n);
@@ -48,7 +51,7 @@ class Particles {
     geo.setAttribute('palpha', new THREE.BufferAttribute(this.alpha, 1));
     const mat = new THREE.ShaderMaterial({
       transparent: true, depthWrite: false,
-      blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      blending: additive && !flame ? THREE.AdditiveBlending : THREE.NormalBlending,
       uniforms: { uScale: { value: 400 }, uTime: { value: 0 } },
       vertexShader: /* glsl */ `
         attribute vec3 pcol; attribute float psize; attribute float palpha;
@@ -73,9 +76,13 @@ class Particles {
           float body = smoothstep(1.0, 0.4, dx) * smoothstep(0.0, 0.32, y) * smoothstep(1.0, 0.74, y);
           float a = body * vA;
           if (a < 0.01) discard;
-          float core = smoothstep(0.8, 0.0, dx) * smoothstep(0.3, 0.88, y);
-          vec3 col = mix(vC, vec3(1.0, 0.94, 0.66), core * 0.8);
-          gl_FragColor = vec4(col, a);
+          // Farbe von unten nach oben: heller gelber Kern am Fuß, orange Mitte, dunkelrote Spitze
+          vec3 tip = vec3(0.7, 0.05, 0.01), mid = vec3(1.0, 0.38, 0.04), base = vec3(1.0, 0.86, 0.45);
+          vec3 col = mix(tip, mid, smoothstep(0.1, 0.5, y));
+          col = mix(col, base, smoothstep(0.55, 0.9, y) * smoothstep(0.95, 0.15, dx));
+          // die Farbe des Teilchens (wird mit dem Alter röter) tönt das Ganze
+          col *= mix(vec3(1.0), vC * 1.25, 0.45);
+          gl_FragColor = vec4(col, a * mix(0.75, 1.0, y));
           #include <colorspace_fragment>
         }` : /* glsl */ `
         varying vec3 vC; varying float vA;
@@ -324,18 +331,21 @@ export class Fx {
 
   /** Feuer und Rauch an einer Stelle (für beschädigte Gebäude und Schiffe), stark = 0..1; spread = halbe Breite
    *  der Fläche, auf der es brennt (die Flammen bleiben darauf – nichts schwebt neben dem Dach) */
-  burn(key: string, x: number, y: number, z: number, strength: number, dt: number, spread = 0.3) {
+  burn(key: string, x: number, y: number, z: number, strength: number, dt: number, spread = 0.3, drop = 0) {
     let a = (this.burnAcc.get(key) ?? Math.random()) + dt * (2 + strength * 10);
     while (a >= 1) {
       a -= 1;
       const ox = (Math.random() - 0.5) * spread * 1.4, oz = (Math.random() - 0.5) * spread * 1.4;
       if (strength > 0.2) {
-        // Feuerzungen: unten breit und hell, oben spitz und rot, flackernd; dazu ein Glutschein am Fuß
-        for (let n = 0; n < 2 + Math.round(strength * 2); n++) {
-          const fx = x + ox + (Math.random() - 0.5) * spread * 0.5, fz = z + oz + (Math.random() - 0.5) * spread * 0.5;
-          this.flames.spawn(K.Flamme, fx, y - 0.05, fz, (Math.random() - 0.5) * 0.08, 0.25 + Math.random() * 0.35, (Math.random() - 0.5) * 0.08, 0.55 + Math.random() * 0.5 * strength + 0.2);
+        // Feuerzungen: unten breit und hell, oben spitz und rot, flackernd; dazu ein Glutschein am Fuß.
+        // drop: so viel tiefer liegt das Dach am Rand der Fläche als am First – die Zungen folgen der Dachschräge
+        // (vorher standen sie am Rand in der Luft neben dem Dach)
+        for (let n = 0; n < 3 + Math.round(strength * 3); n++) {
+          const dx = ox + (Math.random() - 0.5) * spread * 0.5, dz = oz + (Math.random() - 0.5) * spread * 0.5;
+          const edge = Math.min(1, Math.max(Math.abs(dx), Math.abs(dz)) / Math.max(0.01, spread * 0.95));
+          this.flames.spawn(K.Flamme, x + dx, y - 0.05 - drop * edge, z + dz, (Math.random() - 0.5) * 0.05, 0.08 + Math.random() * 0.14, (Math.random() - 0.5) * 0.05, 0.55 + Math.random() * 0.4 * strength + 0.15);
         }
-        if (Math.random() < 0.35) this.glow.spawn(K.Feuer, x + ox, y - 0.08, z + oz, 0, 0.12, 0, 0.5);
+        if (Math.random() < 0.4) this.glow.spawn(K.Feuer, x + ox, y - 0.1 - drop * 0.5, z + oz, 0, 0.1, 0, 0.55);
         if (strength > 0.4 && Math.random() < 0.3) this.glow.spawn(K.Funke, x + ox, y + 0.25, z + oz, (Math.random() - 0.5) * 0.6, 0.9 + Math.random() * 0.9, (Math.random() - 0.5) * 0.6, 0.18);
         // dunkle, dichte Rauchsäule, die hoch aufsteigt und mit dem Wind abzieht
         if (Math.random() < 0.7) this.soft.spawn(K.Qualm, x + ox * 0.5, y + 0.45, z + oz * 0.5, (Math.random() - 0.5) * 0.15, 0.4 + Math.random() * 0.3, (Math.random() - 0.5) * 0.15, 3 + Math.random() * 1.6);

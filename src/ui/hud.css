@@ -189,6 +189,9 @@ button.stat:active { background: var(--holz-3); }
 }
 .pbanner small { font: 600 14px var(--body); letter-spacing: 0; color: var(--pergament-2); margin-top: 2px; }
 body.paused .pbanner { display: flex; }
+/* Fingertipps gehen durch das Schild zur Karte (#hud > * in style.css schaltet sie sonst für alle Kinder ein –
+   diese Regel ist mit #hud stärker) */
+#hud > .pbanner, #hud > .pbanner * { pointer-events: none; }
 /* Infofenster offen: in der Pause geht Nachsehen und Handeln weiter – das Banner wird zu einem kleinen Schild oben
    in der Mitte des freien Bereichs und liegt unter dem Fenster (es verdeckte sonst Reiter, Händlerzeile und „Kaufen“) */
 body.info-open:not(.info-folded) .pbanner {
@@ -199,8 +202,13 @@ body.info-open:not(.info-folded) .pbanner small { display: none; }
 /* Baumenü offen: kein Banner über oder hinter den Karten – die Pause zeigen dann der goldene Rand der Oberleiste
    und der Knopf ▶️ oben rechts */
 body:has(#buildPanel:not(.hidden)) .pbanner { display: none; }
-/* beim Bauen steht oben der Bauhinweis: das Schild rückt darunter */
-body.building.paused .pbanner { top: calc(var(--top) + 52px); }
+/* beim Bauen steht oben in der Mitte der Bauhinweis: statt des großen Banners nur ein kleines Schild oben rechts
+   unter der Leiste – man muss den Bauplatz und die Vorschau sehen (Regel 14) */
+body.building.paused .pbanner {
+  z-index: 1; top: calc(var(--top) + 6px); left: auto; right: calc(var(--in-r) + 8px); transform: none;
+  padding: 2px 14px 3px; border-width: 1px; font-size: 20px; letter-spacing: .05em;
+}
+body.building.paused .pbanner small { display: none; }
 
 /* ---------- Start-Hilfen ---------- */
 /* Pfeil zur nächsten unerkundeten Insel (am Bildrand oder über der Insel) */

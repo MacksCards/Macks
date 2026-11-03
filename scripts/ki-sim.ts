@@ -21,6 +21,8 @@
 //   npx esbuild scripts/ki-sim.ts --bundle --platform=node --outfile=dist/ki-sim.cjs && node --expose-gc dist/ki-sim.cjs
 // Optionen: --welten 12   --minuten 120   --wdh 3 (Wiederholungen der Startmessung)   --stufe leicht|normal|schwer
 //           --passiv (Spieler ohne Einwohner)   --schnell (4 Welten, 60 min)   --liste (jede KI einzeln)
+//           --krieg (R2-Fix2: in Minute 60 erklärt der Spieler allen Gegnern den Krieg – zeigt, wie sie dann rüsten:
+//                    Soldaten und Kriegsschiffe nach 90 und 120 min)
 // Der Zufall ist je Welt fest eingestellt: gleiche Optionen ergeben gleiche Zahlen (bis auf die Zeiten).
 // --expose-gc räumt vor jeder Welt den Speicher auf, damit Reste der vorigen Welt die Zeiten nicht verfälschen.
 // Zeiten: der kleinere Wert aus Wanduhr und Rechenzeit des Prozesses.
@@ -29,7 +31,7 @@ import { BUILDINGS, TIERS } from '../src/data';
 import { Game, HUMAN, Player } from '../src/game';
 import { denkzeit, persoenlichkeit, popGrenze, thinkAI } from '../src/ai';
 import type { Brain } from '../src/ai';
-import { tickAIMilitary } from '../src/combat';
+import { declareWar, tickAIMilitary } from '../src/combat';
 import { rng } from '../src/world';
 import type { Schwierigkeit } from '../src/game';
 
@@ -54,6 +56,7 @@ const MINUTES = arg('minuten', QUICK ? 60 : 120);
 const REPS = Math.max(1, arg('wdh', 3));
 const LIST = flag('liste');
 const PASSIV = flag('passiv');
+const KRIEG = flag('krieg');
 const STUFE = sarg('stufe', 'normal') as Schwierigkeit;
 const DT = 0.25; // wie im Spiel: Sekunden Spielzeit je Rechenschritt
 const MARKS = [20, 60, 90, 120].filter((m) => m <= MINUTES);
@@ -209,13 +212,14 @@ let maxOver = 0; // größte Überschreitung der Einwohnergrenze (Anteil)
 for (let w = 0; w < WORLDS; w++) {
   const world = newWorld(seedOf(w));
   const first = new Map<number, number>();
-  let mark = 0;
+  let mark = 0, war = false;
   while (mark < MARKS.length) {
     const t = step(world, (_p, phase, d, recMs, kind) => {
       if (phase === 'aufbau') { plan.push(Math.max(0, d - recMs)); full.push(d); }
       if (d - recMs > 4) { slow.push({ ms: d - recMs, kind, min: world.g.time / 60, welt: w }); slow.sort((a, b) => b.ms - a.ms); slow.length = Math.min(slow.length, 8); }
     });
     allMs.push(t.all); aiMs.push(t.ai);
+    if (KRIEG && !war && world.g.time >= 3600) { war = true; for (const p of world.ais) declareWar(world.g, HUMAN, p.id); }
     if (t.mil) milMs.push(t.mil);
     for (const p of world.ais) if (!first.has(p.id) && (p.warnAt !== undefined || (p.war ?? []).includes(HUMAN))) first.set(p.id, world.g.time / 60);
     if (world.g.time >= MARKS[mark] * 60 - 1e-6) {
@@ -243,7 +247,7 @@ const avg = (a: number[]) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length
 const q = (a: number[], p: number) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : 0; };
 const goals: [string, boolean][] = [];
 
-console.log(`\nComputergegner-Simulation: ${WORLDS} Welten × 3 Gegner, ${MINUTES} Spielminuten, Schwierigkeit „${STUFE}“, Spieler ${PASSIV ? 'passiv (0 Einwohner)' : 'nach der Kurve'}`);
+console.log(`\nComputergegner-Simulation: ${WORLDS} Welten × 3 Gegner, ${MINUTES} Spielminuten, Schwierigkeit „${STUFE}“, Spieler ${PASSIV ? 'passiv (0 Einwohner)' : 'nach der Kurve'}${KRIEG ? ', Krieg ab Minute 60' : ''}`);
 for (const m of MARKS) {
   const r = rows.get(m)!;
   const minus = r.filter((x) => x.geld < 0).length;
@@ -255,6 +259,7 @@ for (const m of MARKS) {
   console.log(`\nNach ${m} min (Grenze der Einwohner ${de(r[0]?.grenze ?? 0)}):`);
   console.log(`  im Minus ${minus} von ${r.length} · Geld Ø ${de(avg(r.map((x) => x.geld)))}, kleinstes ${de(Math.min(...r.map((x) => x.geld)))}`);
   console.log(`  Einwohner Ø ${de(avg(pop))} (kleinste ${Math.min(...pop)}, größte ${Math.max(...pop)}) · Häuser Ø ${de(avg(r.map((x) => x.haeuser)), 1)} – je Stufe ${tiers.map((v) => de(v, 1)).join(' / ')}`);
+  console.log(`  mit Soldaten ${r.filter((x) => x.soldaten > 0).length}/${r.length} · mit Kriegsschiff ${r.filter((x) => x.kriegsschiffe > 0).length}/${r.length} · mit Kaufleuten ${r.filter((x) => x.stufen.slice(3).some((n) => n > 0)).length}/${r.length}`);
   console.log(`  mit Bürgern ${buerger}/${r.length} · mit zweiter Insel ${two}/${r.length} · Kontore Ø ${de(avg(r.map((x) => x.kontore)), 1)} · Soldaten Ø ${de(avg(r.map((x) => x.soldaten)), 1)} · Kriegsschiffe Ø ${de(avg(r.map((x) => x.kriegsschiffe)), 1)} · Schiffe Ø ${de(avg(r.map((x) => x.schiffe)), 1)}`);
   console.log(`  Betriebe Ø ${de(avg(r.map((x) => x.betriebe)), 1)}, am Wegenetz ${de(avg(r.map((x) => x.angeschl)), 1)}, arbeiten ${de(avg(r.map((x) => x.arbeiten)), 1)} · Häuser mit Hunger ${de(hungry * 100)} % · Gebäudearten Ø ${de(avg(r.map((x) => x.arten)), 1)}`);
   if (m === 60 && !PASSIV && STUFE === 'normal') {
@@ -264,6 +269,10 @@ for (const m of MARKS) {
   if (m === 90 && !PASSIV && STUFE === 'normal') goals.push([`nach 90 min die ersten Bürger (${buerger}/${r.length}, mindestens 80 %)`, buerger >= r.length * 0.8]);
   if (m === 120 && !PASSIV && STUFE === 'normal') goals.push([`nach 120 min eine zweite Insel (${two}/${r.length}, mindestens 80 %)`, two >= r.length * 0.8]);
   if (m >= 60) goals.push([`nach ${m} min höchstens 10 % im Minus (${minus}/${r.length})`, minus <= r.length * 0.1]);
+  if (KRIEG && m > 60) {
+    const armed = r.filter((x) => x.soldaten > 0 || x.kriegsschiffe > 0).length;
+    goals.push([`im Krieg nach ${m} min gerüstet (Soldaten oder Kriegsschiff): ${armed}/${r.length}, mindestens zwei Drittel`, armed >= r.length * 2 / 3]);
+  }
 }
 console.log(`\nTempo: größte Überschreitung der Einwohnergrenze ab Minute 60: ${de(maxOver * 100)} % (Häuser füllen sich noch, wenn die Grenze erreicht ist)`);
 if (PASSIV) goals.push([`Spieler passiv: Gegner bleiben nahe der Grenze von 150 Einwohnern (höchstens + 60 %: ${de(maxOver * 100)} %)`, maxOver <= 0.6]);

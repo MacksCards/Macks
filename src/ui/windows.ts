@@ -9,6 +9,7 @@ import type { UI } from '../ui';
 import { $, el } from './util';
 import { battles, discovered, markColor, paintWorld, seenCount, type MapLayer } from './minimap';
 import { GOOD } from '../data';
+import { metRival } from '../stats';
 import { PFLANZEN, depositText, type Pflanze } from '../world';
 import { SAIL_HINT } from './ship';
 
@@ -330,6 +331,7 @@ export class Windows {
 /** Zeichenerklärung der Gegner: jeder in seiner Farbe (Land, Kontor, Schiffe im Frieden) – nie Rot oder Gelb, die
  *  heißen „Feind im Krieg“ bzw. „deine Schiffe“ */
 function rivalLegend(g: Game): string {
-  return g.players.filter((p) => p.ai && !p.defeated && !p.trader && !p.natives && !p.pirate)
+  // nur Gegner, die man schon entdeckt hat (Regel 8 – die Weltkarte verrät keine Namen und Farben vorab)
+  return g.players.filter((p) => p.ai && !p.defeated && !p.trader && !p.natives && !p.pirate && metRival(g, p.id))
     .map((p) => `<span><i style="background:#${p.color.toString(16).padStart(6, '0')}"></i>${p.name}</span>`).join('');
 }
