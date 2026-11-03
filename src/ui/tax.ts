@@ -1,13 +1,15 @@
-// Steuerregler (schlichte Fassung): je Stufe ein Satz in Prozent mit − und +, dazu ein Gesicht, das zeigt,
-// ob die Bewohner den Satz tragen. Steht im Hausfenster (eigene Stufe) und im Kontor (alle erreichten Stufen).
-// Das große Fenster für Steuern und Bilanz (Paket U2) kommt später und kann diese Bausteine weiterverwenden.
+// Steuerregler: je Stufe ein Satz in Prozent mit − und + (Schritt 5 %), dazu ein Gesicht, das zeigt, ob die
+// Bewohner den Satz tragen, und darunter die Vorschau „Einnahmen mit 5 % weniger / jetzt / mit 5 % mehr“.
+// Steht im Hausfenster (eigene Stufe), im Kontor (Reiter Bilanz) und im Statistik-Fenster (Reiter Steuern).
+// Die Zeilen sind Vorlagen für ui/live.ts: Satz, Gesicht und Vorschau werden nur ausgetauscht, nicht neu gebaut.
 import './tax.css';
 import { TIERS } from '../data';
 import { Building, Game, HUMAN, TAX_MAX } from '../game';
-import { sound } from '../audio';
+import { Live } from './live';
+import { fmt } from './util';
 
 /** Schrittweite der Knöpfe in Prozentpunkten */
-const STEP = 2;
+export const STEP = 5;
 
 /** mittlerer tragbarer Satz der Häuser einer Stufe (insel = -1: alle Inseln); null = keine Häuser */
 export function bearableOfTier(g: Game, tier: number, island = -1): number | null {
@@ -28,38 +30,96 @@ export function mood(rate: number, bear: number | null): { face: string; text: s
   return { face: '😊', text: `tragbar bis etwa ${b} %` };
 }
 
-/** eine Reglerzeile für eine Stufe; bear = tragbarer Satz (Haus oder Mittel der Stufe) */
-export function taxRowHtml(g: Game, tier: number, bear: number | null, label = TIERS[tier].name): string {
-  const rate = g.taxRate(tier);
-  const m = mood(rate, bear);
-  return `<div class="taxrow" data-taxtier="${tier}">
-    <span class="taxlbl"><b>${m.face} ${label}</b><small>${m.text}</small></span>
-    <button class="btn sq" data-taxdown="${tier}" aria-label="Steuer der ${TIERS[tier].dat} senken" ${rate <= 0 ? 'disabled' : ''}>−</button>
-    <b class="taxval">${rate} %</b>
-    <button class="btn sq" data-taxup="${tier}" aria-label="Steuer der ${TIERS[tier].dat} erhöhen" ${rate >= TAX_MAX ? 'disabled' : ''}>+</button>
-  </div>`;
+/** Abzug an Zufriedenheit durch die Steuern – wie im Spiel (Game.tickHouse): über dem tragbaren Satz
+ *  3 Punkte je Prozent, ab 5 darüber 6 Punkte; darunter bis zu 10 Punkte Zugewinn */
+function penalty(over: number): number {
+  return over > 0 ? over * 0.03 + Math.max(0, over - 5) * 0.03 : -Math.min(0.1, -over * 0.01);
 }
 
-/** Knöpfe der Reglerzeilen in root anschließen; after = danach neu zeichnen */
+/**
+ * Steuern einer Stufe je Minute (alle Inseln) bei einem anderen Satz – geschätzt: Satz × Zufriedenheit^1,3,
+ * die Zufriedenheit ändert sich um den Unterschied im Steuerabzug (wie Game.houseTax und Game.tickHouse rechnen).
+ */
+export function taxAt(g: Game, tier: number, rate: number): number {
+  const t = TIERS[tier], now = g.taxRate(tier);
+  let sum = 0;
+  for (const h of g.buildings) {
+    if (h.owner !== HUMAN || h.type !== 'haus' || h.tier !== tier) continue;
+    const bear = g.bearableTax(h);
+    // beim heutigen Satz genau die heutige Steuer (wie Game.houseTax)
+    const happy = rate === now ? h.happy : Math.max(0, Math.min(1, h.happy - (penalty(rate - bear) - penalty(now - bear))));
+    sum += h.residents * t.tax * (rate / t.taxStd) * Math.pow(happy, 1.3);
+  }
+  return sum;
+}
+
+/** Farbe einer Vorschau: rot, wenn die Bewohner den Satz nicht tragen */
+const cls = (rate: number, bear: number | null) => (bear !== null && rate > bear + 3 ? 'neg' : bear !== null && rate > bear ? 'warn' : '');
+
+/**
+ * Reglerzeile für eine Stufe (Vorlage für ui/live.ts); bear = tragbarer Satz (Haus oder Mittel der Stufe).
+ * preview = darunter die Einnahmen der ganzen Stufe bei −5 % / jetzt / +5 %
+ */
+export function taxRowHtml(L: Live, g: Game, tier: number, bear: number | null, label = TIERS[tier].name, preview = true): string {
+  const rate = g.taxRate(tier);
+  const m = mood(rate, bear);
+  const lo = Math.max(0, rate - STEP), hi = Math.min(TAX_MAX, rate + STEP);
+  let h = `<div class="taxrow" data-taxtier="${tier}">
+    <span class="taxlbl"><b>${L.v(m.face)} ${label}</b><small>${L.v(m.text)}</small></span>
+    <button class="btn sq" data-taxdown="${tier}" aria-label="Steuer der ${TIERS[tier].dat} senken" ${L.dis(rate <= 0)}>−</button>
+    <b class="taxval">${L.v(`${rate} %`)}</b>
+    <button class="btn sq" data-taxup="${tier}" aria-label="Steuer der ${TIERS[tier].dat} erhöhen" ${L.dis(rate >= TAX_MAX)}>+</button>`;
+  if (preview) {
+    h += `<small class="taxprev">Taler/Min</small>
+      <small ${L.cls(`taxp ${cls(lo, bear)}`)}>${L.v(rate > 0 ? '≈' + fmt(taxAt(g, tier, lo) + 0.5) : '–')}</small>
+      <small class="taxp now">${L.v(fmt(taxAt(g, tier, rate) + 0.5))}</small>
+      <small ${L.cls(`taxp ${cls(hi, bear)}`)}>${L.v(rate < TAX_MAX ? '≈' + fmt(taxAt(g, tier, hi) + 0.5) : '–')}</small>`;
+  }
+  return h + '</div>';
+}
+
+/** Knöpfe der Reglerzeilen in root anschließen; after = danach Zahlen auffrischen */
 export function bindTax(root: HTMLElement, g: Game, after: () => void) {
   root.querySelectorAll<HTMLElement>('[data-taxdown],[data-taxup]').forEach((bt) => bt.addEventListener('click', () => {
     const tier = Number(bt.dataset.taxdown ?? bt.dataset.taxup);
-    g.setTaxRate(tier, g.taxRate(tier) + (bt.dataset.taxup !== undefined ? STEP : -STEP));
-    sound.play('klick');
+    // auf ein Vielfaches von 5 einrasten (ältere Spielstände haben z. B. 36 %)
+    const now = g.taxRate(tier);
+    const next = bt.dataset.taxup !== undefined ? Math.floor(now / STEP) * STEP + STEP : Math.ceil(now / STEP) * STEP - STEP;
+    g.setTaxRate(tier, next);
+    // der Klick-Klang kommt schon vom Knopf selbst (ui.ts: jeder Knopf klickt hörbar)
     after();
   }));
 }
 
-/** Abschnitt „Steuern“ im Kontor: nur Stufen, die es schon gibt (Regel 8) */
-export function taxSectionHtml(g: Game, island: number): string {
-  const reached = TIERS.map((_, t) => g.buildings.some((b) => b.owner === HUMAN && b.type === 'haus' && b.tier === t));
+/** erreichte Stufen des Spielers (mindestens ein Haus) */
+export function reachedTiers(g: Game): boolean[] {
+  const r = TIERS.map(() => false);
+  for (const b of g.buildings) if (b.owner === HUMAN && b.type === 'haus') r[b.tier] = true;
+  return r;
+}
+
+/** Hinweis „Kasse leer? Steuern erhöhen“, wenn das Geld schwindet; '' = alles gut */
+export function cashHint(g: Game): string {
+  const inc = g.incomePerMinute();
+  const bal = inc.tax - inc.upkeep;
+  if (g.money < 0) return `💸 Kasse im Minus! Steuern erhöhen, Betriebe ohne Arbeit ruhen lassen oder Waren verkaufen. Über 10 000 Taler Schulden für 10 Minuten bedeuten Bankrott.`;
+  if (bal < 0) return `💸 Du gibst mehr aus, als du einnimmst (−${fmt(-bal)} je Minute). Kasse leer? Steuern erhöhen – solange die Gesichter lachen, bleiben alle.`;
+  return '';
+}
+
+/** Abschnitt „Steuern“ (Kontor und Statistik): nur Stufen, die es schon gibt (Regel 8). Der Satz gilt auf allen
+ *  Inseln – Gesicht und tragbarer Satz sind darum überall das Mittel aller Häuser der Stufe (wie im Hausfenster) */
+export function taxSectionHtml(L: Live, g: Game, intro = true): string {
+  const reached = reachedTiers(g);
   if (!reached.some(Boolean)) return '';
-  let h = `<h4>💰 Steuern</h4><p class="sub">Höhere Steuern bringen mehr Geld, machen aber unzufrieden. Fehlen Waren, tragen die Bewohner weniger.</p>`;
-  TIERS.forEach((_, t) => { if (reached[t]) h += taxRowHtml(g, t, bearableOfTier(g, t, island)); });
+  let h = intro ? `<p class="sub">Höhere Steuern bringen mehr Geld, machen aber unzufrieden. Fehlen Waren, tragen die Bewohner weniger. Unter dem Satz: Einnahmen der Stufe mit ${STEP} % weniger · jetzt · mit ${STEP} % mehr.</p>` : '';
+  TIERS.forEach((_, t) => { if (reached[t]) h += taxRowHtml(L, g, t, bearableOfTier(g, t)); });
   return h;
 }
 
-/** Steuerzeile für ein einzelnes Haus */
-export function houseTaxHtml(g: Game, h: Building): string {
-  return taxRowHtml(g, h.tier, g.bearableTax(h), `Steuer der ${TIERS[h.tier].name}`);
+/** Steuerzeile im Hausfenster: Der Satz gilt für die ganze Stufe – darum zeigen Gesicht und „tragbar etwa …“ wie
+ *  im Kontor und in der Statistik das Mittel aller Häuser dieser Stufe (vorher stand hier der Wert dieses einen
+ *  Hauses, und dieselbe Stufe hatte zur selben Zeit zwei verschiedene „tragbare“ Sätze) */
+export function houseTaxHtml(L: Live, g: Game, h: Building): string {
+  return taxRowHtml(L, g, h.tier, bearableOfTier(g, h.tier), `Steuer der ${TIERS[h.tier].name}`);
 }

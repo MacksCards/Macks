@@ -17,6 +17,15 @@
 //                danach (02.11.2026) auch der Mast: --box -0.565,-0.515,-0.157,0.7,0.445,0.485
 //                (Rohwerte im Modell, 54 Dreiecke; die Fahne hängt seit 02.11.2026 auf der Landseite,
 //                der leere Mast stand sonst als dunkle Stange neben ankernden Schiffen; "fahne" aus manifest.json entfernt)
+//                danach (02.11.2026, Paket KL) schräge Leitern, Stangen, Gerüst und Leinen auf der Landseite (hinten, −z),
+//                die aus der Nähe als dünne dunkle Splitter links und vorne aus dem Gebäude ragten – fünf Schritte
+//                nacheinander, jeweils Ausgabe des vorigen als Eingabe (zusammen 2635 Dreiecke; Haus, Dach, Steg und
+//                Geländer bleiben, die Fahne auf der Landseite setzt das Spiel weiter aufs Dach):
+//                  --box -0.879,0.922,-0.452,0.332,-1.069,-0.719   (alles hinter der Dachkante über dem Geländer)
+//                  --box -0.879,-0.296,-0.452,0.332,-1.069,-0.629  (Leitern hinter dem Anbau)
+//                  --box 0.286,0.922,-0.452,-0.039,-1.069,-0.645   (Gerüst an der Rückwand, unter der Traufe)
+//                  --box -0.296,0.286,-0.452,-0.039,-1.069,-0.645  (Leiterfuß in der Mitte)
+//                  --box 0.286,0.922,-0.378,-0.250,-1.069,-0.617   (Splitter-Reste des Gerüsts an der Wand)
 //   festung.glb: --ymax 0.25   (alle rot-blauen Fahnen samt Masten auf den Türmen entfernt)
 //   schule.glb, weingut.glb: --flecken
 //   burg.glb:    --rotbox -0.30,-0.11,-0.22,0.05,0.62,0.74, danach --box -0.29,-0.12,-0.21,0.04,0.668,0.74 (rotes Wandbanner)

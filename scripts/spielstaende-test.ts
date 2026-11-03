@@ -54,6 +54,19 @@ async function main() {
   const back = Game.fromSave(JSON.parse(JSON.stringify(gs.serialize())));
   check('Einstellungen im Spielstand', back.opts.schwierigkeit === 'schwer' && back.opts.piraten === false && back.opts.ereignisse === 'aus' && back.opts.startgeld === 10000);
   check('Spielstand-Version unverändert (Hülle neu, Daten gleich)', gs.serialize().v === SAVE_VERSION);
+  // Stand der Version davor (5, vor Ereignissen/Meldungsverlauf/Bedienung) lädt weiter
+  {
+    const old = JSON.parse(JSON.stringify(gs.serialize()));
+    old.v = SAVE_VERSION - 1;
+    for (const k of ['events', 'ueberblick', 'bedienung']) delete old.ext?.[k];
+    let ok = true, why = '';
+    try {
+      const g5 = Game.fromSave(old);
+      g5.tick(0.25);
+      ok = g5.money === gs.money && g5.buildings.length === gs.buildings.length && g5.serialize().v === SAVE_VERSION;
+    } catch (e) { ok = false; why = String(e); }
+    check(`Spielstand Version ${SAVE_VERSION - 1} lädt`, ok, why);
+  }
 
   // ---------- Spielstände im Arbeitsspeicher ----------
   const mem = new MemoryBackend();

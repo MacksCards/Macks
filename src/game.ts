@@ -11,6 +11,7 @@ import { SYSTEMS } from './systems';
 import { Island, PFLANZEN, T, WORLD_SIZE, WORLD_SIZES, generateWorld, rng } from './world';
 import { SCHWIERIGKEIT, stufe } from './schwierigkeit';
 import { book } from './stats';
+import { KEIN_FESTES_LAND, landVorbereiten, trockeneFlaeche } from './landhoehe'; // (KL)
 
 /** zuWeit = kein Marktkarren kommt hin (zu weit von Kontor/Marktplatz); aus = vom Spieler ruhen gelassen */
 export type Status = 'ok' | 'keinWeg' | 'rohstoff' | 'lagerVoll' | 'keinWald' | 'keinWasser' | 'wohnen' | 'erschoepft' | 'zuWeit' | 'aus';
@@ -138,6 +139,9 @@ export interface Ship {
   safeUntil?: number;
   /** angetipptes Ziel der laufenden Fahrt (für die Neuplanung, wenn im Nebel Land auftaucht) */
   goal?: [number, number];
+  /** weiße Flagge gehisst (combat.ts setWhiteFlag) – steht im Spielstand, damit ein Kriegsschiff mit Flagge nach dem
+   *  Laden nicht plötzlich als Reizung zählt */
+  white?: boolean;
   /** Patrouille zwischen zwei Punkten (x1, y1, x2, y2), siehe combat.ts patrol() */
   patrol?: [number, number, number, number];
 }
@@ -219,7 +223,7 @@ export interface SaveData {
   /** 3 = alt (Welt kam aus der Startzahl), 4 = Welt steht vollständig im Spielstand,
    *  5 = Wirtschaft wie 1602 (Steuersätze, Betriebe ruhen, Baumaterial-Sperre, Schulden – alles neue Felder sind
    *  freiwillig, ältere Stände laufen mit den Standardwerten weiter) */
-  v: 3 | 4 | 5;
+  v: 3 | 4 | 5 | 6;
   seed: number;
   tiles: string;
   roads: string;
@@ -284,7 +288,8 @@ const LAGER: BuildingId[] = ['kontor', 'markt'];
 const SAVE_KEY = 'neue-ufer-save-v4';
 /** hierhin wird ein unlesbarer Stand gesichert, bevor ein neues Spiel ihn überschreiben kann */
 const BROKEN_KEY = 'neue-ufer-save-sicherung';
-export const SAVE_VERSION = 5;
+/** 6: Ereignisse (S3), Meldungsverlauf und Nebenaufgaben (U3), Merkzettel der Bedienung (U4), Gegner-Zustand (KI2) */
+export const SAVE_VERSION = 6;
 /** So lange (echte Sekunden) lässt sich ein Bau mit voller Erstattung zurücknehmen */
 export const UNDO_SECONDS = 10;
 export const HUMAN = 0;
@@ -304,8 +309,9 @@ export const DOCK_RANGE = 5; // so nah muss ein Schiff am Kontor/Bauplatz sein
 
 /** Computergegner (eigene Namen und Farben) */
 export const OPPONENTS = [
-  { name: 'Hendrik van Dalen', color: 0xc8463b },
-  { name: 'Morwenna Grey', color: 0xe0b23a },
+  // Farben der Gegner: nie Rot (heißt auf den Karten „Feind im Krieg“) und nie Gelb (heißt „deine Schiffe“)
+  { name: 'Hendrik van Dalen', color: 0x8a5cc8 },
+  { name: 'Morwenna Grey', color: 0xd0609e },
   { name: 'Baron von Kessel', color: 0x4f9a4a },
 ];
 
@@ -427,6 +433,9 @@ export class Game {
   /** frisch Gebautes für undoBuild: Bauzeit (echte Sekunden), bezahlte Kosten, gerodete Waldfelder */
   private recent = new Map<number, { t: number; paid: Cost; cleared: number[]; ship?: number }>();
   private recentRoads = new Map<number, { t: number; owner: number; prev: number; paid: Cost; cleared: boolean }>();
+  /** zuletzt ausgezahlte Aufgaben-Belohnung (echte Sekunden): Nimmt „Rückgängig“ den Bau zurück, der die Aufgabe
+   *  erfüllt hat, gilt die Aufgabe wieder als offen und die Belohnung geht zurück */
+  private questPaid: { i: number; reward: number; t: number } | null = null;
   /** Verbrauch der Bewohner je Ware und Minute, je Besitzer und Insel (einmal je Spielsekunde neu gezählt) */
   private useCache = new Map<string, Partial<Record<GoodId, number>>>();
   private useT = -1;
@@ -551,6 +560,7 @@ export class Game {
     g.recompute();
     g.checkUnlocks(true);
     for (const s of SYSTEMS) s.load?.(g, undefined);
+    landVorbereiten(g); // (KL) Küstenrechnung beim Erzeugen statt im ersten Denkschritt der Gegner
     return g;
   }
 
@@ -593,6 +603,8 @@ export class Game {
     g.opts = { ...DEFAULT_OPTIONS, startgeld: stufe(g.optsSet.schwierigkeit).startgeld, ...g.optsSet, weltgroesse: g.size };
     g.rngState = (d.rng ?? ((d.seed ^ Math.floor(d.time * 1000)) >>> 0)) || 1;
     g.players = d.players;
+    // ältere Spielstände: Gegner in Rot bzw. Gelb bekommen ihre neuen Farben (Rot und Gelb sind auf den Karten vergeben)
+    for (const p of g.players) if (p.color === 0xc8463b) p.color = 0x8a5cc8; else if (p.color === 0xe0b23a) p.color = 0xd0609e;
     g.ships = d.ships;
     g.lager = d.lager;
     for (const k of Object.keys(g.lager)) g.lager[k] = { ...zeroGoods(), ...g.lager[k] };
@@ -623,6 +635,7 @@ export class Game {
     }
     g.checkUnlocks(true);
     for (const s of SYSTEMS) s.load?.(g, d.ext?.[s.id]);
+    landVorbereiten(g); // (KL) wie in create
     return g;
   }
 
@@ -669,7 +682,7 @@ export class Game {
     if (!raw) return null;
     try {
       const d = JSON.parse(raw) as SaveData;
-      if (!d || typeof d !== 'object' || (d.v !== 3 && d.v !== 4 && d.v !== 5)) throw new Error(`unbekannte Version ${String((d as { v?: unknown } | null)?.v)}`);
+      if (!d || typeof d !== 'object' || (d.v !== 3 && d.v !== 4 && d.v !== 5 && d.v !== 6)) throw new Error(`unbekannte Version ${String((d as { v?: unknown } | null)?.v)}`);
       return Game.fromSave(d);
     } catch (e) {
       try {
@@ -1440,6 +1453,8 @@ export class Game {
       let w = 0;
       for (const [rx, ry] of this.ring({ type, x, y })) if (this.tile(rx, ry) === T.Wasser) w++;
       if (w < 2) return { ok: false, reason: 'Das Kontor muss direkt an der Küste stehen' };
+      // (KL) jedes Feld muss im Bild trockenes Land sein (siehe src/landhoehe.ts)
+      if (!trockeneFlaeche(this, x, y, s)) return { ok: false, reason: KEIN_FESTES_LAND };
       if (ignoreShip) return { ok: true };
       const ship = this.shipNear(owner, x + s / 2, y + s / 2);
       if (!ship) return { ok: false, reason: 'Ein Schiff muss in der Nähe liegen' };
@@ -1468,6 +1483,9 @@ export class Game {
       else if (!this.depositLeft(il, d.deposit)) return { ok: false, reason: d.deposit === 'erz' && il.erzDeep > 0 ? 'Das Erzvorkommen ist oben erschöpft' : 'Das Erzvorkommen ist erschöpft' };
     }
     if (d.pflanze && this.fertility(type, x, y) <= 0) return { ok: false, reason: `Diese Insel ist nicht fruchtbar für ${PFLANZEN[d.pflanze].name}` };
+    // (KL) keine Hütte halb im Wasser: jedes Feld der Grundfläche muss im Bild trockenes Land sein
+    // (winzige Sandbänke und Landzungen liegen im Bild unter Wasser; siehe src/landhoehe.ts)
+    if (!trockeneFlaeche(this, x, y, s)) return { ok: false, reason: KEIN_FESTES_LAND };
     return this.canAfford(d.cost, owner, isl);
   }
 
@@ -1745,6 +1763,15 @@ export class Game {
     this.ev.removed(b);
   }
 
+  /** Mehrere Gebäude auf einmal entfernen (ohne Rückerstattung), nur einmal neu rechnen – z. B. die verlassene
+   *  Stadt eines besiegten Gegners */
+  forceRemoveMany(list: Building[]) {
+    if (!list.length) return;
+    for (const b of list) this.takeDown(b, false);
+    this.recompute();
+    for (const b of list) this.ev.removed(b);
+  }
+
   removeBuilding(b: Building) {
     if (b.type === 'kontor') return;
     this.takeDown(b, true);
@@ -1839,6 +1866,7 @@ export class Game {
       return this.byId.get(b.id) === b && b.owner === owner && !!r && now - r.t <= UNDO_SECONDS;
     });
     if (!todo.length) return { ...res, reason: 'Zu spät – zurücknehmen geht nur kurz nach dem Bau' };
+    const builtAt = Math.min(...todo.map((b) => this.recent.get(b.id)!.t));
     // ein Kontor erst prüfen, bevor irgendetwas geändert wird
     for (const b of todo) if (b.type === 'kontor') {
       const why = this.undoKontor(b, this.recent.get(b.id)!.ship, res.refund, true);
@@ -1855,7 +1883,20 @@ export class Game {
     this.recompute();
     for (const b of todo) this.ev.removed(b);
     if (trees) this.ev.trees();
+    this.undoQuest(owner, builtAt);
     return { ...res, ok: true };
+  }
+
+  /** Rückgängig nach einer Aufgabe: Hat erst dieser Bau die Aufgabe erfüllt (Belohnung nach dem Bau gezahlt) und ist
+   *  sie ohne ihn nicht mehr erfüllt, ist sie wieder offen – und die Belohnung geht zurück (keine Belohnung ohne Bau) */
+  private undoQuest(owner: number, builtAt: number) {
+    const q = this.questPaid;
+    if (owner !== HUMAN || !q || q.t < builtAt - 0.001 || this.quest !== q.i + 1) return;
+    if (QUESTS[q.i]?.done(this)) return;
+    this.money -= q.reward;
+    this.quest = q.i;
+    this.questPaid = null;
+    this.ev.message(`Aufgabe wieder offen: ${QUESTS[q.i].title} (−${q.reward} Taler Belohnung)`, 'info');
   }
 
   /** volle Kosten zurück: Taler an den Besitzer, Baumaterial ins Inselllager */
@@ -2377,6 +2418,7 @@ export class Game {
     const reward = Math.round(q.reward * stufe(this.opts.schwierigkeit).belohnung);
     this.money += reward;
     this.ev.message(`Aufgabe erledigt: ${q.title} (+${reward} Taler)`, 'good');
+    this.questPaid = { i: this.quest, reward, t: wallClock() };
     this.quest++;
   }
 }

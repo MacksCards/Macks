@@ -14,6 +14,10 @@ import { system as stats } from './stats';
 import { system as trade } from './trade';
 import { system as score } from './score';
 import { system as natives } from './natives';
+// (U3) Meldungsverlauf (letzte 30 im Spielstand) und Nebenaufgaben
+import { system as ueberblick } from './ueberblick';
+// (U4) Merkzettel der Bedienung: schon gebaute Arten („NEU“), Soldatengruppen, Aufstellung
+import { system as bedienung } from './bedienung';
 
 export interface GameSystem {
   /** eindeutiger Name, zugleich Schlüssel im Spielstand */
@@ -29,4 +33,4 @@ export interface GameSystem {
 }
 
 /** alle Spielteile in fester Reihenfolge */
-export const SYSTEMS: readonly GameSystem[] = [events, stats, trade, score, natives];
+export const SYSTEMS: readonly GameSystem[] = [events, stats, trade, score, natives, ueberblick /* (U3) */, bedienung /* (U4) */];

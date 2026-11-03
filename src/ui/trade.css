@@ -1,26 +1,167 @@
-/* Handel im Kontor und Routen im Schiffsfenster (einfache Bedienung aus S2; die große Oberfläche kommt mit U5).
-   Beide erscheinen im Infofenster (.info), die Reiter-Leiste gestaltet info.css. Knöpfe mindestens 44 px. */
-.info .tsel {
-  width: 100%; min-height: var(--tap); margin: 4px 0; padding: 0 8px; font: inherit; font-size: 14px;
-  color: var(--pergament); background: rgba(0, 0, 0, .3); border: 1px solid var(--rand); border-radius: 8px;
+/* Handel bedienen (Paket U5): Reiter „Handel“ im Kontor, Block „Handelsroute“ im Schiffsfenster, Routen-Editor.
+   Kontor und Schiff liegen im schmalen Infofenster (.info, 220–270 px): alles einspaltig, Knöpfe mindestens 44 px. */
+
+/* Solange der Reiter „Handel“ offen ist, wird das Infofenster breiter (längere Regler, ganze Warennamen).
+   Alles, was sich nach --info-w richtet (Kartenknöpfe, Aufgabe), rückt mit. */
+body:has(#info:not(.folded):not(.hidden) .tstat) { --info-w: clamp(264px, 36vw, 320px); }
+
+/* ---------- Händler-Zustand oben im Reiter ---------- */
+.info .tstat {
+  margin: 0 0 6px; padding: 6px 8px; border-radius: 8px; font-size: 13px; line-height: 1.25;
+  background: rgba(0, 0, 0, .22); border: 1px solid var(--rand); color: var(--pergament);
 }
-.info .tsel option { color: #222; }
-.info .tpair { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 2px 0 4px; }
-.info .tpair .btn { min-height: var(--tap); padding: 2px 4px; font-size: 13px; }
-/* ein Auftrag: Kopf mit Löschen, Zeilen, vier Stufenknöpfe */
-.info .tord, .info .tstop { border: 1px solid var(--rand); border-radius: 8px; padding: 4px 3px 5px; margin: 6px 0; background: rgba(0, 0, 0, .15); }
-.info .tord-h { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 14px; }
-.info .tord-h > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.info .tord-h .tsel { flex: 1; min-width: 0; margin: 0; }
-.info .tord-h small { color: var(--pergament-2); }
+.info .tstat.hafen { background: rgba(70, 120, 60, .35); border-color: #6f9a43; font-weight: 700; }
+.info .tstat.block { background: rgba(140, 50, 35, .4); border-color: #b0563f; font-weight: 700; }
+
+/* ---------- Kopf je Seite: Kaufen / Verkaufen mit belegten Plätzen ---------- */
+.info .tside { display: flex; align-items: center; gap: 6px; margin: 10px 0 2px; flex-wrap: wrap; }
+.info .tside h4 { margin: 0; }
+.info .tside small { color: var(--pergament-2); font-size: 12px; margin-left: auto; }
+.info .tpips { display: flex; gap: 3px; }
+.info .tpips i { width: 8px; height: 8px; border-radius: 50%; border: 1px solid var(--rand); background: rgba(0, 0, 0, .3); }
+.info .tpips i.on { background: var(--gold); border-color: var(--gold); }
+
+/* ---------- ein Auftrag: Kopfzeile (antippen = auf/zu), aufgeklappt mit zwei Reglern ---------- */
+.info .tord { border: 1px solid var(--rand); border-radius: 8px; margin: 5px 0; background: rgba(0, 0, 0, .15); }
+.info .tord.open { border-color: var(--gold); background: rgba(0, 0, 0, .25); }
+.info .tord-sum {
+  width: 100%; min-width: 0; min-height: var(--tap); display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center;
+  column-gap: 4px; padding: 3px 6px; text-align: left; font: inherit; color: var(--pergament);
+  background: transparent; border: 0; border-radius: 8px; cursor: pointer; touch-action: manipulation;
+}
+.info .tord-sum:active { background: var(--holz-3); }
+.info .tord-sum .tn { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info .tord-sum .th { grid-column: 2; grid-row: 1; font-size: 12px; color: var(--pergament-2); white-space: nowrap; }
+.info .tord-sum .tv { grid-column: 1 / span 2; grid-row: 2; font-size: 12px; color: var(--pergament-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info .tord-sum .tok { grid-column: 3; grid-row: 1 / span 2; font-style: normal; font-size: 18px; font-weight: 800; width: 22px; text-align: center; }
+.info .tok.pos { color: var(--gut); }
+.info .tok.neg { color: var(--schlecht); }
+.info .tok.idle { color: var(--pergament-2); font-size: 15px; }
 .info .btn.tx { flex: none; width: var(--tap); min-height: var(--tap); padding: 0; font-size: 15px; }
-.info .tsteps { display: grid; grid-template-columns: repeat(4, minmax(var(--tap), 1fr)); gap: 3px; margin-top: 4px; }
-.info .tsteps .btn { min-height: var(--tap); padding: 0; font-size: 13px; font-variant-numeric: tabular-nums; }
-/* Ware einer Route: Text, weniger, mehr */
-.info .trow { display: grid; grid-template-columns: minmax(0, 1fr) var(--tap) var(--tap); gap: 4px; align-items: center; margin: 3px 0; font-size: 13px; }
-.info .trow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.info .trow .btn { min-height: var(--tap); padding: 0; font-size: 16px; }
+.info .tord-b { padding: 0 6px 6px; }
+.info .btn.tdel { width: 100%; margin-top: 6px; font-size: 13px; color: #ffcbbd; }
+.info .tl { margin: 6px 0 0; font-size: 13px; color: var(--pergament); }
+.info .thint { margin-top: 6px; line-height: 1.25; }
+.info .thint.pos { color: #b9e39b; }
+.info .thint.neg { color: #ffb3a3; }
+
+/* ---------- Regler: − Balken + ; der Balken ist 44 px hoch (ganze Fläche greifbar), der Griff 32 px ---------- */
+.tsl { display: grid; grid-template-columns: var(--tap) minmax(0, 1fr) var(--tap); gap: 4px; align-items: center; margin-top: 2px; }
+.tsl .tsl-b { min-height: var(--tap); padding: 0; font-size: 22px; line-height: 1; }
+.tsl-track {
+  --f: 0; --m: -1;
+  position: relative; height: var(--tap); border-radius: 8px; cursor: pointer;
+  touch-action: pan-y; /* senkrecht wischen blättert im Fenster, seitlich ziehen stellt ein */
+}
+.tsl-track:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.tsl-bar {
+  position: absolute; left: 16px; right: 16px; top: 50%; height: 10px; margin-top: -5px; border-radius: 5px;
+  background: linear-gradient(90deg, var(--gold) 0, var(--gold) calc(var(--f) * 100%), rgba(0, 0, 0, .45) calc(var(--f) * 100%));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, .5);
+}
+/* Grenze des Händlers auf dem Preis-Regler */
+.tsl-mark {
+  position: absolute; top: 8px; bottom: 8px; width: 3px; margin-left: -1.5px; border-radius: 2px; background: #fff;
+  left: calc(16px + var(--m) * (100% - 32px)); box-shadow: 0 0 0 1px rgba(0, 0, 0, .6); pointer-events: none;
+}
+.tsl-track.nomark .tsl-mark, [data-sl^="lim:"] .tsl-mark { display: none; }
+.tsl-knob {
+  position: absolute; top: 50%; width: 32px; height: 32px; margin: -16px 0 0 -16px; border-radius: 50%;
+  left: calc(16px + var(--f) * (100% - 32px));
+  background: radial-gradient(circle at 40% 35%, #fff4d6, #e3b448 55%, #a87b22);
+  border: 2px solid #2b2118; box-shadow: 0 2px 4px rgba(0, 0, 0, .55); pointer-events: none;
+}
+.tsl-track.drag .tsl-knob { transform: scale(1.12); }
+
+/* ---------- „＋ Kaufauftrag“ und Warenwahl ---------- */
+.info .btn.tadd { width: 100%; margin: 4px 0; font-size: 14px; border-style: dashed; }
+.info .tpick { border: 1px dashed var(--gold); border-radius: 8px; padding: 4px; margin: 4px 0; }
+.info .tpick-g, .tr-goods { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.info .tpick-g .btn, .tr-goods .btn {
+  min-height: var(--tap); padding: 2px 4px; display: flex; align-items: center; gap: 4px; font-size: 13px; text-align: left;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.info .tpick-g .btn span, .tr-goods .btn span { font-size: 18px; flex: none; }
 .info .btn.tw { width: 100%; margin-top: 6px; min-height: var(--tap); }
 .info .btn.tw small { display: block; font-size: 12px; font-weight: 400; color: var(--pergament-2); }
-.info .btn[aria-disabled="true"] { opacity: .6; }
+.info .btn[aria-disabled="true"] { opacity: .55; }
+
+/* ---------- Notverkauf / Sofortkauf (klein, eingeklappt) ---------- */
+.info .fold-h.tnot { margin-top: 14px; font-size: 13px; color: var(--pergament-2); }
+.info .tnot-b .trade span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info .trade .btn { min-width: 54px; }
+
+/* ---------- Schiffsfenster: Block „Handelsroute“ ---------- */
+.info .tpair { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 4px 0; }
+.info .tpair .btn { min-height: var(--tap); padding: 2px 4px; font-size: 13px; }
+.info .rstate { margin: 4px 0; }
+.info .rstate.pos { color: var(--gut); }
+.info .rstate.neg { color: var(--schlecht); font-weight: 700; }
+.info .rstate.warn { color: var(--warn); }
+.info .rstops { margin: 4px 0; padding: 0 0 0 22px; font-size: 13px; }
+.info .rstops li { padding: 1px 0; }
+.info .rstops li span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.info .rstops li small { display: block; color: var(--pergament-2); font-size: 12px; }
 .info .tscrap { margin-top: 10px; }
+
+/* ---------- Routen-Editor: Fenster in der Bildmitte, links Karte + Kontore, rechts die Halte ---------- */
+.modal .box.troute { width: min(760px, 100%); height: 100%; }
+.box.troute .dhead { padding: 6px 16px 4px; }
+.box.troute h2 { font-size: 21px; }
+.box.troute .dbody {
+  display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 10px; overflow: hidden; padding: 2px 10px 6px;
+}
+.tr-left, .tr-stops { min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+.tr-left { display: flex; flex-direction: column; gap: 4px; }
+.tr-left canvas {
+  display: block; width: 100%; aspect-ratio: 1; flex: none; border-radius: 8px; border: 1px solid var(--rand);
+  background: #26628c; touch-action: manipulation;
+}
+.box.troute .tr-tip { font-size: 12px; color: var(--pergament-2); text-align: center; }
+.tr-chips { display: flex; flex-direction: column; gap: 4px; }
+.tr-chip { min-height: var(--tap); padding: 2px 8px; font-size: 14px; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-chip small { display: block; font-size: 12px; color: var(--pergament-2); }
+.tr-chip.in { border-color: var(--gold); }
+.tr-chip.in small { color: var(--gold); }
+.tr-stop { border: 1px solid var(--rand); border-radius: 8px; padding: 4px 6px 6px; margin: 0 0 6px; background: rgba(0, 0, 0, .18); }
+.tr-sh { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; }
+.tr-sh span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-sh .btn.tx { flex: none; width: var(--tap); min-height: var(--tap); padding: 0; font-size: 15px; }
+.tr-n {
+  flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--gold); color: var(--holz); font-size: 15px;
+}
+.box.troute .tr-empty { text-align: left; }
+.tr-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) 96px var(--tap) 46px var(--tap); gap: 4px; align-items: center;
+  margin: 3px 0; font-size: 14px;
+}
+.tr-row > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tr-row > b { text-align: center; font-variant-numeric: tabular-nums; }
+.tr-row .btn { min-height: var(--tap); padding: 0; font-size: 20px; }
+.tr-row .btn.tr-dir { font-size: 12px; padding: 0 4px; }
+.tr-dir.laden { border-color: #6f9a43; }
+.tr-dir.entladen { border-color: #4f86b8; }
+.tr-row .btn[aria-disabled="true"] { opacity: .45; }
+.tr-add, .tr-cancel { width: 100%; margin-top: 4px; font-size: 14px; }
+.tr-add { border-style: dashed; }
+.tr-pick { border: 1px dashed var(--gold); border-radius: 8px; padding: 4px; margin-top: 4px; }
+.tr-kind { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 4px; }
+.tr-kind .btn { font-size: 14px; }
+.tr-goods { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.box.troute .tr-more { text-align: left; }
+.box.troute .tr-stops > .sub { text-align: left; margin: 4px 0; }
+.tr-delall { width: 100%; margin-top: 6px; font-size: 14px; }
+.box.troute .dfoot { flex-direction: row; align-items: center; gap: 6px; padding: 6px 10px 8px; }
+.box.troute .dfoot .btn { flex: none; min-width: 112px; }
+.box.troute .dfoot .btn[aria-disabled="true"] { opacity: .55; }
+.tr-state { flex: 1; min-width: 0; font-size: 13px !important; line-height: 1.25; color: var(--pergament-2); }
+.tr-state.pos { color: var(--gut); }
+.tr-state.neg { color: var(--schlecht); font-weight: 700; }
+.tr-state.warn { color: var(--warn); }
+/* sehr schmal: Karte über den Halten */
+@media (max-width: 560px) {
+  .box.troute .dbody { grid-template-columns: 1fr; overflow-y: auto; }
+  .tr-left canvas { width: 160px; margin: 0 auto; }
+  .tr-goods { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

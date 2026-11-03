@@ -1,5 +1,6 @@
-/* Meldungen: oben in der Mitte (unter dem Bauhinweis), nicht antippbar.
-   Den Meldungsverlauf (Fenster hinter der Glocke 🔔) gestaltet das Paket U3 hier weiter. */
+/* Meldungen (Paket U3).
+   Oben in der Mitte steht nur noch der Bauhinweis (nicht antippbar); die Meldungen erscheinen einzeilig links unten
+   über der Aufgabe (ui/log.ts). Die Liste hinter der Glocke 🔔 ist ein Fenster in der Bildmitte. */
 #hud > .topmid { pointer-events: none; }
 .topmid {
   position: absolute; top: calc(var(--top) + 6px);
@@ -9,6 +10,7 @@
 /* bei offenem Infofenster in der Mitte des freien Bereichs */
 .info:not(.hidden) ~ .topmid { right: calc(var(--in-r) + var(--info-w) + 18px); }
 .info.slim:not(.hidden) ~ .topmid { right: calc(var(--in-r) + 220px + 18px); }
+/* alter Platz der Meldungen (bleibt leer, solange der Meldungsverlauf sie zeigt) */
 .toasts { display: flex; flex-direction: column; align-items: center; gap: 4px; width: 100%; }
 .toast {
   background: rgba(43, 33, 24, .95); border: 1px solid var(--rand); border-radius: 8px; padding: 6px 12px;
@@ -16,7 +18,68 @@
 }
 .toast-good { border-color: var(--gut); }
 .toast-bad { border-color: var(--schlecht); }
-/* Warnungen (Angriff, Kriegserklärung, Piraten …) bleiben auch über dem offenen Baumenü sichtbar */
 .toast[data-important="1"] { position: relative; z-index: 3; }
 .toast.out { opacity: 0; }
-@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+
+/* ---------- Einblendungen links unten, einzeilig ---------- */
+#hud > .ltoasts { pointer-events: none; }
+.ltoasts {
+  position: absolute; z-index: 4;
+  left: calc(var(--in-l) + var(--left-w) + 14px);
+  bottom: calc(var(--in-b) + 62px);
+  width: min(520px, calc(100vw - var(--in-l) - var(--left-w) - var(--in-r) - 150px));
+  display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+}
+/* bei offenem Infofenster nur im freien Bereich links davon – und links der Kartenknöpfe 🔔 ⛵ 🗺️ 🧭 + −, die dann
+   neben dem Fenster unten stehen (sonst lagen Meldungen über den Knöpfen, und ein Tipp traf die Meldung) */
+.info:not(.hidden):not(.folded) ~ .ltoasts { width: min(520px, calc(100vw - var(--in-l) - var(--left-w) - var(--in-r) - var(--info-w) - var(--nav-w) - 44px)); }
+.info.slim:not(.hidden):not(.folded) ~ .ltoasts { width: min(520px, calc(100vw - var(--in-l) - var(--left-w) - var(--in-r) - 220px - var(--nav-w) - 44px)); }
+.ltoast {
+  pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 100%; min-height: var(--tap);
+  padding: 0 12px; margin: 0; border: 1px solid var(--rand); border-left: 4px solid var(--rand); border-radius: 8px;
+  background: rgba(43, 33, 24, .93); color: var(--pergament); font: inherit; font-size: 14px; text-align: left;
+  transition: opacity .4s; touch-action: manipulation; cursor: pointer;
+}
+.ltoast .tx { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ltoast .pin, .ltoast .x { flex: none; font-style: normal; font-size: 13px; }
+.ltoast .x { color: var(--pergament-2); margin-left: 2px; }
+.ltoast-good { border-left-color: var(--gut); }
+.ltoast-bad { border-left-color: var(--schlecht); }
+/* wichtig: kräftiger Rand, bleibt stehen – und wird nie abgeschnitten: der Text bricht auf bis zu drei Zeilen um
+   (sonst fehlte z. B. bei einer Kriegs-Vorwarnung neben dem Infofenster gerade der Name des Gegners) */
+.ltoast.imp { border-color: var(--schlecht); background: rgba(70, 30, 22, .95); padding-top: 4px; padding-bottom: 4px; }
+/* (kein Innenabstand am Text selbst: sonst schaute unter der letzten Zeile ein Stück der nächsten hervor) */
+.ltoast.imp .tx {
+  white-space: normal; overflow-wrap: anywhere; line-height: 1.25;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3;
+}
+/* neben offenem Infofenster ist der freie Streifen schmal (667 × 375: etwa 170 px) – dann bis zu sechs Zeilen */
+.info:not(.hidden):not(.folded) ~ .ltoasts .ltoast.imp .tx { -webkit-line-clamp: 6; line-clamp: 6; font-size: 13px; }
+/* Baumenü offen: Meldungen nie über den Baukarten. Ist rechts neben dem Menü genug Platz, stehen sie dort
+   (log.ts setzt .side und die Maße), sonst warten sie unsichtbar, bis das Menü zu ist (die Glocke zählt sie) */
+body:has(#buildPanel:not(.hidden)) #logToasts:not(.side) { visibility: hidden; }
+body:has(#buildPanel:not(.hidden)) #logToasts.side { left: var(--side-l); width: var(--side-w); }
+body:has(#buildPanel:not(.hidden)) #logToasts.side .ltoast:not(.act) { padding-top: 4px; padding-bottom: 4px; }
+body:has(#buildPanel:not(.hidden)) #logToasts.side .tx { white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.ltoast.out { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .toast, .ltoast { transition: none; } }
+
+/* ---------- Liste hinter der Glocke ---------- */
+.modal .box.log { width: min(620px, 100%); }
+.lrows { list-style: none; margin: 0; padding: 0 !important; gap: 4px !important; }
+.lrow {
+  display: grid; grid-template-columns: 50px 1fr var(--tap); align-items: center; gap: 8px;
+  min-height: var(--tap); padding: 2px 4px 2px 8px; border-left: 4px solid var(--rand); border-radius: 6px;
+  background: var(--holz-2);
+}
+.lrow.k-good { border-left-color: var(--gut); }
+.lrow.k-bad { border-left-color: var(--schlecht); }
+.lrow.imp .lx { color: #ffd2c8; }
+.lrow.new .lt::after { content: ' •'; color: var(--gold); }
+.lrow .lt { font-size: 12px; color: var(--pergament-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lrow .lx { font-size: 14px; line-height: 1.3; overflow-wrap: anywhere; }
+.lrow .look { font-size: 17px; }
+/* (U3 + U4) Meldung mit Knopf, z. B. „↩ Rückgängig“ nach dem Bauen: der Knopf steht in derselben Zeile */
+.ltoast.act { cursor: default; padding: 0 0 0 12px; }
+/* Knopf volle 44 px hoch (B6): er füllt die Zeile rechts ganz aus */
+.ltoast.act .btn { pointer-events: auto; flex: none; align-self: stretch; min-height: var(--tap); min-width: var(--tap); margin: -1px -1px -1px 4px; padding: 0 12px; font-size: 14px; white-space: nowrap; border-radius: 0 8px 8px 0; }

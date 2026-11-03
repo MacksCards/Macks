@@ -4,7 +4,7 @@
 //   build.ts     Bau-, Wege- und Abriss-Werkzeug, Hinweisleiste, Baumenü-Karten
 //   info.ts      Gebäude-, Haus-, Kontor- und Insel-Info
 //   ship.ts      Schiffsfenster
-//   units.ts     Soldatenfenster
+//   units.ts     Soldaten- und Flottenfenster (Gruppen, Rahmen, Aufstellung, Ausmustern, Patrouille)
 //   windows.ts   Menü, Weltkarte, Hilfe, Verloren-Fenster
 //   diplomacy.ts Krieg & Frieden
 // Gerüste für spätere Arbeitspakete (ihr Einstieg bleibt versteckt, solange sie leer sind):
@@ -13,7 +13,9 @@
 //   score.ts (Menüpunkt „Punkte“), natives.ts (Tipp auf eine Häuptlingshütte)
 import './ui/fonts.css';
 import { BUILDINGS, GoodId, UNITS } from './data';
-import { atWar, declareWar, orderAttack, orderBoard, orderMove, shipAttack } from './combat';
+import { atWar, declareWar, orderAttack, orderBoard, orderFell, orderMove, stopPatrol } from './combat';
+import { formation } from './bedienung';
+import { T } from './world';
 import { Building, DOCK_RANGE, Game, HUMAN, Ship, ShotKind, Unit } from './game';
 import { Input } from './input';
 import { View } from './render/scene';
@@ -58,6 +60,8 @@ export class UI {
   paused = false;
   speed = 1;
   selShip: Ship | null = null;
+  /** mehrere gewählte eigene Schiffe (Flotte, ab zwei); bei nur einem Schiff steht es in selShip */
+  selShips: Ship[] = [];
   /** ausgewählte eigene Soldaten */
   selUnits: Unit[] = [];
   /** Waren, die gerade eine Rolle spielen (Warenleiste, Lager) */
@@ -138,7 +142,7 @@ export class UI {
       // Meldung aus dem Spiel, auf Wunsch mit Ort (für den Meldungsverlauf)
       message: (t: string, k?: Art, at?: Ort) => this.toast(t, k ?? 'info', at),
       shot: (kind, fx, fy, tx, ty, hit) => this.onShot(kind, fx, fy, tx, ty, hit),
-      sunk: (s) => { v.ships.sink(s.id); if (this.visible(s.x, s.y)) sound.play('versenkt', { x: s.x, z: s.y }); if (this.selShip === s) this.selectShip(null); },
+      sunk: (s) => { v.ships.sink(s.id); if (this.visible(s.x, s.y)) sound.play('versenkt', { x: s.x, z: s.y }); if (this.selShip === s) this.selectShip(null); if (this.selShips.includes(s)) this.selectShipsById(this.selShips.filter((o) => o !== s).map((o) => o.id)); },
       died: (u) => { v.onUnitDied(u); if (this.visible(u.x, u.y)) sound.play('fall', { x: u.x, z: u.y }); },
       chop: (u) => { if (this.visible(u.x, u.y)) sound.play('axt', { x: u.x, z: u.y }); },
     };
@@ -162,6 +166,7 @@ export class UI {
   setGame(g: Game) {
     this.g = g;
     this.selUnits = [];
+    this.selShips = [];
     this.bindGame();
     this.setMode({ kind: 'none' });
     this.select(null);
@@ -215,6 +220,8 @@ export class UI {
     const g = this.g;
     this.selUnits = this.selUnits.filter((u) => g.units.includes(u) && u.ship === undefined);
     const sel = this.selUnits;
+    // gewählte Schiffe: ein einzelnes (selShip) oder eine Flotte (selShips)
+    const fleet = this.selShips.length ? this.selShips : this.selShip ? [this.selShip] : [];
     // Soldat antippen
     const unit = this.view.pickUnit(x, y);
     if (unit) {
@@ -233,12 +240,18 @@ export class UI {
         this.select(null);
         return;
       }
+      // (U4) ein weiteres eigenes Schiff nimmt es zur Auswahl dazu (Flotte); ein gewähltes nochmal antippen nimmt es heraus
+      if (fleet.length && !(fleet.length === 1 && fleet[0] === ship)) {
+        const ids = fleet.includes(ship) ? fleet.filter((s) => s !== ship).map((s) => s.id) : [...fleet.map((s) => s.id), ship.id];
+        this.selectShipsById(ids);
+        if (ids.length > 1 && !fleet.includes(ship)) this.toast(`⛵ ${ids.length} Schiffe gewählt`, 'info');
+        return;
+      }
       this.selectShip(ship); return;
     }
     if (ship) {
       const name = ship.type === 'pirat' ? 'Piratenschiff' : g.players[ship.owner]?.trader ? 'Händlerschiff (neutral)' : `Schiff von ${g.players[ship.owner]?.name}`;
-      if (this.selShip && (this.selShip.guns ?? 0) > 0) { const me = this.selShip; this.attack(ship.owner, () => { shipAttack(g, me, ship.id); sound.play('glocke'); this.toast(`💣 Angriff auf ${name}`, 'info'); }); return; }
-      if (this.selShip) { this.toast('Dein Schiff hat keine Kanonen – lade sie am Kontor', 'bad'); return; }
+      if (fleet.length) { this.fleetAttack(fleet, ship.owner, ship.id, name); return; }
       const kan = sel.filter((u) => u.type === 'kanonier');
       if (kan.length) { this.attack(ship.owner, () => orderAttack(g, kan, ship.id)); return; }
       this.toast(`⛵ ${name}`, 'info');
@@ -246,23 +259,45 @@ export class UI {
     }
     const t = this.view.pick(x, y, true);
     const b = t ? this.g.buildingAt(t[0], t[1]) : undefined;
-    // Soldaten ausgewählt: angreifen oder hinlaufen
+    // Soldaten ausgewählt: angreifen, Bäume fällen oder hinlaufen
     if (sel.length && t) {
       if (b && b.owner !== HUMAN) {
         this.attack(b.owner, () => { orderAttack(g, sel, b.id); sound.play('marsch'); this.toast(`⚔️ Angriff auf ${BUILDINGS[b.type].name}`, 'info'); });
         return;
       }
       const gt = this.view.pick(x, y, false) ?? t;
-      if (g.tiles[g.idx(gt[0], gt[1])] !== 0) {
-        const n = orderMove(g, sel, gt[0] + 0.5, gt[1] + 0.5);
+      const k = g.idx(gt[0], gt[1]);
+      // (U4) Tipp auf Wald: Bäume fällen (Kanoniere haben keine Axt – nur sie gewählt: hinlaufen)
+      if (!b && g.tiles[k] === T.Wald && sel.some((u) => u.type !== 'kanonier')) {
+        const fell = () => {
+          const n = orderFell(g, sel, k);
+          if (n) { sound.play('marsch'); this.toast(`🪓 ${n === 1 ? 'Ein Soldat fällt' : `${n} Soldaten fällen`} Bäume – zum Hinlaufen auf freies Land tippen`, 'info'); }
+          else this.toast('Dort kommen die Soldaten nicht an die Bäume', 'bad');
+        };
+        // im Frieden auf fremdem Gebiet nur nach Rückfrage
+        const ow = g.own[k];
+        if (ow >= 0 && ow !== HUMAN && !atWar(g, HUMAN, ow)) {
+          this.ask('🪓 Bäume auf fremdem Land fällen?', `Der Wald liegt im Gebiet von ${g.players[ow]?.name ?? 'einem Nachbarn'}, mit dem Frieden herrscht. Er wird das nicht gern sehen.`, '🪓 Trotzdem fällen', fell);
+          return;
+        }
+        fell();
+        return;
+      }
+      if (g.tiles[k] !== 0) {
+        const n = orderMove(g, sel, gt[0] + 0.5, gt[1] + 0.5, formation(g));
         if (n) sound.play('marsch'); else this.toast('Dorthin kommen die Soldaten nicht', 'bad');
         return;
       }
     }
-    // bewaffnetes Schiff ausgewählt + fremdes Gebäude → beschießen
-    if (this.selShip && b && b.owner !== HUMAN && (this.selShip.guns ?? 0) > 0) {
-      const me = this.selShip;
-      this.attack(b.owner, () => { shipAttack(g, me, b.id); sound.play('glocke'); this.toast(`💣 ${me.name} greift ${BUILDINGS[b.type].name} an`, 'info'); });
+    // gewählte Schiffe + fremdes Gebäude → beschießen (alle mit Kanonen)
+    if (fleet.length && b && b.owner !== HUMAN && fleet.some((s) => (s.guns ?? 0) > 0)) { this.fleetAttack(fleet, b.owner, b.id, BUILDINGS[b.type].name); return; }
+    // Flotte: aufs Meer oder an die Küste – in einer Linie hinfahren
+    if (this.selShips.length) {
+      const gt = this.view.pick(x, y, false) ?? t;
+      if (!gt) { this.toast('Dort ist die Karte zu Ende – tippe aufs Meer oder auf eine Insel', 'info'); return; }
+      const n = this.units.fleetMove(this.selShips, gt[0] + 0.5, gt[1] + 0.5);
+      if (n) { sound.play('glocke'); this.toast(`⛵ ${n} Schiffe fahren in einer Linie`, 'info'); }
+      else this.toast('Dorthin findet kein Schiff einen Weg', 'bad');
       return;
     }
     // Schiff ausgewählt: aufs Meer, aufs Land oder auf ein Gebäude getippt → hinsegeln
@@ -283,6 +318,17 @@ export class UI {
     this.select(null);
   }
 
+  /** (U4) gewählte Schiffe greifen ein Ziel an: alle mit Kanonen gemeinsam (Rückfrage, solange Frieden herrscht) */
+  private fleetAttack(fleet: Ship[], owner: number, id: number, name: string) {
+    const armed = fleet.filter((s) => (s.guns ?? 0) > 0);
+    if (!armed.length) { this.toast(fleet.length > 1 ? 'Keines der Schiffe hat Kanonen – lade sie am Kontor' : 'Dein Schiff hat keine Kanonen – lade sie am Kontor', 'bad'); return; }
+    this.attack(owner, () => {
+      const n = this.units.fleetAttack(armed, id);
+      sound.play('glocke');
+      this.toast(n > 1 ? `💣 ${n} Schiffe greifen ${name} an` : `💣 ${armed[0].name} greift ${name} an`, 'info');
+    });
+  }
+
   /** gewähltes Schiff steuern: Meer, Land (zur Küste) oder ein eigenes Gebäude (dort anlegen) */
   private shipTap(x: number, y: number, t: [number, number] | null, b: Building | undefined) {
     const g = this.g, s = this.selShip!;
@@ -291,6 +337,7 @@ export class UI {
       if (this.shipGoal === b.id || this.shipAt(s, b)) { this.select(b); return; }
       const d = BUILDINGS[b.type];
       this.shipGoal = b.id;
+      stopPatrol(g, s); // (U4)
       if (this.sailTo(s, b)) {
         sound.play('glocke');
         this.toast(`⛵ Kurs auf ${d.icon} ${d.name} – nochmal tippen zeigt die Info`, 'info');
@@ -305,6 +352,7 @@ export class UI {
     const water = g.tiles[k] === 0;
     // Ziel im Nebel: immer dieselbe Meldung – sie verrät nicht, ob dort Land ist
     const fog = !g.seen[k];
+    stopPatrol(g, s); // (U4) ein anderer Fahrbefehl beendet die Patrouille
     if (this.steer(s, gt[0] + 0.5, gt[1] + 0.5)) { this.toast(fog || water ? '⛵ Kurs gesetzt' : '⛵ Kurs zur Küste', 'info'); sound.play('glocke'); }
     else this.toast('Dorthin findet das Schiff keinen Weg', 'bad');
   }
@@ -367,11 +415,9 @@ export class UI {
     // der freie Händler ist neutral und lässt sich nicht angreifen (src/trade.ts)
     if (p.trader) { this.toast('Der freie Händler ist neutral – ihn kann man nicht angreifen', 'info'); return; }
     if (atWar(g, HUMAN, owner)) { go(); return; }
-    // freier Händler: neutral, nie angreifbar
-    if (p.trader) { this.toast('Der freie Händler ist neutral – ihn kannst du nicht angreifen', 'info'); return; }
-    // Ureinwohner: nur auf ausdrücklichen Befehl, kein Krieg
+    // Ureinwohner: nur auf ausdrücklichen Befehl nach deutlicher Rückfrage, kein Krieg
     if (p.natives) {
-      this.ask('🪶 Die Ureinwohner angreifen?', 'Sie wehren sich nicht mit Waffen, aber sie werden nie wieder mit dir tauschen.', '⚔️ Angreifen', go);
+      this.ask('🪶 Wirklich die Ureinwohner angreifen?', '<b>Der Handel mit ihnen endet für immer</b> – sie tauschen nie wieder mit dir. Und ein Fluch droht über deinen Inseln. Das lässt sich nicht rückgängig machen.', '⚔️ Trotzdem angreifen', go);
       return;
     }
     if (p.pirate) {
@@ -399,12 +445,24 @@ export class UI {
     if (s) this.keepLeft(s.x, s.y);
   }
 
+  /** (U4) eigene Schiffe wählen: eines = Schiffsfenster, mehrere = Flotte (gemeinsam fahren, angreifen, Patrouille) */
+  selectShipsById(ids: readonly number[]) {
+    const list = ids.map((id) => this.g.ships.find((s) => s.id === id && s.owner === HUMAN)).filter((s): s is Ship => !!s);
+    if (list.length <= 1) { this.selectShip(list[0] ?? null); return; }
+    this.select(null);
+    this.selShips = list;
+    for (const s of list) this.view.ships.multi.add(s.id);
+    this.view.invalidate();
+    this.renderInfo();
+  }
+
   select(b: Building | null) {
     this.selected = b;
     this.showStorage = false;
     this.islandInfo = null;
     this.shipGoal = null;
     if (this.selShip) { this.selShip = null; this.view.ships.selected = null; }
+    if (this.selShips.length) { this.selShips = []; this.view.ships.multi.clear(); this.view.invalidate(); } // (U4)
     if (this.selUnits.length) { this.selUnits = []; this.view.units.selected = new Set(); }
     this.view.setSelected(b);
     if (b) this.build.closeCat();
@@ -480,7 +538,12 @@ export class UI {
     const box = $('#info');
     const b = this.selected;
     if (this.selUnits.length) { this.selUnits = this.selUnits.filter((u) => this.g.units.includes(u) && u.ship === undefined); if (!this.selUnits.length) this.view.units.selected = new Set(); }
-    if (!b && !this.showStorage && !this.selShip && this.islandInfo === null && !this.selUnits.length) {
+    // (U4) Flotte: versenkte Schiffe fallen heraus; bleibt eines übrig, gilt das Schiffsfenster
+    if (this.selShips.length) {
+      const alive = this.selShips.filter((s) => this.g.ships.includes(s));
+      if (alive.length !== this.selShips.length) { this.selectShipsById(alive.map((s) => s.id)); return; }
+    }
+    if (!b && !this.showStorage && !this.selShip && !this.selShips.length && this.islandInfo === null && !this.selUnits.length) {
       box.classList.add('hidden');
       document.body.classList.remove('info-open', 'info-folded');
       this.infoKey = '';
@@ -488,7 +551,7 @@ export class UI {
     }
     // andere Auswahl: Inhalt sicher neu aufbauen (Knöpfe gehören zum neuen Objekt) und wieder aufklappen
     let fresh = false;
-    const key = `${b?.id ?? ''}|${this.showStorage}|${this.selShip?.id ?? ''}|${this.islandInfo ?? ''}|${this.selUnits.map((u) => u.id).join(',')}`;
+    const key = `${b?.id ?? ''}|${this.showStorage}|${this.selShip?.id ?? ''}|${this.islandInfo ?? ''}|${this.selUnits.map((u) => u.id).join(',')}|${this.selShips.map((s) => s.id).join(',')}`;
     if (key !== this.infoKey) {
       this.infoKey = key;
       this.infoFolded = false;
@@ -497,13 +560,14 @@ export class UI {
     }
     box.classList.remove('hidden');
     box.classList.toggle('folded', this.infoFolded);
-    box.classList.toggle('slim', !this.selShip && this.selUnits.length > 0);
+    box.classList.toggle('slim', !this.selShip && (this.selUnits.length > 0 || this.selShips.length > 0));
     document.body.classList.add('info-open');
     document.body.classList.toggle('info-folded', this.infoFolded);
     const fold = $('#infoFold');
     fold.textContent = this.infoFolded ? '▸' : '▾';
     fold.setAttribute('aria-label', this.infoFolded ? 'Aufklappen' : 'Einklappen');
     if (this.selShip) this.ship.render(this.selShip);
+    else if (this.selShips.length) this.units.renderFleet(this.selShips);
     else if (this.selUnits.length) this.units.render(this.selUnits);
     else if (this.islandInfo !== null) this.info.renderIsland(this.islandInfo);
     else this.info.render(b, this.showStorage);
@@ -531,7 +595,7 @@ export class UI {
   updateHud() {
     const g = this.g;
     this.hud.update();
-    if (this.selShip || this.selUnits.length) this.renderInfo();
+    if (this.selShip || this.selShips.length || this.selUnits.length) this.renderInfo();
     // Niederlage: festes Fenster
     if (g.players[HUMAN].defeated && !this.lostShown) { this.lostShown = true; this.windows.showLost(); }
     if (!g.players[HUMAN].defeated) this.lostShown = false;
@@ -555,12 +619,17 @@ export class UI {
     else if (/eingezogen/.test(text)) sound.play('aufstieg');
     else if (/Aufgabe erledigt|ausgebaut/.test(text)) sound.play('muenzen');
     else if (/Stapel/.test(text)) sound.play('horn');
+    // (S3) Ereignisse: Feuer, Pest und Dürre mit Sturmglocke, Schatz mit Münzen
+    else if (/^(🔥 Feuer|💀 Pest auf|☀️ Dürre)/u.test(text)) sound.play('alarm');
+    else if (/^💰 Schatz/u.test(text)) sound.play('muenzen');
     else if (/^⚠️/.test(text) || /^⚔️ (Angriff|Dein Schiff|.* erklärt dir)/.test(text) || /Piraten gesichtet/.test(text)) sound.play('alarm');
     else if (/^(⚔️|💣) /.test(text)) { /* Befehl – eigener Klang */ }
     else if (/ausgebildet/.test(text)) sound.play('marsch');
     else if (/erobert!|besiegt|versenkt!/.test(text) && kind === 'good') sound.play('aufstieg');
     else if (kind === 'bad') sound.play('fehler');
     else if (kind === 'good' || /Kontor auf/.test(text)) sound.play('nachricht');
+    // (U3) Einblendung links unten zeigt der Meldungsverlauf selbst (ui/log.ts, schon bei log.add oben)
+    if (this.log.ready) return;
     const box = $('#toasts');
     // Art als eigene Klasse (toast-info …) – „info“ und „good“ allein sind schon Infofenster und Warenknöpfe
     const t = el('div', `toast toast-${kind}`, text);
@@ -575,6 +644,29 @@ export class UI {
     const ms = /^(⚠️|⚔️ .* erklärt dir|🚩|🏴‍☠️)|verloren/.test(text) ? 7500 : Math.min(6000, 2600 + Math.max(0, text.length - 40) * 45);
     setTimeout(() => t.classList.add('out'), ms);
     setTimeout(() => t.remove(), ms + 500);
+  }
+
+  /**
+   * (U4) Meldung mit einem Knopf (z. B. „↩ Rückgängig“), steht ms lang. Eine neue ersetzt die vorige,
+   * damit oben nie mehrere Knöpfe stehen. Geht auch in den Meldungsverlauf (ohne Knopf).
+   */
+  toastAction(text: string, label: string, run: () => void, ms = 8000) {
+    // (U3 + U4) mit Meldungsverlauf: der Knopf steht in derselben Meldungszeile links unten
+    if (this.log.ready) { this.log.action(text, label, run, ms); return; }
+    this.log.add(text, 'info');
+    const box = $('#toasts');
+    box.querySelector('.toast.act')?.remove();
+    const t = el('div', 'toast toast-info act', `<span></span><button class="btn">${label}</button>`);
+    (t.firstElementChild as HTMLElement).textContent = text;
+    t.dataset.important = '1';
+    t.querySelector('button')!.addEventListener('click', () => { t.remove(); run(); });
+    box.appendChild(t);
+    while (box.children.length > 3) {
+      const kids = Array.from(box.children) as HTMLElement[];
+      (kids.find((c) => !c.dataset.important && c !== t) ?? kids[0]).remove();
+    }
+    setTimeout(() => t.classList.add('out'), ms);
+    setTimeout(() => t.remove(), ms + 400);
   }
 
   // ---------- Fensterrahmen, Rückfragen ----------

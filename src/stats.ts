@@ -455,6 +455,13 @@ function updateMet(g: Game, s: State) {
   for (const p of counted(g)) if (p.id !== HUMAN && !s.met.has(p.id) && seenPlayer(g, p.id)) s.met.add(p.id);
 }
 
+/** Hat der Spieler diesen Gegner schon entdeckt? (wie der Vergleichsreiter – einmal entdeckt, bleibt entdeckt) */
+export function metRival(g: Game, id: number): boolean {
+  const s = st(g);
+  updateMet(g, s);
+  return s.met.has(id);
+}
+
 /** Vergleich: du und die entdeckten Gegner (ohne Piraten, Händler, Ureinwohner) */
 export function rivals(g: Game): Rival[] {
   const s = st(g);

@@ -1,2 +1,67 @@
-/* Statistik-Fenster (Gerüst, füllt das Paket U2): breites Fenster für Reiter und Tabellen */
-.modal .box.stats { width: min(640px, 100%); }
+/* Statistik-Fenster (Paket U2): Reiter links (Symbol + Wort, 44 px), Inhalt rechts scrollt allein.
+   Passt auf 852 × 393 und 667 × 375 (iPhone quer) ohne abgeschnittene Texte. */
+.modal .box.stats { width: min(700px, 100%); height: 100%; max-height: 440px; }
+.box.stats .dhead { padding: 6px 16px 4px; }
+.box.stats h2 { font-size: 21px; }
+.box.stats .dbody { display: block; overflow: hidden; padding: 0 8px 8px 10px; }
+.stw { display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 10px; height: 100%; }
+.sttabs { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; }
+.sttabs .btn { display: flex; align-items: center; gap: 6px; text-align: left; font-size: 14px; padding: 4px 8px; white-space: nowrap; }
+.sttabs .btn span { font-size: 16px; }
+.sttabs .go { margin-top: auto; justify-content: center; }
+.stc { min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding-right: 4px; display: flex; flex-direction: column; gap: 6px; font-variant-numeric: tabular-nums; }
+.stc > * { flex-shrink: 0; }
+.stc .sub { text-align: left; }
+.stc h4 { font: 15px var(--display); margin: 6px 0 0; color: var(--gold); letter-spacing: .04em; }
+.stc .row { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; padding: 2px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
+.stc .row b { text-align: right; }
+.stc .row small { font-weight: 400; color: var(--pergament-2); font-size: 12px; }
+.stc .pos { color: #9fd67e; }
+.stc .neg { color: #f08a72; }
+.stnote { font-size: 12px !important; color: var(--pergament-2); line-height: 1.3; }
+.stnote.ok { color: #9fd67e; }
+.sthint { font-size: 13px !important; line-height: 1.3; }
+.sthint:has(> span:empty) { display: none; }
+/* Inselwahl */
+.stc .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.stc .chip { font-size: 13px; padding: 2px 10px; }
+.stc .chip.active { background: var(--holz-3); border-color: var(--gold); }
+/* Tabellen */
+.sttab { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sttab th { font-weight: 400; font-size: 12px; color: var(--pergament-2); text-align: right; padding: 0 4px 2px; white-space: nowrap; }
+.sttab th:first-child { text-align: left; }
+.sttab td { padding: 3px 4px; text-align: right; border-bottom: 1px solid rgba(110, 84, 52, .35); white-space: nowrap; }
+.sttab td:first-child { text-align: left; white-space: normal; }
+.sttab tr.sum td { font-weight: 700; border-top: 1px solid var(--rand); border-bottom: 0; }
+.sttab tr.minus td { background: rgba(226, 85, 63, .18); }
+.sttab.tmoney td:first-child { width: 50%; }
+.sttab.cmp th { text-align: center; }
+.sttab.cmp td { text-align: center; }
+.sttab.cmp td:first-child { text-align: left; white-space: nowrap; }
+.sttab.cmp td.best { font-weight: 700; color: var(--gold); }
+.sttab .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: 0; }
+/* Verlauf */
+.stbars { display: block; width: 100%; height: 64px; background: rgba(0, 0, 0, .2); border-radius: 6px; }
+.staxis { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; color: var(--pergament-2); }
+/* antippbare Zeilen (springen zum Gebäude), 44 px */
+.jrow {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%; min-height: var(--tap);
+  font: inherit; font-size: 14px; text-align: left; color: var(--pergament); background: rgba(0, 0, 0, .18);
+  border: 1px solid rgba(110, 84, 52, .6); border-radius: 8px; padding: 3px 8px; cursor: pointer;
+}
+.jrow:active { background: var(--holz-3); border-color: var(--gold); }
+.jrow > span { min-width: 0; }
+.jrow small { display: block; font-size: 12px; color: var(--pergament-2); }
+.jrow.bad { border-left: 3px solid #e2553f; }
+.jrow.upok { border-left: 3px solid #7cc95a; }
+.jrow i { font-style: normal; }
+/* Karte je Stufe */
+.tcard { display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1px solid var(--rand); border-radius: 8px; background: var(--holz-2); }
+.tcard .th { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 8px; font-size: 14px; }
+.tcard .th b { font: 16px var(--display); color: var(--gold); }
+.tcard .th span { font-size: 12px; color: var(--pergament-2); }
+/* schmale Bildschirme (667 × 375): Reiter etwas schmaler */
+@media (max-width: 700px) {
+  .stw { grid-template-columns: 112px minmax(0, 1fr); gap: 8px; }
+  .sttabs .btn { font-size: 13px; padding: 4px 6px; gap: 4px; }
+}

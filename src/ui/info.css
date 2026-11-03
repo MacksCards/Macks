@@ -6,6 +6,8 @@
   width: var(--info-w); display: flex; flex-direction: column;
   background: rgba(43, 33, 24, .95); border: 1px solid var(--rand); border-radius: 10px;
   font-variant-numeric: tabular-nums;
+  /* über dem kleinen Pause-Schild (hud.css), unter den Meldungen */
+  z-index: 2;
 }
 /* feste Kopfzeile: Titel links, ▾ ✕ rechts; der Inhalt darunter wischt nie unter die Kopfknöpfe */
 .info .ibar { flex: none; display: flex; align-items: center; border-bottom: 1px solid rgba(110, 84, 52, .45); }
@@ -61,3 +63,52 @@
 .info .tabs { display: flex; gap: 4px; margin: 0 0 8px; }
 .info .tab { flex: 1; font-size: 14px; padding: 4px; }
 .info .tab.active { background: var(--holz-3); border-color: var(--gold); }
+/* ---------- U2: Kontor-Reiter, Bilanz, Lagerfarben, „Wo?“, Zusatzzeilen ---------- */
+/* Kontor-Reiter: Symbol über kurzem Wort, damit vier Reiter in das schmale Fenster passen (44 px hoch) */
+.info .ktabs { gap: 3px; }
+.info .ktabs .tab { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0; min-width: 0; padding: 2px 1px; line-height: 1.05; }
+.info .ktabs .tab span { font-size: 15px; }
+.info .ktabs .tab small { font-size: 12px; white-space: nowrap; }
+/* Lagerraster: rot = wird knapp, gelb = Lager voll, kleine Pfeile = mehr/weniger werdend */
+.info .row.short { background: rgba(226, 85, 63, .22); }
+.info .row.short b, .info .legend .short { color: #f08a72; }
+.info .row.warn { background: rgba(240, 192, 74, .14); }
+.info .legend .warn { color: var(--warn); }
+.info .grid.lager { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; margin: 4px 0; }
+.info .gcell { display: flex; flex-direction: column; align-items: center; padding: 2px 1px; border-radius: 5px; background: rgba(0, 0, 0, .18); line-height: 1.15; }
+.info .gcell b { font-size: 14px; white-space: nowrap; }
+.info .gcell small { font-size: 12px; color: var(--pergament-2); white-space: nowrap; }
+.info .gcell.short { background: rgba(226, 85, 63, .3); }
+.info .gcell.short b { color: #f08a72; }
+.info .gcell.warn { background: rgba(240, 192, 74, .2); }
+.info .gcell.warn b { color: var(--warn); }
+.info .gcell b i { font-style: normal; font-size: 12px; margin-left: 1px; }
+.info .gcell b i.up { color: #7cc95a; }
+.info .gcell b i.dn { color: #f08a72; }
+.info .row b i { font-style: normal; font-size: 12px; margin-left: 2px; }
+.info .row b i.up { color: #7cc95a; }
+.info .row b i.dn { color: #f08a72; }
+.info .pos { color: #9fd67e; }
+.info .neg { color: #f08a72; }
+.info .dim { color: var(--pergament-2); }
+/* Bilanz im Kontor: Bezeichnung, Insel, alle Inseln */
+.info .mrow { display: grid; grid-template-columns: minmax(0, 1fr) 4.2em 4.2em; gap: 4px; font-size: 14px; padding: 2px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
+.info .mrow.one { grid-template-columns: minmax(0, 1fr) 5em; }
+.info .mrow > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.info .mrow > b, .info .mrow > small { text-align: right; font-variant-numeric: tabular-nums; }
+.info .mrow.head small { font-size: 12px; color: var(--pergament-2); }
+.info .mrow.head span { font-size: 12px; color: var(--pergament-2); }
+.info .mrow.sum { border-bottom: 0; border-top: 1px solid var(--rand); font-weight: 700; }
+.info .cash:has(> span:empty) { display: none; }
+/* Haus: was fehlt, mit „Wo?“ (44 px) */
+.info .lackrow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; font-size: 13px; padding: 1px 0; border-bottom: 1px solid rgba(110, 84, 52, .35); }
+.info .lackrow > span { min-width: 0; }
+.info .lackrow .btn { min-width: 72px; padding: 2px 8px; font-size: 13px; }
+/* Status eines Betriebs: lange Texte brechen um, die Spalte darf breit werden */
+.info .row.status b { flex: 1 1 auto; min-width: 0; font-size: 13px; line-height: 1.25; }
+.info .xline { color: var(--warn); }
+/* (S3) Brand, Pest, Dürre und „Kein Weg“ in Warnrot (laufende Ereignisse stehen unter der Überschrift) */
+.info .xline.neg { color: #f08a72; font-weight: 600; }
+/* Hausfenster: Zahlen nie mitten im Wert umbrechen („3 /“ | „3“, „100“ | „%“); lieber die ganze Angabe in die nächste Zeile */
+.info .row.hhead { flex-wrap: wrap; column-gap: 8px; }
+.info .row.hhead > span, .info .row.hhead b { white-space: nowrap; }
