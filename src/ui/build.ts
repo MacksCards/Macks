@@ -457,7 +457,12 @@ export class BuildTool {
       return;
     }
     if (m.kind === 'road') { this.roadTap(x, y); return; }
-    if (m.kind === 'demolish' && !m.area) { this.demolishTap(x, y); return; }
+    if (m.kind === 'demolish' && !m.area) {
+      // kurz warten: ein Doppeltipp (Zoom) reißt nichts ab; das Feld gilt, das gerade getippt wurde
+      const t = this.ui.view.pick(x, y, true);
+      if (t) this.later(() => this.demolishAt(t));
+      return;
+    }
     if (m.kind === 'patrol') { ui.units.patrolTap(m.ships, x, y); return; }
     if (m.kind === 'demolish' || m.kind === 'field' || m.kind === 'frame') this.cornerTap(x, y);
   }
@@ -550,10 +555,8 @@ export class BuildTool {
     return out;
   }
 
-  private demolishTap(x: number, y: number) {
+  private demolishAt(t: [number, number]) {
     const ui = this.ui, g = ui.g;
-    const t = ui.view.pick(x, y, true);
-    if (!t) return;
     const b = g.buildingAt(t[0], t[1]);
     if (b && b.owner === HUMAN) {
       const d = BUILDINGS[b.type];
@@ -782,7 +785,9 @@ export class BuildTool {
   private later(fn: () => void) {
     this.flushPendingTap();
     const p = { timer: 0, fn };
-    p.timer = window.setTimeout(() => { if (this.pending === p) { this.pending = null; if (this.ui.mode.kind === 'road') fn(); } }, 360);
+    // nur ausführen, wenn noch dasselbe Werkzeug offen ist
+    const mode = this.ui.mode;
+    p.timer = window.setTimeout(() => { if (this.pending === p) { this.pending = null; if (this.ui.mode === mode) fn(); } }, 360);
     this.pending = p;
   }
 
@@ -797,7 +802,7 @@ export class BuildTool {
     if (!p) return;
     clearTimeout(p.timer);
     this.pending = null;
-    if (this.ui.mode.kind === 'road') p.fn();
+    if (this.ui.mode.kind !== 'none') p.fn();
   }
 
   /** Weg vom Start über die Knickpunkte zum Ziel; jedes Stück um Wasser und Gebäude herum, möglichst gerade */
@@ -955,12 +960,16 @@ export class BuildTool {
     const isRoad = type === 'weg' || type === 'steinweg';
     const cells = this.roadCells.slice();
     const before = new Set(g.buildings);
+    // Wegstand vorher merken: „Rückgängig“ darf nur nehmen, was dieser Strich gebaut hat –
+    // nicht das Ende des vorigen Strichs, an dem der Weg weitergeht
+    const was = cells.map(([x, y]) => g.roads[g.idx(x, y)]);
     const n = isRoad ? g.placeRoads(cells, HUMAN, type) : g.placeMany(type, cells);
+    const fresh = isRoad ? cells.filter(([x, y], i) => g.roads[g.idx(x, y)] !== was[i]) : [];
     if (n) {
       sound.play(isRoad ? 'weg' : 'bauen');
       if (type === 'steinweg') markBuilt(g, 'steinweg');
       const built = isRoad ? [] : g.buildings.filter((b) => !before.has(b) && b.owner === HUMAN);
-      this.offerUndo(`${d.icon} ${n} ${isRoad ? 'Wegfelder' : 'Felder'} gebaut`, built, isRoad ? cells : []);
+      this.offerUndo(`${d.icon} ${n} ${isRoad ? 'Wegfelder' : 'Felder'} gebaut`, built, fresh);
     } else ui.toast('Nichts gebaut – zu wenig Material oder kein Platz', 'bad');
     // weiterbauen: das Ziel ist der neue Start
     this.roadStart = end;

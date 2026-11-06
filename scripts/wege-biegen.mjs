@@ -287,6 +287,8 @@ check(ms < 15, `Neu-Rechnen beim Ziehen schnell genug (${ms.toFixed(1)} ms)`);
   await page.waitForTimeout(600);
   const f = await page.evaluate(() => { const b = window.__ui.build, s = b.roadStart, g = window.__game(); for (let d = 3; d < 8; d++) for (const [x, y] of [[s[0], s[1] + d], [s[0], s[1] - d], [s[0] + d, s[1]], [s[0] - d, s[1]]]) if (b.passable(x, y) && !g.roads[g.idx(x, y)] && !b.roadCells.some((c) => c[0] === x && c[1] === y)) return [x, y]; return null; });
   if (f) {
+    // Start dieses Strichs = Ende des vorigen (schon gebaut)
+    var lastStart = await page.evaluate(() => window.__ui.build.roadStart);
     const pf = await scr(...f);
     await page.evaluate(([x, y]) => {
       const c = document.querySelector('#c');
@@ -296,6 +298,17 @@ check(ms < 15, `Neu-Rechnen beim Ziehen schnell genug (${ms.toFixed(1)} ms)`);
     await page.waitForTimeout(600);
     const built = await page.evaluate(([x, y]) => { const g = window.__game(); return g.roads[g.idx(x, y)] > 0; }, f);
     check(built, 'neues Ziel tippen und sofort ✓ baut den neuen Plan');
+    // ↩ Rückgängig nimmt nur diesen Strich zurück – das Ende des vorigen Strichs (sein Startfeld) bleibt
+    const und = await page.evaluate(([fx, fy]) => {
+      const g = window.__game();
+      const btn = [...document.querySelectorAll('button')].filter((b) => /Rückgängig/.test(b.textContent) && b.id !== 'roadUndo').pop(); if (!btn) return { ok: false, why: 'kein Rückgängig-Knopf', toasts: [...document.querySelectorAll('.toast')].map((t) => t.className + ':' + t.textContent.slice(0, 40)) };
+      if (!btn) return { ok: false, why: 'kein Rückgängig-Knopf' };
+      btn.click();
+      return { ok: true, f: g.roads[g.idx(fx, fy)] };
+    }, f);
+    check(und.ok && und.f === 0, `↩ Rückgängig nimmt den eben gebauten Strich zurück (${JSON.stringify(und)})`);
+    const keepEnd = await page.evaluate((s0) => { const g = window.__game(); return s0 ? g.roads[g.idx(s0[0], s0[1])] : -1; }, lastStart);
+    check(keepEnd > 0, `↩ Rückgängig lässt das Ende des vorigen Strichs stehen (${keepEnd})`);
     // nur Start gesetzt: Doppeltipp zoomt, setzt aber kein Ziel
     const g2 = await page.evaluate(() => { const b = window.__ui.build, s = b.roadStart, g = window.__game(); for (let d = 3; d < 8; d++) for (const [x, y] of [[s[0] + d, s[1]], [s[0] - d, s[1]], [s[0], s[1] + d], [s[0], s[1] - d]]) if (b.passable(x, y) && !g.roads[g.idx(x, y)]) return [x, y]; return null; });
     if (g2) {

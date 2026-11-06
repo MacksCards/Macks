@@ -37,8 +37,11 @@
 .hint .cost { color: var(--gold); font-size: 13px; margin-left: 4px; font-variant-numeric: tabular-nums; }
 .hint small { display: block; color: var(--pergament-2); font-size: 13px; }
 .hint .msg { color: var(--pergament-2); margin-left: 4px; }
-/* Wege-Hinweis: eine Zeile. Die Kosten stehen am Ende – wird es zu eng, werden sie zuerst gekürzt, die Anweisung bleibt */
-.hint.line > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Wege-Hinweis: eine Zeile, Kosten am Ende */
+/* (Nacharbeit 06.11.) Kosten bleiben immer ganz sichtbar; wird es eng, kürzt sich die Anweisung */
+.hint.line > div { white-space: nowrap; overflow: hidden; display: flex; align-items: baseline; }
+.hint.line > div > b, .hint.line > div > .cost { flex: 0 0 auto; }
+.hint.line > div > .msg { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* schmaler Bildschirm: nur das Symbol des Weges, ohne Namen */
 @media (max-width: 720px) { .hint.line .nm { display: none; } }
 /* Ergiebigkeits-Skala beim Bauen */

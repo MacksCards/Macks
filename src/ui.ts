@@ -430,6 +430,9 @@ export class UI {
   // ---------- Auswahl ----------
 
   selectUnits(list: Unit[]) {
+    // ein offenes Bau-, Wege- oder Abriss-Werkzeug endet, sobald etwas gewählt wird (sonst ginge der nächste Tipp ans Werkzeug)
+    const mk = this.mode.kind;
+    if (mk === 'build' || mk === 'road' || mk === 'demolish' || mk === 'field') this.build.setMode({ kind: 'none' });
     this.select(null);
     this.selUnits = list;
     this.view.units.selected = new Set(list.map((u) => u.id));
@@ -438,6 +441,9 @@ export class UI {
   }
 
   selectShip(s: Ship | null) {
+    // ein offenes Bau-, Wege- oder Abriss-Werkzeug endet, sobald etwas gewählt wird (sonst ginge der nächste Tipp ans Werkzeug)
+    const mk = this.mode.kind;
+    if (mk === 'build' || mk === 'road' || mk === 'demolish' || mk === 'field') this.build.setMode({ kind: 'none' });
     this.select(null);
     this.selShip = s;
     this.view.ships.selected = s ? s.id : null;
