@@ -1611,9 +1611,10 @@ export class Game {
       const k = this.idx(x, y);
       const wood = this.tiles[k] === T.Wald;
       if (wood) { this.tiles[k] = T.Gras; trees = true; }
-      // für undoBuild merken, was vorher hier lag (beim Pflastern: der Feldweg)
+      // für undoBuild merken, was vorher hier lag (beim Pflastern: der Feldweg). Ein Rückgängig nimmt nur diesen
+      // Schritt zurück – wurde ein eben gebauter Feldweg gepflastert, bleibt der Feldweg danach stehen
       const prev = this.recentRoads.get(k);
-      this.recentRoads.set(k, { t: now, owner, prev: prev ? prev.prev : this.roads[k], paid: prev ? addCost({ ...prev.paid }, c) : { ...c }, cleared: wood || !!prev?.cleared });
+      this.recentRoads.set(k, { t: now, owner, prev: this.roads[k], paid: { ...c }, cleared: wood || (!!prev?.cleared && this.roads[k] === 0) });
       this.roads[k] = type === 'steinweg' ? 2 : 1;
       this.players[owner].money -= c.taler ?? 0;
       if (c.stein) { const l = this.lagerOf(owner, this.islandOf[k]); if (l) l.stein -= c.stein; }

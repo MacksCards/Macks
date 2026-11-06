@@ -151,6 +151,26 @@ function freeRect(g: Game, w: number, h: number): [number, number] | null {
   check('… neu gebaut: Aufgabe wieder erfüllt', g.quest === qi + 1);
 }
 
+// ---------- 2b. Pflaster auf frischem Feldweg: Rückgängig nimmt nur das Pflaster ----------
+{
+  const { g } = world(7);
+  const c = freeRect(g, 1, 1);
+  if (c) {
+    (g.unlocked as Set<string>).add('steinweg');
+    const k = g.idx(c[0], c[1]);
+    const isl = g.islandOf[k];
+    const l = g.lagerOf(HUMAN, isl);
+    if (l) l.stein = Math.max(l.stein, 20);
+    g.placeRoads([c], HUMAN, 'weg');
+    const m1 = g.players[HUMAN].money, s1 = l ? l.stein : 0;
+    g.placeRoads([c], HUMAN, 'steinweg');
+    const u = g.undoBuild([c]);
+    check('Pflaster auf frischem Feldweg: Rückgängig lässt den Feldweg stehen und erstattet nur das Pflaster',
+      u.ok && g.roads[k] === 1 && Math.abs(g.players[HUMAN].money - m1) < 0.01 && (!l || l.stein === s1),
+      `Weg ${g.roads[k]}, Taler ${g.players[HUMAN].money}/${m1}, Steine ${l?.stein}/${s1}`);
+  } else check('Pflaster-Test: freies Feld gefunden', false);
+}
+
 // ---------- 3. Merkzettel im Spielstand: „NEU“, Gruppen, Aufstellung ----------
 {
   const { g } = world(7);

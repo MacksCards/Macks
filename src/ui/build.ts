@@ -654,9 +654,10 @@ export class BuildTool {
    * Meldung mit „↩ Rückgängig“ (8 s): nimmt das eben Gebaute zurück, mit voller Erstattung (g.undoBuild).
    * builds = neue Gebäude, roads = Felder einer Wegstrecke.
    */
-  private offerUndo(text: string, builds: Building[], roads: [number, number][]) {
+  private offerUndo(text: string, builds: Building[], roads: [number, number][], after?: () => void) {
     const ui = this.ui, g = ui.g;
     ui.toastAction(text, '↩ Rückgängig', () => {
+      after?.();
       const sum: Cost = {};
       let n = 0, why = '';
       for (const r of [builds.length ? g.undoBuild(builds) : null, roads.length ? g.undoBuild(roads) : null]) {
@@ -969,7 +970,15 @@ export class BuildTool {
       sound.play(isRoad ? 'weg' : 'bauen');
       if (type === 'steinweg') markBuilt(g, 'steinweg');
       const built = isRoad ? [] : g.buildings.filter((b) => !before.has(b) && b.owner === HUMAN);
-      this.offerUndo(`${d.icon} ${n} ${isRoad ? 'Wegfelder' : 'Felder'} gebaut`, built, fresh);
+      // nach ↩ geht es wieder am Anfang dieses Strichs weiter (nicht am weggenommenen Ende)
+      const from = this.roadStart, endAt = end;
+      this.offerUndo(`${d.icon} ${n} ${isRoad ? 'Wegfelder' : 'Felder'} gebaut`, built, fresh, () => {
+        const s = this.roadStart;
+        if (ui.mode.kind === 'road' && from && s && s[0] === endAt[0] && s[1] === endAt[1] && !this.roadEndSet) {
+          this.roadStart = from;
+          this.roadCells = [from];
+        }
+      });
     } else ui.toast('Nichts gebaut – zu wenig Material oder kein Platz', 'bad');
     // weiterbauen: das Ziel ist der neue Start
     this.roadStart = end;
