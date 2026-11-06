@@ -213,8 +213,9 @@ export function defenseAdvice(g: Game): string {
   if (g.isUnlocked('burg')) parts.push('Burg und Soldaten');
   if (g.isUnlocked('wachturm') || g.isUnlocked('holzturm')) parts.push('Wachtürme');
   if (g.isUnlocked('werft')) parts.push('Kriegsschiffe');
-  const peace = 'Nach einer Kriegserklärung kannst du im Menü ☰ Frieden anbieten';
-  return parts.length ? `${parts.join(', ').replace(/, ([^,]*)$/, ' und $1')} schützen dich. ${peace}.` : `${peace}.`;
+  // kurz halten: die Meldung muss auch auf dem kleinen iPhone ganz zu lesen sein
+  const peace = 'Frieden: Menü ☰';
+  return parts.length ? `Schutz: ${parts.join(', ').replace(/, ([^,]*)$/, ' und $1')}. ${peace}.` : `${peace}.`;
 }
 
 /** Was gegen Piraten hilft (nur Freigeschaltetes, Schutz geht immer) */

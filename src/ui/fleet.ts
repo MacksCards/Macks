@@ -23,9 +23,21 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 
 /** neuen Namen bereinigen: keine Zeichen, die als HTML gelten, Leerraum zusammenfassen, Länge begrenzen */
 export function cleanName(s: string): string {
+  return shortName(s);
+}
+
+function cleanText(s: string): string {
   return s
-    .replace(/<\/?[a-z][^<>]*>?/gi, ' ') // ganze Auszeichnungen wie <b> oder </b> fallen weg, nicht nur die Klammern
-    .replace(/[<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim().slice(0, NAME_MAX).trim();
+    .replace(/<\/?[a-z][^<>]*>/gi, ' ') // ganze Auszeichnungen wie <b> oder </b> fallen weg (nur mit schließendem „>“), nicht nur die Klammern
+    .replace(/[<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** Name säubern und auf NAME_MAX Zeichen kürzen – möglichst an einer Wortgrenze, nicht mitten im Wort */
+function shortName(s: string): string {
+  const c = cleanText(s);
+  if (c.length <= NAME_MAX) return c;
+  const cut = c.slice(0, NAME_MAX + 1), sp = cut.lastIndexOf(' ');
+  return (sp >= NAME_MAX / 2 ? cut.slice(0, sp) : c.slice(0, NAME_MAX)).trim();
 }
 
 export class FleetWindow implements Part {
@@ -187,7 +199,7 @@ export class FleetWindow implements Part {
     const back = this.tab;
     ui.dialog({
       title: ship ? '✏️ Schiff umbenennen' : '✏️ Insel umbenennen', cls: 'rename', dismiss: false,
-      body: `<label class="sub" for="renIn">Neuer Name (höchstens ${NAME_MAX} Zeichen)</label><input id="renIn" class="renin" type="text" maxlength="${NAME_MAX}" autocomplete="off" enterkeyhint="done" value="${esc(old)}">`,
+      body: `<label class="sub" for="renIn">Neuer Name (höchstens ${NAME_MAX} Zeichen)</label><input id="renIn" class="renin" type="text" maxlength="${NAME_MAX * 3}" autocomplete="off" enterkeyhint="done" value="${esc(old)}">`,
       foot: `<div class="row2"><button class="btn" id="renNo">Abbrechen</button><button class="btn ok" id="renOk">✓ Übernehmen</button></div>`,
     });
     const inp = $('#renIn') as HTMLInputElement;

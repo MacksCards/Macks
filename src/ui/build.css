@@ -48,11 +48,11 @@
 
 /* ---------- ✓ und ✕ unten rechts (links neben den Kartenknöpfen), je 48 px ---------- */
 #hud > .hintbtns { pointer-events: none; }
-.hintbtns { position: absolute; right: calc(6px + var(--in-r) + var(--tap) + 8px); bottom: calc(6px + var(--in-b)); display: flex; gap: 8px; }
+.hintbtns { position: absolute; right: calc(6px + var(--in-r) + var(--nav-w) + 8px); bottom: calc(6px + var(--in-b)); display: flex; gap: 8px; }
 .hintbtns .btn { pointer-events: auto; width: 48px; height: 48px; min-height: 48px; padding: 0; font-size: 22px; }
 /* offenes Infofenster (z. B. Lager während des Bauens): neben die ausgewichenen Kartenknöpfe */
-.info:not(.hidden):not(.folded) ~ .hintbtns { right: calc(12px + var(--in-r) + var(--info-w) + var(--tap) + 8px); }
-.info.slim:not(.hidden):not(.folded) ~ .hintbtns { right: calc(12px + var(--in-r) + 220px + var(--tap) + 8px); }
+.info:not(.hidden):not(.folded) ~ .hintbtns { right: calc(12px + var(--in-r) + var(--info-w) + var(--nav-w) + 8px); }
+.info.slim:not(.hidden):not(.folded) ~ .hintbtns { right: calc(12px + var(--in-r) + 220px + var(--nav-w) + 8px); }
 
 /* ---------- Paket U4 ---------- */
 /* Zusatzknopf links neben ✓ (Ziel ändern, Start neu, ⬚ Bereich, ↺ Neu): Text statt Zeichen, 48 px hoch */

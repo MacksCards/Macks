@@ -137,7 +137,8 @@ const listen = (g: Game) => { g.ev = { ...g.ev, message: (t: string) => { msgs.p
 // ---------- 4. (R2-Fix2) Namen, Minikarte, Gegner-Legende ----------
 {
   const n = cleanName('Möwe <b>Test</b> mit sehr langem Namen');
-  check('Umbenennen: Auszeichnungen wie <b> fallen ganz weg (keine Reste „b“ oder „/b“)', n === 'Möwe Test mit sehr lange' && !/[<>]|\bb\b|\/b/.test(n), n);
+  check('Umbenennen: Auszeichnungen wie <b> fallen ganz weg (keine Reste „b“ oder „/b“)', n === 'Möwe Test mit sehr' && !/[<>]|\bb\b|\/b/.test(n), n);
+  check('… ein einzelnes „<“ schneidet den Rest nicht ab', cleanName('Kap <Hoorn') === 'Kap Hoorn' && cleanName('Möwe a<b') === 'Möwe ab', `${cleanName('Kap <Hoorn')} / ${cleanName('Möwe a<b')}`);
   check('… gewöhnliche Namen bleiben, wie sie sind', cleanName('  Seeadler   II ') === 'Seeadler II' && cleanName('3 < 4 & "x"') === '3 4 x', `${cleanName('3 < 4 & "x"')}`);
 
   // Minikarte: nur geänderte Felder neu malen; Gegner auf unentdeckten Inseln ändern nichts
