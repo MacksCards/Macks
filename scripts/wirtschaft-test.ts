@@ -7,8 +7,9 @@
 const g0 = globalThis as unknown as Record<string, unknown>;
 g0.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 import { BUILDINGS, BuildingId, GOODS, TIERS } from '../src/data';
-import { BANKROTT, Building, Game, HUMAN, SaveData } from '../src/game';
+import { BANKROTT, Building, CART_REACH, DOOR_GAP, Game, HUMAN, SaveData } from '../src/game';
 import { T } from '../src/world';
+import { VORRAT_ICON, houseVorrat, vorrat } from '../src/stats';
 
 declare const process: { exitCode?: number };
 
@@ -317,6 +318,111 @@ const setHouse = (g: Game, h: Building, tier: number, residents = TIERS[tier].ma
   for (const b of old.buildings) { delete b.off; delete b.matLock; }
   const g3 = Game.fromSave(old as SaveData);
   check('alter Stand (Version 4): Standardsätze, alles läuft', g3.taxRate(3) === TIERS[3].taxStd && !g3.kontor()?.matLock && (run(g3, 5), true));
+}
+
+// ---------- 12. Bedürfnisse ehrlich anzeigen (Regel 16) ----------
+{
+  const { g, k, l } = setup();
+  const h = put(g, 'haus', k, 3, 9)!;
+  setHouse(g, h, 1);
+  l.alkohol = 0; l.stoff = 25; l.nahrung = 25;
+  // frisch Siedler, Alkohol nie bekommen (Haus will noch keine ganze Tonne): früher ✅, jetzt ❌
+  h.demand = {}; h.short = {}; h.need.alkohol = 1;
+  check('leeres Lager, keine Brennerei: Alkohol „fehlt“ (❌), obwohl die Bewohner noch zufrieden sind',
+    houseVorrat(g, h, 'alkohol') === 'fehlt' && VORRAT_ICON[houseVorrat(g, h, 'alkohol')] === '❌');
+  check('Stoffe im Lager (25 t, reichen lange): ✅', houseVorrat(g, h, 'stoff') === 'da');
+  // knapp: Vorrat reicht beim jetzigen Verbrauch keine 3 Minuten mehr (7 Siedler brauchen 0,245 t/min)
+  l.alkohol = 1.2;
+  const v = vorrat(g, HUMAN, h.island, 'alkohol');
+  check('1,2 t Alkohol bei 0,245 t/min (unter 5 min, aber über 3): ✅', v.state === 'da', `${v.state} ${v.minutes?.toFixed(1)}`);
+  for (let i = 0; i < 2; i++) { const o = put(g, 'haus', k, 3, 11)!; setHouse(g, o, 1); }
+  g.time += 1; // Verbrauch neu zählen
+  const v2 = vorrat(g, HUMAN, h.island, 'alkohol');
+  check('mehr Siedler, derselbe Vorrat reicht keine 3 Minuten: ⚠️ knapp', v2.state === 'knapp' && VORRAT_ICON.knapp === '⚠️', `${v2.state} ${v2.minutes?.toFixed(1)}`);
+  // leeres Lager, aber eine Brennerei arbeitet: kommt an, aber nichts auf Vorrat → ⚠️ (nie ✅ bei leerem Lager)
+  l.alkohol = 0.4;
+  const br = put(g, 'rumbrennerei', k, 3, 12);
+  if (br) { br.active = 1; g.time += 1; }
+  check('leeres Lager, Erzeugung läuft: ⚠️ statt ✅', !!br && vorrat(g, HUMAN, h.island, 'alkohol').state === 'knapp');
+  h.short.alkohol = true;
+  check('… und hat dieses Haus zuletzt nichts bekommen: ❌', houseVorrat(g, h, 'alkohol') === 'fehlt');
+  // Aufstieg zu Siedlern: neue Waren werden sofort geholt (keine Minuten „Schonfrist“ mit fremden Waren)
+  const p = put(g, 'haus', k, 3, 13)!;
+  setHouse(g, p, 0);
+  delete p.need.alkohol; delete p.need.stoff;
+  g.unlocked.add('kapelle');
+  const kap = put(g, 'kapelle', k, 0, 6);
+  g.recompute();
+  l.alkohol = 0; l.stoff = 25; l.holz = 25; l.werkzeug = 25;
+  for (let t = 0; t < 30 && p.tier === 0; t += 0.25) g.tick(0.25);
+  run(g, 1);
+  check('Pionierhaus steigt zu Siedlern auf (Testaufbau)', !!kap && p.tier === 1, `Stufe ${p.tier}, ${g.upgradeBlocker(p)}`);
+  check('nach dem Aufstieg: Alkohol sofort als fehlend erkannt (short), Anzeige ❌', !!p.short.alkohol && houseVorrat(g, p, 'alkohol') === 'fehlt');
+  run(g, 60);
+  check('ohne Alkohol sinkt die Zufriedenheit mit dieser Ware innerhalb einer Minute', (p.need.alkohol ?? 1) < 0.2, (p.need.alkohol ?? 1).toFixed(2));
+  check('Stoffe kamen an: ✅ und zufrieden damit', houseVorrat(g, p, 'stoff') === 'da' && (p.need.stoff ?? 0) > 0.9);
+}
+
+// ---------- 13. Marktkarren laufen nie durch Gebäude (Regel 19) ----------
+{
+  const { g, k } = setup();
+  const m = put(g, 'markt', k, 6, 10);
+  if (m) connect(g, m);
+  const shops: Building[] = [];
+  for (const t of ['holzfaeller', 'weberei', 'schaffarm', 'jagdhuette'] as BuildingId[]) {
+    const b = m ? put(g, t, m, 5, 10) : null;
+    if (b) { connect(g, b); shops.push(b); }
+  }
+  g.recompute();
+  for (const b of shops) b.stock = 4;
+  let inside = 0, seen = 0, trips = 0, atHome = 0, front = 0, rear = 0, body = 0;
+  const where = (x: number, y: number) => {
+    const o = g.occ[g.idx(Math.floor(x), Math.floor(y))];
+    const b = o ? g.byId.get(o) : undefined;
+    return b && !BUILDINGS[b.type].gate ? b : undefined;
+  };
+  const last = new Map<number, [number, number]>();
+  const dir = new Map<number, [number, number]>();
+  const st = new Map<number, string>();
+  // kleine Schritte: so wird jede Stellung zwischen zwei Wegpunkten geprüft (auch die Wende am Halteplatz)
+  for (let t = 0; t < 120; t += 0.05) {
+    for (const b of shops) if (b.stock < 2) b.stock = 4;
+    g.tick(0.05);
+    for (const c of g.carts) {
+      if (c.state === 'idle') { last.delete(c.id); dir.delete(c.id); st.set(c.id, 'idle'); continue; }
+      const p = last.get(c.id) ?? [c.x, c.y];
+      const mv = Math.hypot(c.x - p[0], c.y - p[1]);
+      if (mv > 1e-6) dir.set(c.id, [(c.x - p[0]) / mv, (c.y - p[1]) / mv]);
+      last.set(c.id, [c.x, c.y]);
+      if (c.state === 'zurueck' && st.get(c.id) === 'hin') trips++;
+      st.set(c.id, c.state);
+      // Übergabe an einem direkt angrenzenden Betrieb: der Karren steht auf dem Gebäudefeld an der gemeinsamen
+      // Kante und ist nicht zu sehen (render/carts.ts zeigt nie einen Karren auf einem Gebäudefeld)
+      if (where(c.x, c.y) && mv < 1e-6 && !c.path.length) continue;
+      seen++;
+      if (where(c.x, c.y)) inside++;
+      // ganzes Modell: Zieher vorne (0,38), Karrenende hinten (0,364) in Fahrtrichtung – und in jeder Drehung
+      // (beim Wenden am Halteplatz) ein Kreis mit CART_REACH
+      const d = dir.get(c.id);
+      if (d && where(c.x + d[0] * 0.38, c.y + d[1] * 0.38)) front++;
+      if (d && where(c.x - d[0] * 0.364, c.y - d[1] * 0.364)) rear++;
+      for (let a = 0; a < 16; a++) if (where(c.x + Math.cos(a * Math.PI / 8) * CART_REACH, c.y + Math.sin(a * Math.PI / 8) * CART_REACH)) { body++; break; }
+      const home = g.byId.get(c.home)!;
+      const [hx, hy] = g.center(home);
+      if (Math.abs(c.x - hx) < 0.6 && Math.abs(c.y - hy) < 0.6) atHome++;
+    }
+  }
+  check('Testaufbau: Marktplatz und Betriebe mit Wegen', !!m && shops.length >= 2, `${shops.length} Betriebe`);
+  check('Karren waren unterwegs und haben abgeholt', seen > 500 && trips > 0, `${seen} Schritte, ${trips} Abholungen`);
+  check('kein Karren-Schritt in einem Gebäude (Stände, Brunnen, Wände)', inside === 0, `${inside} von ${seen}`);
+  check('Zieher (Vorderkante) nie in einem Gebäude', front === 0, `${front} von ${seen}`);
+  check('Karrenende (Hinterkante) nie in einem Gebäude', rear === 0, `${rear} von ${seen}`);
+  check('ganzes Modell in jeder Drehung außerhalb aller Gebäude', body === 0, `${body} von ${seen}`);
+  check('kein Halt in der Mitte von Kontor oder Marktplatz', atHome === 0, `${atHome}`);
+  // Halteplatz vor einem Gebäude: auf dem Wegfeld, DOOR_GAP vor der Grundfläche (mehr als das Modell reicht)
+  const [dx, dy] = g.door(m ?? k, (m ?? k).x + 1, (m ?? k).y - 1);
+  const gap = Math.abs(dy - (m ?? k).y);
+  check('Halteplatz liegt weiter vor der Hauswand, als der Karren reicht', !where(dx, dy) && gap > CART_REACH && gap < 0.5 && DOOR_GAP > CART_REACH, `${dx.toFixed(2)}, ${dy.toFixed(2)}, Abstand ${gap.toFixed(2)}`);
 }
 
 console.log(fails ? `\n${fails} Prüfung(en) fehlgeschlagen` : '\nAlle Prüfungen bestanden');

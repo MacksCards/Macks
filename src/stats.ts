@@ -73,6 +73,8 @@ export interface TierSummary {
   ready: number;
   /** was fehlt, mit Anzahl betroffener Häuser */
   missing: { what: string; houses: number }[];
+  /** Waren, die knapp werden (⚠️: geht bald aus oder kommt bei leerem Lager nur gerade so an), mit Anzahl Häuser */
+  low: { what: string; houses: number }[];
   /** warum aufstiegsbereite Häuser nicht aufsteigen, mit Anzahl Häuser */
   blocked: { what: string; houses: number }[];
 }
@@ -361,6 +363,40 @@ export function flows(g: Game, owner = HUMAN, island = -1): Partial<Record<GoodI
   return sum;
 }
 
+// ---------- Vorrat ehrlich anzeigen (Regel 16) ----------
+
+/** Wie es um eine Ware für die Bewohner steht: 'da' = ✅, 'knapp' = ⚠️ (geht bald aus), 'fehlt' = ❌ */
+export type Vorrat = 'da' | 'knapp' | 'fehlt';
+/** So viele Minuten muss der Vorrat beim jetzigen Verbrauch mindestens reichen, sonst gilt er als knapp */
+export const KNAPP_MIN = 3;
+
+/**
+ * Stand einer Ware im Lager einer Insel – nur aus dem, was wirklich da ist und hergestellt wird:
+ * - weniger als 1 t im Lager: 'knapp', wenn auf der Insel etwas davon hergestellt wird (es kommt an,
+ *   aber es liegt nichts auf Vorrat), sonst 'fehlt'
+ * - Vorrat reicht beim jetzigen Verbrauch (abzüglich Erzeugung) keine KNAPP_MIN Minuten mehr: 'knapp'
+ * - sonst 'da'. Nie „da“ bei leerem Lager.
+ */
+export function vorrat(g: Game, owner: number, island: number, gd: GoodId, fl?: Partial<Record<GoodId, Flow>>): { state: Vorrat; have: number; minutes: number | null; prod: number } {
+  const have = g.lagerOf(owner, island)?.[gd] ?? 0;
+  const f = (fl ?? flows(g, owner, island))[gd];
+  const prod = f?.prod ?? 0, minutes = f?.minutes ?? null;
+  const state: Vorrat = have < 1 ? (prod > 0 ? 'knapp' : 'fehlt') : minutes !== null && minutes < KNAPP_MIN ? 'knapp' : 'da';
+  return { state, have, minutes, prod };
+}
+
+/**
+ * Stand einer Ware für ein bestimmtes Haus: wie vorrat(), aber hat das Haus zuletzt nichts bekommen
+ * (short) und liegt nichts auf Vorrat, fehlt sie diesem Haus wirklich ('fehlt' statt 'knapp').
+ */
+export function houseVorrat(g: Game, h: Building, gd: GoodId, fl?: Partial<Record<GoodId, Flow>>): Vorrat {
+  const s = vorrat(g, h.owner, h.island, gd, fl).state;
+  return s !== 'da' && h.short?.[gd] && (g.lagerOf(h.owner, h.island)?.[gd] ?? 0) < 1 ? 'fehlt' : s;
+}
+
+/** Zeichen zum Stand: ✅ da, ⚠️ knapp, ❌ fehlt */
+export const VORRAT_ICON: Record<Vorrat, string> = { da: '✅', knapp: '⚠️', fehlt: '❌' };
+
 // ---------- Verläufe ----------
 
 /**
@@ -405,14 +441,24 @@ export function popByTier(g: Game, owner = HUMAN, island = -1): number[] {
 }
 
 /** was diesem Haus fehlt: knappe Waren und fehlende öffentliche Gebäude seiner Stufe (Namen) */
-function lacks(g: Game, h: Building): string[] {
+function lacks(g: Game, h: Building, fl?: Partial<Record<GoodId, Flow>>): string[] {
   const tier = TIERS[h.tier];
   if (!tier) return [];
   const r: string[] = [];
-  for (const gd of Object.keys(tier.consumes) as GoodId[]) if (h.short?.[gd]) r.push(GOOD[gd].name);
+  fl ??= flows(g, h.owner, h.island);
+  // wie im Hausfenster: fehlt = ❌ (nicht erst, wenn das Haus vergeblich eine ganze Tonne holen wollte)
+  for (const gd of Object.keys(tier.consumes) as GoodId[]) if (houseVorrat(g, h, gd, fl) === 'fehlt') r.push(GOOD[gd].name);
   const cov = g.coverage.get(h.id);
   for (const s of tier.services as BuildingId[]) if (!cov?.has(s)) r.push(BUILDINGS[s].name);
   return r;
+}
+
+/** Waren dieses Hauses, die knapp werden (⚠️ wie im Hausfenster) – Namen */
+function lows(g: Game, h: Building, fl?: Partial<Record<GoodId, Flow>>): string[] {
+  const tier = TIERS[h.tier];
+  if (!tier) return [];
+  fl ??= flows(g, h.owner, h.island);
+  return (Object.keys(tier.consumes) as GoodId[]).filter((gd) => houseVorrat(g, h, gd, fl) === 'knapp').map((gd) => GOOD[gd].name);
 }
 
 function countUp(m: Map<string, number>, k: string) { m.set(k, (m.get(k) ?? 0) + 1); }
@@ -420,7 +466,8 @@ const sorted = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1]).ma
 
 /** Bevölkerung je Stufe (Pioniere … Aristokraten); island = -1 für alle Inseln */
 export function popSummary(g: Game, owner = HUMAN, island = -1): PopSummary {
-  const acc = TIERS.map(() => ({ houses: 0, residents: 0, max: 0, happy: 0, ready: 0, miss: new Map<string, number>(), block: new Map<string, number>() }));
+  const acc = TIERS.map(() => ({ houses: 0, residents: 0, max: 0, happy: 0, ready: 0, miss: new Map<string, number>(), low: new Map<string, number>(), block: new Map<string, number>() }));
+  const fls = new Map<number, Partial<Record<GoodId, Flow>>>();
   for (const h of g.buildings) {
     if (h.owner !== owner || h.type !== 'haus' || (island >= 0 && h.island !== island)) continue;
     const a = acc[h.tier], tier = TIERS[h.tier];
@@ -429,7 +476,10 @@ export function popSummary(g: Game, owner = HUMAN, island = -1): PopSummary {
     a.residents += h.residents;
     a.max += tier.maxResidents;
     a.happy += h.happy;
-    for (const w of lacks(g, h)) countUp(a.miss, w);
+    let fl = fls.get(h.island);
+    if (!fl) { fl = flows(g, owner, h.island); fls.set(h.island, fl); }
+    for (const w of lacks(g, h, fl)) countUp(a.miss, w);
+    for (const w of lows(g, h, fl)) countUp(a.low, w);
     if (h.tier < TIERS.length - 1 && h.residents >= tier.maxResidents && h.happy >= 0.85) {
       a.ready++;
       const why = g.upgradeBlocker(h);
@@ -438,7 +488,7 @@ export function popSummary(g: Game, owner = HUMAN, island = -1): PopSummary {
   }
   return {
     tiers: acc.map((a) => ({ houses: a.houses, residents: a.residents, max: a.max, happy: a.houses ? a.happy / a.houses : 0, ready: a.ready,
-      missing: sorted(a.miss), blocked: sorted(a.block) })),
+      missing: sorted(a.miss), low: sorted(a.low), blocked: sorted(a.block) })),
   };
 }
 

@@ -8,7 +8,7 @@
 const g0 = globalThis as unknown as Record<string, unknown>;
 g0.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 import { BUILDINGS } from '../src/data';
-import { Game, HUMAN, QUESTS, SaveData } from '../src/game';
+import { Game, HUMAN, QUESTS, SaveData, turnOf, turnable } from '../src/game';
 import { spawnUnit } from '../src/combat';
 import { MAX_SPAN, clampSpan, everBuilt, fieldPlan, formation, groupSize, groupUnits, markBuilt, saveGroup, setFormation } from '../src/bedienung';
 import { T } from '../src/world';
@@ -204,6 +204,56 @@ function freeRect(g: Game, w: number, h: number): [number, number] | null {
   check('neues Spiel: keine Gruppen, Block', groupSize(fresh, 0) === 0 && formation(fresh) === 'block');
   // „NEU“ gilt nur für freigeschaltete Gebäude: Wohnhaus ist ab Anfang da (ohne Freischaltung)
   check('Wohnhaus hat keine Freischaltung (kein „NEU“ am Anfang)', !BUILDINGS.haus.unlock);
+}
+
+// ---------- 4. Gebäude drehen (Regel 18) ----------
+{
+  check('drehbar: Wohnhaus, Holzfäller, Kapelle, Burg', ['haus', 'holzfaeller', 'kapelle', 'burg', 'getreidefarm'].every((t) => turnable(t as 'haus')));
+  check('nicht drehbar: Kontor, Werften, Fischer (Wasser), Wege, Mauern, Tore',
+    !['kontor', 'werft', 'grosswerft', 'fischer', 'weg', 'steinweg', 'palisade', 'steinmauer', 'holztor', 'steintor'].some((t) => turnable(t as 'haus')));
+  check('alle Grundflächen quadratisch (Drehen belegt dieselben Felder)', Object.values(BUILDINGS).every((d) => Number.isInteger(d.size) && d.size >= 1));
+  const { g, k } = world(5);
+  const l = g.lagerOf(HUMAN, k.island)!;
+  l.holz = 200; l.werkzeug = 50;
+  g.players[HUMAN].money = 10000;
+  const at = freeRect(g, 3, 3)!;
+  check('Platz für den Test', !!at);
+  const can = g.canPlace('holzfaeller', at[0], at[1]);
+  const r = g.place('holzfaeller', at[0], at[1], HUMAN, 3);
+  const hf = g.buildingAt(at[0], at[1])!;
+  check('beim Bauen gedreht (⟳ dreimal = 270°)', can.ok && r.ok && !!hf && hf.rot === 3 && turnOf(hf) === 3, `rot ${hf?.rot}`);
+  const occ0 = [...g.occ].map((v, i) => (v === hf.id ? i : -1)).filter((i) => i >= 0).join(',');
+  const t1 = g.turnBuilding(hf);
+  const occ1 = [...g.occ].map((v, i) => (v === hf.id ? i : -1)).filter((i) => i >= 0).join(',');
+  check('fertiges Gebäude drehen: kostenlos, Vierteldrehung weiter (3 → 0)', t1.ok && hf.rot === 0 && g.players[HUMAN].money === 10000 - (BUILDINGS.holzfaeller.cost.taler ?? 0));
+  check('Drehen belegt dieselben Felder', occ0 === occ1 && occ0.length > 0);
+  for (let i = 0; i < 4; i++) g.turnBuilding(hf);
+  check('viermal gedreht = wieder dieselbe Richtung', hf.rot === 0);
+  const tk = g.turnBuilding(k);
+  check('Kontor lässt sich nicht drehen (schaut zum Wasser)', !tk.ok && k.rot === undefined && /Wasser/.test(tk.reason ?? ''), tk.reason);
+  check('Drehung ist für fremde Gebäude gesperrt', !g.turnBuilding(hf, 1).ok);
+  // nicht drehbare Arten ignorieren eine mitgegebene Drehung
+  check('place mit Drehung bei nicht drehbarer Art: keine Drehung gespeichert', (() => {
+    const p = freeRect(g, 1, 1); if (!p) return false;
+    g.unlocked.add('palisade');
+    return g.place('palisade', p[0], p[1], HUMAN, 2).ok && g.buildingAt(p[0], p[1])?.rot === undefined;
+  })());
+  // Grundrichtung: Wohnhäuser verschieden (wie bisher), sonst 0 – alte Spielstände sehen gleich aus
+  check('Grundrichtung ohne Drehung: Wohnhaus nach Nummer, sonst 0', turnOf({ type: 'haus', id: 3 }) === (3 * 7) % 4 && turnOf({ type: 'kapelle', id: 3 }) === 0);
+  // Spielstand: Drehung bleibt; alter Stand ohne Feld lädt ohne Drehung
+  g.turnBuilding(hf); // → 1
+  const d = JSON.parse(JSON.stringify(g.serialize())) as SaveData;
+  const g2 = Game.fromSave(d);
+  check('Spielstand: Drehung bleibt erhalten', g2.byId.get(hf.id)?.rot === 1 && turnOf(g2.byId.get(hf.id)!) === 1);
+  for (const b of d.buildings) delete b.rot;
+  const g3 = Game.fromSave(d);
+  check('alter Spielstand ohne Drehung lädt: Grundrichtung', g3.byId.get(hf.id)?.rot === undefined && turnOf(g3.byId.get(hf.id)!) === 0 && (g3.tick(0.25), true));
+  // Computergegner bauen weiter ohne Drehung (place ohne rot)
+  check('ohne Drehung gebaut: kein Feld rot', (() => {
+    const p = freeRect(g, 2, 2); if (!p) return false;
+    g.unlocked.add('kapelle');
+    return g.place('kapelle', p[0], p[1]).ok && g.buildingAt(p[0], p[1])?.rot === undefined;
+  })());
 }
 
 console.log(fails ? `\n${fails} Prüfung(en) fehlgeschlagen` : '\nAlle Prüfungen bestanden');

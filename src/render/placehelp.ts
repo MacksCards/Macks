@@ -28,7 +28,10 @@ export class PlaceHelp {
   private fill: THREE.Mesh;
   private frame: THREE.Mesh;
   private edge: THREE.Mesh;
-  private xray: THREE.Mesh;
+  /** Umriss: Kopie der Vorschau mit dem Durchschein-Material (je Vorschau-Modell einmal gebaut) */
+  private xray: THREE.Object3D;
+  private xrayFor: THREE.Object3D | null = null;
+  private xrayHeight = 0.5;
   private frames = new Map<number, [THREE.BufferGeometry, THREE.BufferGeometry]>();
   private fillMat = new THREE.MeshBasicMaterial({ color: OK, transparent: true, opacity: 0.3, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   private frameMat = new THREE.MeshBasicMaterial({ color: OK, transparent: true, opacity: 0.95, depthWrite: false, depthTest: false });
@@ -63,22 +66,23 @@ export class PlaceHelp {
     this.edge.renderOrder = 3;
     this.frame = new THREE.Mesh(undefined, this.frameMat);
     this.frame.renderOrder = 3.1;
-    this.xray = new THREE.Mesh(undefined, this.xrayMat);
-    this.xray.renderOrder = 3.5; // vor der eigentlichen Vorschau (4), damit nur Fremdes sie verdeckt
-    for (const m of [this.fill, this.edge, this.frame, this.xray]) { m.frustumCulled = false; this.group.add(m); }
+    this.xray = new THREE.Group();
+    for (const m of [this.fill, this.edge, this.frame]) { m.frustumCulled = false; this.group.add(m); }
+    this.group.add(this.xray);
     this.group.visible = false;
   }
 
   /**
-   * Vorschau zeigen: Gebäudeform geo, Grundfläche size × size Felder ab Feld (x, y), Bodenhöhe gy.
+   * Vorschau zeigen: Vorschau-Modell obj (steht schon an seinem Platz, gedreht), Grundfläche size × size Felder
+   * ab Feld (x, y), Bodenhöhe gy.
    */
-  show(geo: THREE.BufferGeometry, x: number, y: number, size: number, gy: number, ok: boolean) {
+  show(obj: THREE.Object3D, x: number, y: number, size: number, gy: number, ok: boolean) {
     const cx = x + size / 2, cz = y + size / 2;
     let f = this.frames.get(size);
     if (!f) { f = [frameGeo(size, 0.1), frameGeo(size, 0.22)]; this.frames.set(size, f); }
     this.frame.geometry = f[0];
     this.edge.geometry = f[1];
-    this.xray.geometry = geo;
+    if (this.xrayFor !== obj) this.buildXray(obj);
     const col = ok ? OK : BAD;
     this.fillMat.color.setHex(col);
     this.frameMat.color.setHex(col);
@@ -87,14 +91,37 @@ export class PlaceHelp {
     this.fill.position.set(cx, gy + 0.03, cz);
     this.frame.position.set(cx, gy + 0.05, cz);
     this.edge.position.set(cx, gy + 0.04, cz);
-    this.xray.position.set(cx, gy + 0.02, cz);
+    this.xray.position.copy(obj.position);
+    this.xray.rotation.copy(obj.rotation);
     this.xrayMinY.value = gy + 0.12;
     this.group.visible = true;
-    if (!geo.boundingBox) geo.computeBoundingBox();
-    const ht = Math.max(0.5, geo.boundingBox!.max.y);
+    const ht = Math.max(0.5, this.xrayHeight);
     const e = 0.02;
     placeClear.uClearBox.value.set(x + e, y + e, x + size - e, y + size - e);
     placeClear.uClearFocus.value.set(cx, gy + ht * 0.45, cz, size * 0.5 + 0.35);
+  }
+
+  /** Umriss aus dem Vorschau-Modell: dieselben Formen, alle mit dem Durchschein-Material */
+  private buildXray(obj: THREE.Object3D) {
+    this.xray.clear();
+    this.xrayFor = obj;
+    const box = new THREE.Box3();
+    obj.updateMatrixWorld(true);
+    const inv = new THREE.Matrix4().copy(obj.matrixWorld).invert();
+    obj.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      // Lage im Vorschau-Modell (ohne dessen eigene Stellung in der Welt) übernehmen
+      const c = new THREE.Mesh(m.geometry, this.xrayMat);
+      c.matrixAutoUpdate = false;
+      c.matrix.multiplyMatrices(inv, m.matrixWorld);
+      c.renderOrder = 3.5; // vor der eigentlichen Vorschau (4), damit nur Fremdes sie verdeckt
+      c.frustumCulled = false;
+      this.xray.add(c);
+      if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+      box.union(m.geometry.boundingBox!.clone().applyMatrix4(c.matrix));
+    });
+    this.xrayHeight = box.isEmpty() ? 0.5 : box.max.y;
   }
 
   hide() {

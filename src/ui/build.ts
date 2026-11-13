@@ -6,7 +6,7 @@
 // Regel 13: Gesten bauen nie aus Versehen – Bereiche entstehen aus zwei Tipps und werden mit ✓ bestätigt.
 import './build.css';
 import { BUILDINGS, BuildingId, CATEGORIES, Category, Cost, TIERS } from '../data';
-import { Building, HUMAN, UNDO_SECONDS } from '../game';
+import { Building, HUMAN, UNDO_SECONDS, turnOf, turnable } from '../game';
 import { T } from '../world';
 import { clampSpan, everBuilt, fieldPlan, markBuilt } from '../bedienung';
 import { sound } from '../audio';
@@ -37,6 +37,17 @@ const MAX_CELLS = 400;
 const UNDO_MS = Math.min(8, UNDO_SECONDS - 1) * 1000;
 /** Suchfenster der Wegsuche um Start und Ziel (Felder) */
 const ROAD_PAD = 30;
+/** Speicherort der gemerkten Drehung je Gebäudeart (nur Bequemlichkeit: fehlt er, gilt die Grundrichtung) */
+const TURN_KEY = 'neueufer-drehung';
+
+function loadTurns(): Partial<Record<BuildingId, number>> {
+  try {
+    const v = JSON.parse(localStorage.getItem(TURN_KEY) ?? '{}') as Record<string, unknown>;
+    const out: Partial<Record<BuildingId, number>> = {};
+    for (const [k, n] of Object.entries(v ?? {})) if (k in BUILDINGS && typeof n === 'number' && n >= 0 && n <= 3) out[k as BuildingId] = Math.round(n);
+    return out;
+  } catch { return {}; }
+}
 
 /** Farben der Vorschau-Felder */
 const COL = {
@@ -92,7 +103,32 @@ export class BuildTool {
   /** Kategorien mit einem noch nie gebauten, freigeschalteten Gebäude */
   private newCats = new Set<Category>();
 
+  /** gemerkte Drehung je Gebäudeart (Vierteldrehungen, Regel 18); fehlt = Grundrichtung */
+  private turns = loadTurns();
+  /** Drehung der gerade gezeigten Vorschau (genau so wird mit ✓ gebaut) */
+  private shownTurn = 0;
+
   constructor(private ui: UI) {}
+
+  /** Drehung, mit der die Vorschau gerade gezeigt (und mit ✓ gebaut) wird */
+  turnShown(type: BuildingId): number {
+    // nie gedreht: Grundrichtung, wie sie das nächste Gebäude bekäme (Wohnhäuser stehen verschieden)
+    return this.turns[type] ?? turnOf({ type, id: this.ui.g.nextId });
+  }
+
+  /** ⟳: Vorschau um eine Vierteldrehung weiterdrehen und die Richtung für diese Gebäudeart merken (baut nie) */
+  private turn() {
+    const ui = this.ui, m = ui.mode;
+    if (m.kind !== 'build' || !turnable(m.type)) return;
+    // weiter ab der Richtung, die gerade zu sehen ist
+    this.turns[m.type] = ((m.has ? this.shownTurn : this.turnShown(m.type)) + 1) % 4;
+    try { localStorage.setItem(TURN_KEY, JSON.stringify(this.turns)); } catch { /* nur Bequemlichkeit */ }
+    sound.play('klick');
+    this.shownTurn = this.turnShown(m.type);
+    if (m.has) ui.view.setGhost(m.type, m.gx, m.gy, ui.g.canPlace(m.type, m.gx, m.gy).ok, this.shownTurn);
+    // ein Tipp auf dieselbe Stelle direkt nach dem Drehen baut nicht sofort (wie nach dem ersten Tipp)
+    this.shownAt = performance.now();
+  }
 
   get catOpen() { return this.openCat !== null; }
 
@@ -106,11 +142,12 @@ export class BuildTool {
     const hint = el('div', 'hint hidden', `<div id="hintText"></div>`);
     hint.id = 'hint';
     topmid.appendChild(hint);
-    const btns = el('div', 'hintbtns hidden', `<button id="roadUndo" class="btn hidden" aria-label="Letzten Schritt zurücknehmen">↶</button><button id="hintAlt" class="btn alt hidden"></button><button id="hintOk" class="btn ok" aria-label="Bauen">✓</button><button id="hintX" class="btn" aria-label="Abbrechen">✕</button>`);
+    const btns = el('div', 'hintbtns hidden', `<button id="roadUndo" class="btn hidden" aria-label="Letzten Schritt zurücknehmen">↶</button><button id="hintAlt" class="btn alt hidden"></button><button id="hintTurn" class="btn turn hidden" aria-label="Drehen">⟳</button><button id="hintOk" class="btn ok" aria-label="Bauen">✓</button><button id="hintX" class="btn" aria-label="Abbrechen">✕</button>`);
     btns.id = 'hintBtns';
     hud.appendChild(btns);
     $('#hintOk').addEventListener('click', () => this.confirm());
     $('#hintX').addEventListener('click', () => this.cancel());
+    $('#hintTurn').addEventListener('click', () => this.turn());
     $('#hintAlt').addEventListener('click', () => this.alt());
     $('#roadUndo').addEventListener('click', () => this.undoRoad());
   }
@@ -152,6 +189,9 @@ export class BuildTool {
     $('#hintOk').classList.toggle('hidden', !ok);
     $('#hintOk').setAttribute('aria-label', m.kind === 'frame' ? 'Wählen' : m.kind === 'demolish' ? 'Abreißen' : 'Bauen');
     $('#roadUndo').classList.add('hidden');
+    // ⟳ nur beim Bauen drehbarer Gebäude (Kontor, Werften, Fischer schauen immer zum Wasser)
+    $('#hintTurn').classList.toggle('hidden', !(m.kind === 'build' && turnable(m.type)));
+    if (m.kind === 'build') v.preloadModel(m.type);
     this.updateHint();
   }
 
@@ -191,7 +231,7 @@ export class BuildTool {
     if (m.kind === 'build') {
       const d = BUILDINGS[m.type];
       const chk = m.has ? g.canPlace(m.type, m.gx, m.gy) : g.canAfford(d.cost);
-      let msg = !m.has ? 'Tippe auf die Insel, wo es stehen soll.' : chk.ok ? 'Nochmal auf dieselbe Stelle tippen oder ✓ zum Bauen.' : `⚠️ ${chk.reason}`;
+      let msg = !m.has ? 'Tippe auf die Insel, wo es stehen soll.' : chk.ok ? `Nochmal auf dieselbe Stelle tippen oder ✓ zum Bauen.${turnable(m.type) ? ' ⟳ dreht.' : ''}` : `⚠️ ${chk.reason}`;
       let scale = '';
       if (m.has && d.harvest) {
         // Ergiebigkeit: wie viel wächst hier nach, geteilt mit gleichartigen Betrieben in der Nähe
@@ -452,7 +492,8 @@ export class BuildTool {
       }
       m.gx = gx; m.gy = gy; m.has = true;
       this.shownAt = performance.now();
-      ui.view.setGhost(m.type, gx, gy, ui.g.canPlace(m.type, gx, gy).ok);
+      this.shownTurn = this.turnShown(m.type);
+      ui.view.setGhost(m.type, gx, gy, ui.g.canPlace(m.type, gx, gy).ok, this.shownTurn);
       this.updateHint();
       return;
     }
@@ -590,7 +631,8 @@ export class BuildTool {
   private confirmBuild() {
     const ui = this.ui, g = ui.g, m = ui.mode;
     if (m.kind !== 'build' || !m.has) return;
-    const r = g.place(m.type, m.gx, m.gy);
+    // gebaut wird in der Richtung, die die Vorschau zeigt
+    const r = g.place(m.type, m.gx, m.gy, HUMAN, turnable(m.type) ? this.shownTurn : undefined);
     if (r.ok) sound.play(m.type === 'kontor' ? 'kontor' : 'bauen');
     if (!r.ok) { ui.toast(r.reason ?? 'Geht nicht', 'bad'); return; }
     const b = g.buildingAt(m.gx, m.gy);

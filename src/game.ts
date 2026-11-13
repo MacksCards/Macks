@@ -63,6 +63,26 @@ export interface Building {
   downT?: number;
   /** Haus: warum zuletzt Bewohner ausgezogen sind (für Meldungen und die Statistik) */
   leave?: 'hunger' | 'steuern' | 'mangel';
+  /** Drehung in Vierteldrehungen (0–3, gegen den Uhrzeigersinn von oben); fehlt = Grundrichtung (turnOf).
+   *  Neu seit dem 13.11.: ältere Spielstände haben das Feld nicht und laden ohne Drehung. */
+  rot?: number;
+}
+
+/**
+ * Lässt sich diese Gebäudeart drehen (Regel 18)? Nicht: Kontor, Werften und Fischerhütte (schauen immer zum
+ * Wasser), Wege, Mauern und Tore (richten sich nach ihren Nachbarn) und die Hütten der Ureinwohner.
+ * Alle Grundflächen sind quadratisch – eine Drehung belegt also genau dieselben Felder wie vorher.
+ */
+export function turnable(type: BuildingId): boolean {
+  return !NO_TURN.has(type) && !!BUILDINGS[type];
+}
+const NO_TURN = new Set<BuildingId>(['kontor', 'werft', 'grosswerft', 'fischer', 'weg', 'steinweg', 'palisade', 'steinmauer',
+  'holztor', 'steintor_klein', 'steintor', 'huette', 'haeuptling']);
+
+/** Drehung eines Gebäudes (0–3): gespeicherte Drehung, sonst die Grundrichtung (Wohnhäuser verschieden, sonst 0) */
+export function turnOf(b: { type: BuildingId; id: number; rot?: number }): number {
+  if (b.rot !== undefined && turnable(b.type)) return ((Math.round(b.rot) % 4) + 4) % 4;
+  return b.type === 'haus' ? (b.id * 7) % 4 : 0;
 }
 
 /** Soldat auf dem Land (oder an Bord eines Schiffs) */
@@ -298,6 +318,12 @@ const SHIP_SIGHT = 9;
 /** Nachwachsen je Sekunde (voller Bestand = 1): Baum ~5 min, Fischgrund ~2,5 min, Wild ~6,5 min, Weide ~1,5 min */
 const REGEN: Record<Res, number> = { baum: 1 / 300, fisch: 1 / 150, wild: 1 / 400, weide: 1 / 90, feld: 1 / 100 };
 const CART_SPEED = 1.8; // Felder pro Spielsekunde
+/** so weit reicht das sichtbare Karrenmodell höchstens von seiner Mitte (Felder): Zieher vorne 0,38, Karrenende
+ *  hinten 0,36, Räder seitlich 0,17 – in jeder Drehung (src/render/carts.ts, Maßstab 1,4) */
+export const CART_REACH = 0.4;
+/** so weit hält ein Marktkarren vor der Grundfläche eines Gebäudes (Felder): mehr als CART_REACH, damit auch beim
+ *  Wenden weder der Zieher noch das Karrenende in Gebäude, Stände oder Zäune ragt */
+export const DOOR_GAP = 0.45;
 const CART_CAP = 10; // Tonnen pro Fahrt
 /** Pflasterwege: so viel schneller kommen Marktkarren voran (wie im Vorbild etwa ein Drittel) */
 const PFLASTER_TEMPO = 1.3;
@@ -966,16 +992,26 @@ export class Game {
 
   /** Weg über Straßen (und eigene Tore) von Gebäude a zu Gebäude b (Feldmitten), null = keine Verbindung */
   roadPath(a: Building, b: Building): [number, number][] | null {
-    const N = this.size;
-    const goal = new Set<number>();
-    for (const [x, y] of this.ring(b)) if (this.inMap(x, y)) goal.add(this.idx(x, y));
     const startRing = this.ring(a).filter(([x, y]) => this.inMap(x, y)).map(([x, y]) => this.idx(x, y));
     // direkt benachbart?
     for (const k of startRing) if (this.occ[k] === b.id) return [];
+    return this.roadSearch(startRing, this.ringSet(b), a.owner);
+  }
+
+  /** Felder rund um ein Gebäude (ohne Ecken) als Menge von Feldnummern */
+  private ringSet(b: Building): Set<number> {
+    const goal = new Set<number>();
+    for (const [x, y] of this.ring(b)) if (this.inMap(x, y)) goal.add(this.idx(x, y));
+    return goal;
+  }
+
+  /** Breitensuche über Wege (und eigene Tore) von den Startfeldern bis zu einem Zielfeld (Feldmitten), null = keine */
+  private roadSearch(starts: number[], goal: Set<number>, owner: number): [number, number][] | null {
+    const N = this.size;
     const from = new Map<number, number>();
     const q: number[] = [];
-    const open = (k: number) => this.roadOpen(k, a.owner);
-    for (const k of startRing) if (open(k) && !from.has(k)) { from.set(k, -1); q.push(k); }
+    const open = (k: number) => this.roadOpen(k, owner);
+    for (const k of starts) if (open(k) && !from.has(k)) { from.set(k, -1); q.push(k); }
     for (let h = 0; h < q.length; h++) {
       const k = q[h];
       if (goal.has(k)) {
@@ -992,6 +1028,28 @@ export class Game {
       }
     }
     return null;
+  }
+
+  /**
+   * Halteplatz eines Marktkarrens vor einem Gebäude: auf dem Wegfeld (cx, cy) neben dem Gebäude, ein Stück zur
+   * Hauswand hin – aber noch DOOR_GAP vor der Grundfläche. So läuft der Karren nie in Gebäude, Stände oder Zäune
+   * (früher ging er bis zur Gebäudemitte, am Marktplatz mitten durch die Stände und den Brunnen).
+   */
+  door(b: { type: BuildingId; x: number; y: number }, cx: number, cy: number): [number, number] {
+    const s = BUILDINGS[b.type].size;
+    const x = Math.floor(cx), y = Math.floor(cy);
+    const off = 0.5 - DOOR_GAP;
+    if (y === b.y - 1) return [x + 0.5, y + 0.5 + off];
+    if (y === b.y + s) return [x + 0.5, y + 0.5 - off];
+    if (x === b.x - 1) return [x + 0.5 + off, y + 0.5];
+    if (x === b.x + s) return [x + 0.5 - off, y + 0.5];
+    return [x + 0.5, y + 0.5];
+  }
+
+  /** Karren wird versteckt versetzt (zwischen zwei Fahrten): nicht durchs Bild gleiten lassen */
+  private cartJump(c: Cart, x: number, y: number) {
+    c.x = x; c.y = y;
+    this.prev.set(c.id, [x, y, 0]);
   }
 
   /** Abholweite der Marktkarren eines Kontors oder Marktplatzes (Felder) */
@@ -1011,8 +1069,19 @@ export class Game {
     for (const b of cands) {
       const path = this.roadPath(home, b);
       if (!path) continue;
-      const [bx, by] = this.center(b);
-      c.path = [...path, [bx, by]];
+      if (path.length) {
+        // los geht es am Halteplatz vor dem Heim (der Karren war bis eben unsichtbar), Ziel ist der Halteplatz vor dem Betrieb
+        const [sx, sy] = path[0], [ex, ey] = path[path.length - 1];
+        this.cartJump(c, ...this.door(home, sx, sy));
+        c.path = [...path, this.door(b, ex, ey)];
+      } else {
+        // Betrieb grenzt direkt ans Heim: Übergabe an der gemeinsamen Kante (dort ist der Karren nicht zu sehen)
+        const [hx2, hy2] = this.center(home), [bx, by] = this.center(b);
+        const hs = BUILDINGS[home.type].size / 2, bs = BUILDINGS[b.type].size / 2;
+        const t = hs / Math.max(1e-6, hs + bs);
+        this.cartJump(c, hx2 + (bx - hx2) * t, hy2 + (by - hy2) * t);
+        c.path = [];
+      }
       c.state = 'hin';
       c.target = b.id;
       return;
@@ -1081,8 +1150,14 @@ export class Game {
           b.stock -= take;
           if (take > 0) { c.g = g; c.n = take; }
         }
-        const back = b ? this.roadPath(home, b) : null;
-        c.path = [...(back ?? []).reverse(), this.center(home)];
+        // zurück über die Wege vom Halteplatz aus bis vor das Heim (nie quer durch Gebäude). Gibt es keinen Weg
+        // mehr (abgerissen) oder grenzt der Betrieb ans Heim, gilt der Karren gleich als daheim (unsichtbar)
+        const k = this.idx(Math.floor(c.x), Math.floor(c.y));
+        const back = this.inMap(Math.floor(c.x), Math.floor(c.y)) && this.roadOpen(k, home.owner) ? this.roadSearch([k], this.ringSet(home), home.owner) : null;
+        if (back && back.length) {
+          const [ex, ey] = back[back.length - 1];
+          c.path = [...back, this.door(home, ex, ey)];
+        } else c.path = [];
         c.state = 'zurueck';
       } else {
         this.cartUnload(c, home);
@@ -1541,11 +1616,13 @@ export class Game {
     for (const s of SYSTEMS) s.afterPlace?.(this, b);
   }
 
-  place(type: BuildingId, x: number, y: number, owner = HUMAN): Check {
+  /** Gebäude bauen; rot = Drehung in Vierteldrehungen (fehlt = Grundrichtung, siehe turnOf) */
+  place(type: BuildingId, x: number, y: number, owner = HUMAN, rot?: number): Check {
     const c = this.canPlace(type, x, y, owner);
     if (!c.ok) return c;
     const d = BUILDINGS[type];
     const { b, cleared } = this.putBuilding(type, x, y, owner, true);
+    if (rot !== undefined && Number.isFinite(rot) && turnable(type)) b.rot = ((Math.round(rot) % 4) + 4) % 4;
     this.recompute();
     if (LAGER.includes(type) && owner === HUMAN) {
       const [cx, cy] = this.center(b);
@@ -1559,6 +1636,29 @@ export class Game {
       this.ev.message(`Kontor auf ${this.islands[b.island].name} gegründet! Lade jetzt die Waren aus dem Schiff.`, 'good', this.at(b));
     }
     this.afterPlace(b);
+    return { ok: true };
+  }
+
+  /**
+   * Fertiges Gebäude um eine Vierteldrehung weiterdrehen (kostenlos, Regel 18). Geht nur bei drehbaren Arten
+   * (turnable) und eigenen Gebäuden. Weil alle Grundflächen quadratisch sind, bleibt jedes Feld belegt wie
+   * vorher – Platz, Wege und Arbeitsbereich ändern sich nicht; es dreht sich nur das Bild.
+   */
+  canTurn(b: Building, owner = HUMAN): Check {
+    if (!this.byId.has(b.id)) return { ok: false, reason: 'Das Gebäude gibt es nicht mehr' };
+    if (b.owner !== owner) return { ok: false, reason: 'Nicht dein Gebäude' };
+    if (!turnable(b.type)) {
+      const water = b.type === 'kontor' || b.type === 'werft' || b.type === 'grosswerft' || b.type === 'fischer';
+      return { ok: false, reason: water ? 'Schaut immer zum Wasser' : 'Richtet sich nach den Nachbarn' };
+    }
+    return { ok: true };
+  }
+
+  turnBuilding(b: Building, owner = HUMAN): Check {
+    const c = this.canTurn(b, owner);
+    if (!c.ok) return c;
+    b.rot = (turnOf(b) + 1) % 4;
+    this.ev.changed(b);
     return { ok: true };
   }
 
@@ -2358,7 +2458,14 @@ export class Game {
         h.upT = 0;
         h.downT = 0;
         this.popCache.clear();
-        for (const g of Object.keys(TIERS[h.tier].consumes) as GoodId[]) if (h.need[g] === undefined) h.need[g] = 1;
+        // neue Bedürfnisse (z. B. Alkohol bei Siedlern): gleich die erste Tonne holen. Vorher galt eine neue Ware
+        // erst nach Minuten als „fehlt“ (erst, wenn das Haus eine ganze Tonne wollte) – so lange waren die
+        // Bewohner mit einer Ware zufrieden, die sie nie bekommen hatten. Jetzt zählt sofort, was wirklich da ist.
+        for (const g of Object.keys(TIERS[h.tier].consumes) as GoodId[]) {
+          if (h.need[g] !== undefined) continue;
+          h.need[g] = 1;
+          h.demand[g] = Math.max(h.demand[g] ?? 0, 1);
+        }
         this.ev.changed(h);
         if (h.owner === HUMAN && this.housesByTier()[h.tier] === 1) this.ev.message(`Deine ersten ${TIERS[h.tier].name} sind eingezogen! 🎉`, 'good', this.at(h));
       }

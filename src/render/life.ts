@@ -297,7 +297,7 @@ export class LifeLayer {
     this.rebuild();
   }
 
-  setGame(g: Game, height: (x: number, z: number) => number) { this.g = g; this.height = height; this.waterCache.clear(); this.beats.clear(); this.rebuild(); }
+  setGame(g: Game, height: (x: number, z: number) => number) { this.g = g; this.height = height; this.waterCache.clear(); this.beats.clear(); this.trails.clear(); this.rebuild(); }
 
   /**
    * Schwärme und Wildherden neu verteilen (nach Entdeckungen oder Bauen). Ohne Rechteck die ganze Welt,
@@ -372,6 +372,36 @@ export class LifeLayer {
   }
 
   /** frei begehbar für Tiere (kein Wasser, Berg, Gebäude, Weg) */
+  /** Arbeitsweg je Betrieb: Start an der Hauswand und ob der gerade Weg durch ein anderes Gebäude führt */
+  private trails = new Map<number, { key: string; sx: number; sz: number; blocked: boolean }>();
+
+  /**
+   * Weg eines Arbeiters vom Betrieb zum Arbeitsplatz (ex, ez): Er beginnt an der Hauswand (nicht in der
+   * Gebäudemitte – sonst liefe er durch die Wand), und führt der gerade Weg durch ein anderes Gebäude
+   * (Haus, Zaun, Stand), wird er nur beim Arbeiten gezeigt, nicht beim Hin- und Herlaufen (Regel 19).
+   */
+  private trail(b: Building, size: number, cx: number, cz: number, ex: number, ez: number) {
+    const g = this.g;
+    const key = `${b.target}|${g.buildVersion}`;
+    let tr = this.trails.get(b.id);
+    if (tr && tr.key === key) return tr;
+    const dx = ex - cx, dz = ez - cz, m = Math.max(Math.abs(dx), Math.abs(dz));
+    const k = m > 1e-6 ? Math.min(1, (size / 2 + 0.15) / m) : 1;
+    const sx = cx + dx * k, sz = cz + dz * k;
+    let blocked = false;
+    const len = Math.hypot(ex - sx, ez - sz), n = Math.ceil(len / 0.25);
+    for (let i = 0; i <= n && !blocked; i++) {
+      const x = sx + ((ex - sx) * i) / Math.max(1, n), z = sz + ((ez - sz) * i) / Math.max(1, n);
+      const kx = Math.floor(x), kz = Math.floor(z);
+      if (!g.inMap(kx, kz)) continue;
+      const o = g.occ[g.idx(kx, kz)];
+      if (o && o !== b.id && !BUILDINGS[g.byId.get(o)?.type ?? 'weg'].gate) blocked = true;
+    }
+    tr = { key, sx, sz, blocked };
+    this.trails.set(b.id, tr);
+    return tr;
+  }
+
   private free(x: number, z: number): boolean {
     const g = this.g, N = g.size;
     const kx = Math.floor(x), kz = Math.floor(z);
@@ -474,7 +504,11 @@ export class LifeLayer {
         // am Baum auf der Hof-Seite stehen (sonst verdecken die Kronen die Figur)
         const dl = Math.hypot(tx - cx, tz - cz) || 1;
         const ex = tx - ((tx - cx) / dl) * 0.6, ez = tz - ((tz - cz) / dl) * 0.6;
-        const x = cx + (ex - cx) * f, z = cz + (ez - cz) * f;
+        // los an der Hauswand; läge ein anderes Gebäude im Weg, nur beim Arbeiten zeigen
+        const tr = this.trail(b, d.size, cx, cz, ex, ez);
+        const walking0 = p < 0.3 || p > 0.8;
+        if (walking0 && tr.blocked) continue;
+        const x = tr.sx + (ex - tr.sx) * f, z = tr.sz + (ez - tr.sz) * f;
         const heading = Math.atan2(tx - cx, tz - cz) + (p > 0.8 ? Math.PI : 0);
         const kind = p > 0.8 ? (d.harvest.res === 'baum' ? 'stamm' : 'wild') : 'nichts';
         // beim Hacken leicht vor und zurück wippen

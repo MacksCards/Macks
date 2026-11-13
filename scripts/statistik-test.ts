@@ -83,7 +83,13 @@ fl.eff = 1; fl.active = 1;
 // ---------- Bevölkerung ----------
 {
   houses[0].short = { nahrung: true }; houses[1].short = { nahrung: true };
+  // „Es fehlt“ zählt nur, was wirklich nicht im Lager liegt (Regel 16): mit 30 t Nahrung fehlt nichts
+  check('Bevölkerung: Nahrung im Lager → fehlt nicht, auch wenn ein Haus zuletzt leer ausging',
+    !stats.popSummary(g, HUMAN, isl).tiers[0].missing.some((m) => m.what === 'Nahrung'));
+  const nahrung0 = l.nahrung;
+  l.nahrung = 0;
   const p = stats.popSummary(g, HUMAN, isl);
+  l.nahrung = nahrung0;
   check('Bevölkerung: 4 Pionierhäuser, 2 Siedlerhäuser', p.tiers[0].houses === 4 && p.tiers[1].houses === 2);
   check('Bevölkerung: Bewohner und Platz', p.tiers[0].residents === 12 && p.tiers[0].max === 12 && p.tiers[1].residents === 14);
   check('Bevölkerung: „Es fehlt“ Nahrung bei 2 Häusern', p.tiers[0].missing.some((m) => m.what === 'Nahrung' && m.houses === 2), JSON.stringify(p.tiers[0].missing));
@@ -92,6 +98,33 @@ fl.eff = 1; fl.active = 1;
   const byTier = stats.popByTier(g, HUMAN, isl);
   check('popByTier je Insel', byTier[0] === 12 && byTier[1] === 14 && stats.popByTier(g, HUMAN, isl + 1000).every((n) => n === 0));
   houses[0].short = {}; houses[1].short = {};
+}
+
+// ---------- „Wird knapp“ statt „✅ Alles da“ (Regel 16, Mangel aus der Prüfung von B13a) ----------
+{
+  // Siedler (Häuser 4 und 5), Alkohol leer, eine Rumbrennerei arbeitet: Lager < 1 t → ⚠️ knapp, nie ✅
+  const sied = houses.filter((h) => h.tier === 1);
+  for (const h of sied) h.short = {};
+  const alk0 = l.alkohol;
+  l.alkohol = 0;
+  const br = put(g, 'rumbrennerei', isl, kx, ky - 7, HUMAN, true);
+  br.active = 1; br.eff = 1;
+  g.recompute(); g.time += 0.001;
+  const t1 = stats.popSummary(g, HUMAN, isl).tiers[1];
+  check('Alkohol leer, Brennerei läuft: Alkohol „wird knapp“ bei beiden Siedlerhäusern', t1.low.some((m) => m.what === 'Alkohol' && m.houses === sied.length), JSON.stringify(t1.low));
+  check('… und zählt nicht als „fehlt“', !t1.missing.some((m) => m.what === 'Alkohol'), JSON.stringify(t1.missing));
+  check('… also kein „✅ Alles da“ (nur ohne Fehlendes und ohne Knappes)', t1.missing.length + t1.low.length > 0);
+  check('Hausfenster und Übersicht sagen dasselbe (⚠️)', sied.every((h) => stats.houseVorrat(g, h, 'alkohol') === 'knapp'));
+  // Brennerei weg: fehlt wirklich
+  g.removeBuilding(br);
+  g.recompute(); g.time += 0.001;
+  const t2 = stats.popSummary(g, HUMAN, isl).tiers[1];
+  check('ohne Brennerei: Alkohol „fehlt“', t2.missing.some((m) => m.what === 'Alkohol') && !t2.low.some((m) => m.what === 'Alkohol'));
+  // genug Vorrat: weder fehlt noch knapp
+  l.alkohol = 40;
+  const t3 = stats.popSummary(g, HUMAN, isl).tiers[1];
+  check('40 t Alkohol: weder „fehlt“ noch „knapp“', !t3.missing.some((m) => m.what === 'Alkohol') && !t3.low.some((m) => m.what === 'Alkohol'));
+  l.alkohol = alk0;
 }
 
 // ---------- Kassenbuch ----------
