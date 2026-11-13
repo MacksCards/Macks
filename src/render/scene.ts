@@ -1,7 +1,7 @@
 // 3D-Darstellung mit three.js: Insel, Wasser, Bäume, Berge, Wege, Gebäude.
 import * as THREE from 'three';
 import { BUILDINGS, BuildingId, UNITS } from '../data';
-import { Building, Game, HUMAN, Unit } from '../game';
+import { Building, Game, HUMAN, Unit, turnOf, turnable } from '../game';
 import { fireStrength, iconFor } from '../events';
 import { sound } from '../audio';
 import { T } from '../world';
@@ -46,6 +46,8 @@ interface BView {
   /** Drehtempo der Flügel 0..1 (Mühle dreht nur, wenn sie arbeitet; läuft sanft an und aus) */
   spinV: number;
   owner: number; mask: number; top: number;
+  /** gezeigte Drehung (Vierteldrehungen, siehe game.turnOf) – ändert sie sich, wird neu aufgebaut */
+  rot: number;
   /** gezeigtes Meshy-Modell („gebäude:stufe“) oder null, dann die Form des Code-Modells (geo) */
   glbKey: string | null; geo: THREE.BufferGeometry | null;
 }
@@ -145,8 +147,14 @@ export class View {
   private previewXray!: THREE.InstancedMesh;
   private views = new Map<number, BView>();
   private mat = buildingMaterial();
-  private ghost: THREE.Mesh | null = null;
-  private ghostType: BuildingId | null = null;
+  /** Vorschau beim Platzieren: dasselbe Modell wie das fertige Gebäude (Meshy-Modell, sonst Code-Modell), getönt */
+  private ghost: THREE.Object3D | null = null;
+  /** welches Modell die Vorschau zeigt („gebäude:stufe“ oder „code“) – lädt das Meshy-Modell nach, wird getauscht */
+  private ghostKey = '';
+  /** zuletzt gezeigt (für den Tausch, wenn das Modell während des Platzierens fertig lädt) */
+  private ghostArgs: [BuildingId, number, number, boolean, number] | null = null;
+  /** getönte Kopien der Modell-Oberflächen: [grün = geht, rot = geht nicht] je Original */
+  private ghostTint = new Map<THREE.Material, [THREE.Material, THREE.Material]>();
   private ghostMatOk = buildingMaterial({ transparent: true, opacity: 0.8, color: 0xc8ffc0, emissive: 0x1e3c1a });
   private ghostMatBad = buildingMaterial({ transparent: true, opacity: 0.7, color: 0xff8a7a, emissive: 0x3c1410 });
   /** Rahmen der Grundfläche, Bäume dort ausblenden (Bau-Vorschau) */
@@ -213,6 +221,8 @@ export class View {
         }
       }
       if (what.others.size) this.ships?.resetViews();
+      // Vorschau beim Platzieren: Meshy-Modell ist jetzt da → austauschen
+      if (this.ghostArgs && what.buildings.has(this.ghostArgs[0])) this.setGhost(...this.ghostArgs);
     };
     void this.lib.load();
 
@@ -285,6 +295,10 @@ export class View {
     // Meshy-Modelle, die das neue Spiel (noch) nicht braucht, aus dem Grafikspeicher nehmen;
     // sie werden bei Bedarf neu geladen. Gebraucht = Gebäudearten im neuen Spiel (geladener Spielstand).
     this.lib.release(new Set(g.buildings.map((b) => b.type)));
+    // getönte Vorschau-Oberflächen gehören zu den alten Modellkopien
+    this.setGhost(null);
+    for (const [a, b] of this.ghostTint.values()) { a.dispose(); b.dispose(); }
+    this.ghostTint.clear();
     if (this.terrain) { this.scene.remove(this.terrain.group); this.terrain.dispose(); }
     if (this.water) this.disposeWater();
     if (this.border) { this.scene.remove(this.border); this.border.geometry.dispose(); this.border = null; }
@@ -742,23 +756,30 @@ export class View {
 
   // ---------- Gebäude ----------
 
-  private facing(b: Building): number {
-    // Kontor, Fischer und Werften zum Wasser drehen, Häuser leicht variieren
+  private facing(b: { type: BuildingId; x: number; y: number; id: number; rot?: number }): number {
+    return this.facingAt(b.type, b.x, b.y, turnOf(b));
+  }
+
+  /**
+   * Blickrichtung (Drehung um die Hochachse) eines Gebäudes an Feld (x, y): Kontor, Fischer und Werften
+   * schauen zum Wasser, alle anderen nach ihrer Drehung turn (Vierteldrehungen, siehe game.turnOf).
+   * Gilt gleich für die Vorschau beim Platzieren und das fertige Gebäude.
+   */
+  private facingAt(type: BuildingId, x: number, y: number, turn: number): number {
     const g = this.g;
-    const s = BUILDINGS[b.type].size;
-    if (b.type === 'kontor' || b.type === 'fischer' || b.type === 'werft' || b.type === 'grosswerft') {
+    const s = BUILDINGS[type].size;
+    if (type === 'kontor' || type === 'fischer' || type === 'werft' || type === 'grosswerft') {
       const sides = [0, 0, 0, 0]; // +z, +x, -z, -x
       for (let k = 0; k < s; k++) {
-        if (g.tile(b.x + k, b.y + s) === T.Wasser) sides[0]++;
-        if (g.tile(b.x + s, b.y + k) === T.Wasser) sides[1]++;
-        if (g.tile(b.x + k, b.y - 1) === T.Wasser) sides[2]++;
-        if (g.tile(b.x - 1, b.y + k) === T.Wasser) sides[3]++;
+        if (g.tile(x + k, y + s) === T.Wasser) sides[0]++;
+        if (g.tile(x + s, y + k) === T.Wasser) sides[1]++;
+        if (g.tile(x + k, y - 1) === T.Wasser) sides[2]++;
+        if (g.tile(x - 1, y + k) === T.Wasser) sides[3]++;
       }
       const best = sides.indexOf(Math.max(...sides));
       return best * (Math.PI / 2);
     }
-    if (b.type === 'haus') return ((b.id * 7) % 4) * (Math.PI / 2);
-    return 0;
+    return turnable(type) ? turn * (Math.PI / 2) : 0;
   }
 
   /** Nachbarmaske für Mauern (1 = -z, 2 = +x, 4 = +z, 8 = -x) */
@@ -846,7 +867,7 @@ export class View {
     const top = glb ? (glb.userData.height as number | undefined) ?? d.size * 0.6 + 0.6 : model.geo.boundingBox!.max.y;
     this.views.set(b.id, {
       mesh, spin, tier: b.tier, level, sign: null, signKey: '', smoke, spinV: 0,
-      owner: b.owner, mask, top, glbKey, geo: glb ? null : model.geo,
+      owner: b.owner, mask, top, glbKey, geo: glb ? null : model.geo, rot: turnOf(b),
     });
     this.dirty = true;
     this.pend |= 1; // Gras und Tiere unter dem Gebäude anpassen
@@ -968,6 +989,17 @@ export class View {
       this.marks.recolor(b.id, this.ownerColor(b.owner));
       this.dirty = true;
     }
+    if (v.rot !== turnOf(b) && v.tier === b.tier && v.level === (b.level ?? 0)) {
+      // gedreht (Infofenster ⟳): neu aufbauen – Fahne, Rauchpunkte und Schatten folgen der neuen Richtung
+      this.removeBuilding(b, false);
+      this.addBuilding(b, false);
+      const nv = this.views.get(b.id);
+      if (nv?.mesh.visible) {
+        const p = nv.mesh.position, s = BUILDINGS[b.type].size;
+        this.fx.dust(p.x, p.y + 0.05, p.z, 3 + s * 2, 0.3 + s * 0.3);
+      }
+      return;
+    }
     const level = b.level ?? 0;
     if (v.tier !== b.tier || v.level !== level) {
       // neue Ausbaustufe (Haus) oder Kontorstufe → Modell nur austauschen, wenn sich das gezeigte Modell wirklich ändert
@@ -975,7 +1007,7 @@ export class View {
       v.tier = b.tier; v.level = level;
       const key = this.lib.shownKey(b.type, b.tier);
       let cur = v;
-      if (key !== v.glbKey || (!key && buildingModel(b.type, b.tier, { level, variant: b.id % 4 }).geo !== v.geo)) {
+      if (key !== v.glbKey || v.rot !== turnOf(b) || (!key && buildingModel(b.type, b.tier, { level, variant: b.id % 4 }).geo !== v.geo)) {
         this.removeBuilding(b, false);
         this.addBuilding(b, false);
         cur = this.views.get(b.id) ?? v;
@@ -1133,29 +1165,101 @@ export class View {
 
   // ---------- Vorschau / Auswahl ----------
 
-  setGhost(type: BuildingId | null, x = 0, y = 0, ok = true) {
+  /**
+   * Vorschau beim Platzieren. turn = Drehung in Vierteldrehungen (wie game.turnOf; Kontor, Fischer und Werften
+   * schauen trotzdem zum Wasser). Gezeigt wird dasselbe Modell wie später das fertige Gebäude – das Meshy-Modell
+   * halbdurchsichtig grün (geht) bzw. rot (geht nicht) getönt; nur solange es noch lädt, das Code-Modell.
+   */
+  setGhost(type: BuildingId | null, x = 0, y = 0, ok = true, turn = 0) {
     this.dirty = true;
     if (!type) {
       if (this.ghost) this.scene.remove(this.ghost);
       this.ghost = null;
-      this.ghostType = null;
+      this.ghostKey = '';
+      this.ghostArgs = null;
       this.place.hide();
       this.workRing.show(0, 0, 0, 0, this.hAt);
       return;
     }
     const d = BUILDINGS[type];
-    if (this.ghostType !== type) {
+    const key = `${type}|${this.lib.shownKey(type, 0) ?? 'code'}`;
+    if (this.ghostKey !== key) {
       if (this.ghost) this.scene.remove(this.ghost);
-      this.ghost = new THREE.Mesh(buildingModel(type, 0).geo, this.ghostMatOk);
-      this.ghost.renderOrder = 4;
+      this.ghost = this.makeGhost(type);
       this.scene.add(this.ghost);
-      this.ghostType = type;
+      this.ghostKey = key;
     }
+    this.ghostArgs = [type, x, y, ok, turn];
+    const gh = this.ghost!;
+    this.tintGhost(gh, ok);
     const gy = this.groundY(x, y, d.size);
-    this.ghost!.material = ok ? this.ghostMatOk : this.ghostMatBad;
-    this.ghost!.position.set(x + d.size / 2, gy + 0.02, y + d.size / 2);
-    this.place.show(this.ghost!.geometry, x, y, d.size, gy, ok);
+    gh.position.set(x + d.size / 2, gy + 0.02, y + d.size / 2);
+    gh.rotation.y = this.facingAt(type, x, y, turn);
+    this.place.show(gh, x, y, d.size, gy, ok);
     this.showRadius(d.work ?? d.radius ?? 0, x + d.size / 2, y + d.size / 2, d.work && d.prod ? 0xffb347 : 0xffffff);
+  }
+
+  /** Modell einer Gebäudeart schon laden lassen (z. B. beim Öffnen des Bauwerkzeugs), damit die Vorschau es gleich zeigt */
+  preloadModel(type: BuildingId) { this.lib.shownKey(type, 0); }
+
+  /** Vorschau-Modell bauen: Kopie des Meshy-Modells (Oberflächen werden in tintGhost getönt), sonst Code-Modell */
+  private makeGhost(type: BuildingId): THREE.Object3D {
+    const glb = this.lib.building(type, 0);
+    if (!glb) {
+      const m = new THREE.Mesh(buildingModel(type, 0).geo, this.ghostMatOk);
+      m.renderOrder = 4;
+      m.userData.code = true;
+      return m;
+    }
+    glb.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      m.userData.ghostSrc = m.material;
+      m.castShadow = false; // die Vorschau wirft keinen Schatten (sie steht ja noch nicht)
+      m.receiveShadow = false;
+      m.renderOrder = 4;
+    });
+    // Mühle: Flügel auch in der Vorschau (wie beim fertigen Gebäude, siehe glbSpinners)
+    const hub = glb.userData.hub as [number, number, number] | undefined;
+    if (hub) {
+      const m = new THREE.Mesh(MILL_BLADES, this.ghostMatOk);
+      m.position.set(...hub);
+      m.scale.setScalar((glb.userData.hubR as number) ?? 0.9);
+      m.userData.code = true;
+      m.renderOrder = 4;
+      glb.add(m);
+    }
+    return glb;
+  }
+
+  /** Vorschau grün (geht) oder rot (geht nicht) tönen – die echten Oberflächen bleiben erkennbar */
+  private tintGhost(root: THREE.Object3D, ok: boolean) {
+    root.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      if (m.userData.code) { m.material = ok ? this.ghostMatOk : this.ghostMatBad; return; }
+      const src = m.userData.ghostSrc as THREE.Material | THREE.Material[] | undefined;
+      if (!src) return;
+      m.material = Array.isArray(src) ? src.map((x) => this.tinted(x, ok)) : this.tinted(src, ok);
+    });
+  }
+
+  private tinted(src: THREE.Material, ok: boolean): THREE.Material {
+    let pair = this.ghostTint.get(src);
+    if (!pair) {
+      const mk = (good: boolean) => {
+        const c = src.clone() as THREE.MeshStandardMaterial;
+        c.transparent = true;
+        c.opacity = good ? 0.8 : 0.72;
+        c.depthWrite = true;
+        if (c.color) c.color.multiply(new THREE.Color(good ? 0x9cff8c : 0xff8a7a));
+        if (c.emissive) c.emissive.setHex(good ? 0x123a0e : 0x4a120c);
+        return c as THREE.Material;
+      };
+      pair = [mk(true), mk(false)];
+      this.ghostTint.set(src, pair);
+    }
+    return ok ? pair[0] : pair[1];
   }
 
   showRadius(r: number, x = 0, z = 0, color = 0xffffff) {

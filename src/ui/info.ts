@@ -6,7 +6,7 @@
 import './info.css';
 import { BUILDINGS, BuildingId, GOOD, GOODS, GoodId, KONTOR_LEVELS, PRICES, SHIPS, ShipType, TIERS, UNITS, UnitType } from '../data';
 import { atWar, canTrain, train } from '../combat';
-import { Building, Game, HUMAN } from '../game';
+import { Building, Game, HUMAN, turnable } from '../game';
 import { PFLANZEN, Pflanze, depositText } from '../world';
 import { infoLines as eventLines } from '../events';
 import { VORRAT_ICON, flows, houseVorrat, ledger, vorrat } from '../stats';
@@ -382,6 +382,8 @@ export class InfoPanel {
     if (d.upkeep > 0 || idle) h += `<div class="row"><span>Unterhalt jetzt${idle ? ` <small>(ruhend ${d.upkeepIdle})</small>` : ''}</span><b>${L.v(`${g.upkeepOf(b)}/Min`)}</b></div>`;
     h = withExtra(h, L, g, b);
     if (d.prod) foot += b.off ? `<button class="btn ok" id="infoOff">▶ Betreiben<small>Unterhalt dann ${d.upkeep}</small></button>` : `<button class="btn" id="infoOff">⏸ Ruhen lassen${idle ? `<small>Unterhalt nur ${d.upkeepIdle}</small>` : ''}</button>`;
+    // drehen (kostenlos, Regel 18): nicht bei Kontor, Werften, Fischer (schauen zum Wasser), Mauern und Toren
+    if (turnable(b.type)) foot += `<button class="btn" id="infoTurn" aria-label="Gebäude drehen">⟳ Drehen<small>kostenlos</small></button>`;
     if (b.type !== 'kontor') foot += `<button class="btn danger" id="infoDel">💥 Abreißen</button>`;
     if (!this.show(L, h, foot)) return;
     // Knöpfe stehen im Inhalt oder in der Fußleiste: im ganzen Fenster suchen
@@ -394,6 +396,10 @@ export class InfoPanel {
       ui.renderInfo();
     });
     document.getElementById('infoRoad')?.addEventListener('click', () => this.roadFrom(b));
+    document.getElementById('infoTurn')?.addEventListener('click', () => {
+      const r = g.turnBuilding(b);
+      if (r.ok) sound.play('klick'); else ui.toast(r.reason ?? 'Geht nicht', 'bad');
+    });
     document.getElementById('infoKontor')?.addEventListener('click', () => { const k = g.kontor(HUMAN, b.island); if (k) ui.select(k); });
     box.querySelectorAll<HTMLElement>('[data-wgood]').forEach((bt) => bt.addEventListener('click', () => whereGood(ui, b, bt.dataset.wgood as GoodId)));
     box.querySelectorAll<HTMLElement>('[data-wsvc]').forEach((bt) => bt.addEventListener('click', () => whereService(ui, b, bt.dataset.wsvc as BuildingId)));

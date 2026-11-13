@@ -63,6 +63,26 @@ export interface Building {
   downT?: number;
   /** Haus: warum zuletzt Bewohner ausgezogen sind (für Meldungen und die Statistik) */
   leave?: 'hunger' | 'steuern' | 'mangel';
+  /** Drehung in Vierteldrehungen (0–3, gegen den Uhrzeigersinn von oben); fehlt = Grundrichtung (turnOf).
+   *  Neu seit dem 13.11.: ältere Spielstände haben das Feld nicht und laden ohne Drehung. */
+  rot?: number;
+}
+
+/**
+ * Lässt sich diese Gebäudeart drehen (Regel 18)? Nicht: Kontor, Werften und Fischerhütte (schauen immer zum
+ * Wasser), Wege, Mauern und Tore (richten sich nach ihren Nachbarn) und die Hütten der Ureinwohner.
+ * Alle Grundflächen sind quadratisch – eine Drehung belegt also genau dieselben Felder wie vorher.
+ */
+export function turnable(type: BuildingId): boolean {
+  return !NO_TURN.has(type) && !!BUILDINGS[type];
+}
+const NO_TURN = new Set<BuildingId>(['kontor', 'werft', 'grosswerft', 'fischer', 'weg', 'steinweg', 'palisade', 'steinmauer',
+  'holztor', 'steintor_klein', 'steintor', 'huette', 'haeuptling']);
+
+/** Drehung eines Gebäudes (0–3): gespeicherte Drehung, sonst die Grundrichtung (Wohnhäuser verschieden, sonst 0) */
+export function turnOf(b: { type: BuildingId; id: number; rot?: number }): number {
+  if (b.rot !== undefined && turnable(b.type)) return ((Math.round(b.rot) % 4) + 4) % 4;
+  return b.type === 'haus' ? (b.id * 7) % 4 : 0;
 }
 
 /** Soldat auf dem Land (oder an Bord eines Schiffs) */
@@ -1541,11 +1561,13 @@ export class Game {
     for (const s of SYSTEMS) s.afterPlace?.(this, b);
   }
 
-  place(type: BuildingId, x: number, y: number, owner = HUMAN): Check {
+  /** Gebäude bauen; rot = Drehung in Vierteldrehungen (fehlt = Grundrichtung, siehe turnOf) */
+  place(type: BuildingId, x: number, y: number, owner = HUMAN, rot?: number): Check {
     const c = this.canPlace(type, x, y, owner);
     if (!c.ok) return c;
     const d = BUILDINGS[type];
     const { b, cleared } = this.putBuilding(type, x, y, owner, true);
+    if (rot !== undefined && Number.isFinite(rot) && turnable(type)) b.rot = ((Math.round(rot) % 4) + 4) % 4;
     this.recompute();
     if (LAGER.includes(type) && owner === HUMAN) {
       const [cx, cy] = this.center(b);
@@ -1559,6 +1581,29 @@ export class Game {
       this.ev.message(`Kontor auf ${this.islands[b.island].name} gegründet! Lade jetzt die Waren aus dem Schiff.`, 'good', this.at(b));
     }
     this.afterPlace(b);
+    return { ok: true };
+  }
+
+  /**
+   * Fertiges Gebäude um eine Vierteldrehung weiterdrehen (kostenlos, Regel 18). Geht nur bei drehbaren Arten
+   * (turnable) und eigenen Gebäuden. Weil alle Grundflächen quadratisch sind, bleibt jedes Feld belegt wie
+   * vorher – Platz, Wege und Arbeitsbereich ändern sich nicht; es dreht sich nur das Bild.
+   */
+  canTurn(b: Building, owner = HUMAN): Check {
+    if (!this.byId.has(b.id)) return { ok: false, reason: 'Das Gebäude gibt es nicht mehr' };
+    if (b.owner !== owner) return { ok: false, reason: 'Nicht dein Gebäude' };
+    if (!turnable(b.type)) {
+      const water = b.type === 'kontor' || b.type === 'werft' || b.type === 'grosswerft' || b.type === 'fischer';
+      return { ok: false, reason: water ? 'Schaut immer zum Wasser' : 'Richtet sich nach den Nachbarn' };
+    }
+    return { ok: true };
+  }
+
+  turnBuilding(b: Building, owner = HUMAN): Check {
+    const c = this.canTurn(b, owner);
+    if (!c.ok) return c;
+    b.rot = (turnOf(b) + 1) % 4;
+    this.ev.changed(b);
     return { ok: true };
   }
 
