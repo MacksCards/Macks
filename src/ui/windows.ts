@@ -22,6 +22,7 @@ export class Windows {
     ui.dialog({
       title: '⚓ Neue Ufer', cls: 'menu',
       body: `<div class="mgrid">
+        ${g.kontor(HUMAN) ? '<button class="btn" id="mLager">📦 Lager &amp; Bilanz</button>' : ''}
         <button class="btn" id="mSave">💾 Spielstände</button>
         <button class="btn" id="mHelp">❓ Anleitung</button>
         <button class="btn" id="mSet">⚙️ Einstellungen</button>
@@ -34,6 +35,7 @@ export class Windows {
       foot: `<button class="btn wide ok" id="mResume">▶️ Weiterspielen</button>`,
     });
     $('#mResume').addEventListener('click', () => ui.closeModal());
+    document.getElementById('mLager')?.addEventListener('click', () => { ui.closeModal(); ui.openStorage(); });
     // Spielstände, Einstellungen (ui/settings.ts) – „Zurück“ führt ins Menü
     $('#mSave').addEventListener('click', () => void ui.settings.openSaves(() => this.openMenu()));
     $('#mSet').addEventListener('click', () => ui.settings.openOptions(() => this.openMenu()));

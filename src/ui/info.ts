@@ -345,6 +345,11 @@ export class InfoPanel {
       if (d.work && d.prod) h += `<div class="row"><span>Arbeitsradius</span><b>${d.work} Felder</b></div>`;
       else if (d.radius) h += `<div class="row"><span>Reichweite</span><b>${d.radius} Felder</b></div>`;
       if (d.storage) h += `<div class="row"><span>Lager</span><b>+${d.storage} je Ware</b></div>`;
+      // Marktplatz: das Lager der Insel gleich hier sehen (wie am Kontor, Reiter Lager)
+      if (b.type === 'markt') {
+        h += `<h4>📦 Lager der Insel</h4>` + this.lagerTab(L, null, b.island);
+        if (g.kontor(HUMAN, b.island)) foot += `<button class="btn" id="infoKontor">⚓ Kontor<small>Handel, Bilanz</small></button>`;
+      }
       if (d.tower) h += `<div class="row"><span>🎯 Schießt auf Feinde</span><b>${d.tower.range} Felder</b></div>`;
       if (d.trains) { const t = this.trainHtml(L, b); h += t.body; foot += t.foot; }
       if (b.type === 'werft' || b.type === 'grosswerft') {
@@ -389,6 +394,7 @@ export class InfoPanel {
       ui.renderInfo();
     });
     document.getElementById('infoRoad')?.addEventListener('click', () => this.roadFrom(b));
+    document.getElementById('infoKontor')?.addEventListener('click', () => { const k = g.kontor(HUMAN, b.island); if (k) ui.select(k); });
     box.querySelectorAll<HTMLElement>('[data-wgood]').forEach((bt) => bt.addEventListener('click', () => whereGood(ui, b, bt.dataset.wgood as GoodId)));
     box.querySelectorAll<HTMLElement>('[data-wsvc]').forEach((bt) => bt.addEventListener('click', () => whereService(ui, b, bt.dataset.wsvc as BuildingId)));
     box.querySelectorAll<HTMLElement>('[data-train]').forEach((bt) => bt.addEventListener('click', () => {
