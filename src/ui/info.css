@@ -29,6 +29,12 @@
   padding: 6px 8px 8px; border-top: 1px solid var(--rand); background: rgba(33, 25, 18, .98); border-radius: 0 0 10px 10px;
 }
 .info .ifoot > .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* ⟳ Drehen: schmaler Knopf vorne; mit höchstens zwei weiteren Knöpfen in einer Zeile (spart Höhe im Querformat) */
+.info .ifoot:has(> .btn.turn:first-child):not(:has(> .btn:nth-child(4))) { grid-template-columns: calc(var(--tap) + 4px) minmax(0, 1fr) minmax(0, 1fr); }
+.info .ifoot:has(> .btn.turn:first-child):not(:has(> .btn:nth-child(4))) > .btn:nth-child(2):last-child { grid-column: 2 / -1; }
+.info .ifoot:has(> .btn.turn:first-child):not(:has(> .btn:nth-child(4))) > .btn:nth-child(3):last-child { grid-column: auto; }
+.info .ifoot .btn.turn { padding: 2px; font-size: 20px; line-height: 1; }
+.info .ifoot .btn.turn small { font-size: 11px; margin-top: 1px; }
 .info .ifoot .btn { min-height: var(--tap); min-width: 0; padding: 3px 6px; font-size: 14px; line-height: 1.15; overflow-wrap: break-word; }
 .info .ifoot .btn small { display: block; font-size: 12px; font-weight: 400; color: var(--pergament-2); }
 .info .ifoot .btn.ok small { color: #dfe9c8; }

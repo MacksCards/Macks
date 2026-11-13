@@ -120,7 +120,8 @@ export class BuildTool {
   private turn() {
     const ui = this.ui, m = ui.mode;
     if (m.kind !== 'build' || !turnable(m.type)) return;
-    this.turns[m.type] = (this.turnShown(m.type) + 1) % 4;
+    // weiter ab der Richtung, die gerade zu sehen ist
+    this.turns[m.type] = ((m.has ? this.shownTurn : this.turnShown(m.type)) + 1) % 4;
     try { localStorage.setItem(TURN_KEY, JSON.stringify(this.turns)); } catch { /* nur Bequemlichkeit */ }
     sound.play('klick');
     this.shownTurn = this.turnShown(m.type);

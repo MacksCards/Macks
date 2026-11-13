@@ -337,15 +337,16 @@ export class InfoPanel {
     let foot = '';
     if (b.type === 'haus') h += this.houseHtml(L, b);
     else {
-      h += `<h3>${d.icon} ${d.name}</h3><p class="sub">${d.desc}</p>`;
+      // Marktplatz: kurz die Eckdaten, dann gleich das Lager der Insel (wie am Kontor, Reiter Lager)
+      if (b.type === 'markt') h += `<h3>${d.icon} ${d.name}</h3><p class="sub">Reichweite ${d.radius} Felder · Lager +${d.storage} t je Ware · Karren holt bis ${d.pickup} Felder weit ab</p>`;
+      else h += `<h3>${d.icon} ${d.name}</h3><p class="sub">${d.desc}</p>`;
       if (d.prod) {
         const r = this.prodHtml(L, b);
         h += r.body; foot += r.foot;
       }
       if (d.work && d.prod) h += `<div class="row"><span>Arbeitsradius</span><b>${d.work} Felder</b></div>`;
-      else if (d.radius) h += `<div class="row"><span>Reichweite</span><b>${d.radius} Felder</b></div>`;
-      if (d.storage) h += `<div class="row"><span>Lager</span><b>+${d.storage} je Ware</b></div>`;
-      // Marktplatz: das Lager der Insel gleich hier sehen (wie am Kontor, Reiter Lager)
+      else if (d.radius && b.type !== 'markt') h += `<div class="row"><span>Reichweite</span><b>${d.radius} Felder</b></div>`;
+      if (d.storage && b.type !== 'markt') h += `<div class="row"><span>Lager</span><b>+${d.storage} je Ware</b></div>`;
       if (b.type === 'markt') {
         h += `<h4>📦 Lager der Insel</h4>` + this.lagerTab(L, null, b.island);
         if (g.kontor(HUMAN, b.island)) foot += `<button class="btn" id="infoKontor">⚓ Kontor<small>Handel, Bilanz</small></button>`;
@@ -382,9 +383,10 @@ export class InfoPanel {
     if (d.upkeep > 0 || idle) h += `<div class="row"><span>Unterhalt jetzt${idle ? ` <small>(ruhend ${d.upkeepIdle})</small>` : ''}</span><b>${L.v(`${g.upkeepOf(b)}/Min`)}</b></div>`;
     h = withExtra(h, L, g, b);
     if (d.prod) foot += b.off ? `<button class="btn ok" id="infoOff">▶ Betreiben<small>Unterhalt dann ${d.upkeep}</small></button>` : `<button class="btn" id="infoOff">⏸ Ruhen lassen${idle ? `<small>Unterhalt nur ${d.upkeepIdle}</small>` : ''}</button>`;
-    // drehen (kostenlos, Regel 18): nicht bei Kontor, Werften, Fischer (schauen zum Wasser), Mauern und Toren
-    if (turnable(b.type)) foot += `<button class="btn" id="infoTurn" aria-label="Gebäude drehen">⟳ Drehen<small>kostenlos</small></button>`;
     if (b.type !== 'kontor') foot += `<button class="btn danger" id="infoDel">💥 Abreißen</button>`;
+    // drehen (kostenlos, Regel 18): schmaler Knopf vorne in der Fußleiste – nicht bei Kontor, Werften, Fischer
+    // (schauen zum Wasser), Mauern und Toren
+    if (turnable(b.type)) foot = `<button class="btn turn" id="infoTurn" aria-label="Gebäude drehen (kostenlos)">⟳<small>Drehen</small></button>` + foot;
     if (!this.show(L, h, foot)) return;
     // Knöpfe stehen im Inhalt oder in der Fußleiste: im ganzen Fenster suchen
     const box = $('#info');
