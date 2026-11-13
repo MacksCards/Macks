@@ -318,8 +318,12 @@ const SHIP_SIGHT = 9;
 /** Nachwachsen je Sekunde (voller Bestand = 1): Baum ~5 min, Fischgrund ~2,5 min, Wild ~6,5 min, Weide ~1,5 min */
 const REGEN: Record<Res, number> = { baum: 1 / 300, fisch: 1 / 150, wild: 1 / 400, weide: 1 / 90, feld: 1 / 100 };
 const CART_SPEED = 1.8; // Felder pro Spielsekunde
-/** so weit hält ein Marktkarren vor der Grundfläche eines Gebäudes (Felder) – nie darin */
-export const DOOR_GAP = 0.2;
+/** so weit reicht das sichtbare Karrenmodell höchstens von seiner Mitte (Felder): Zieher vorne 0,38, Karrenende
+ *  hinten 0,36, Räder seitlich 0,17 – in jeder Drehung (src/render/carts.ts, Maßstab 1,4) */
+export const CART_REACH = 0.4;
+/** so weit hält ein Marktkarren vor der Grundfläche eines Gebäudes (Felder): mehr als CART_REACH, damit auch beim
+ *  Wenden weder der Zieher noch das Karrenende in Gebäude, Stände oder Zäune ragt */
+export const DOOR_GAP = 0.45;
 const CART_CAP = 10; // Tonnen pro Fahrt
 /** Pflasterwege: so viel schneller kommen Marktkarren voran (wie im Vorbild etwa ein Drittel) */
 const PFLASTER_TEMPO = 1.3;

@@ -7,7 +7,7 @@
 const g0 = globalThis as unknown as Record<string, unknown>;
 g0.localStorage = { getItem: () => null, setItem() {}, removeItem() {} };
 import { BUILDINGS, BuildingId, GOODS, TIERS } from '../src/data';
-import { BANKROTT, Building, Game, HUMAN, SaveData } from '../src/game';
+import { BANKROTT, Building, CART_REACH, DOOR_GAP, Game, HUMAN, SaveData } from '../src/game';
 import { T } from '../src/world';
 import { VORRAT_ICON, houseVorrat, vorrat } from '../src/stats';
 
@@ -375,44 +375,54 @@ const setHouse = (g: Game, h: Building, tier: number, residents = TIERS[tier].ma
   }
   g.recompute();
   for (const b of shops) b.stock = 4;
-  let inside = 0, seen = 0, trips = 0, atHome = 0;
+  let inside = 0, seen = 0, trips = 0, atHome = 0, front = 0, rear = 0, body = 0;
   const where = (x: number, y: number) => {
     const o = g.occ[g.idx(Math.floor(x), Math.floor(y))];
     const b = o ? g.byId.get(o) : undefined;
     return b && !BUILDINGS[b.type].gate ? b : undefined;
   };
   const last = new Map<number, [number, number]>();
+  const dir = new Map<number, [number, number]>();
   const st = new Map<number, string>();
-  for (let t = 0; t < 120; t += 0.25) {
+  // kleine Schritte: so wird jede Stellung zwischen zwei Wegpunkten geprüft (auch die Wende am Halteplatz)
+  for (let t = 0; t < 120; t += 0.05) {
     for (const b of shops) if (b.stock < 2) b.stock = 4;
-    g.tick(0.25);
+    g.tick(0.05);
     for (const c of g.carts) {
-      if (c.state === 'idle') { last.delete(c.id); st.set(c.id, 'idle'); continue; }
-      seen++;
-      // auch zwischen zwei Schritten prüfen (der Karren läuft geradeaus von Punkt zu Punkt)
+      if (c.state === 'idle') { last.delete(c.id); dir.delete(c.id); st.set(c.id, 'idle'); continue; }
       const p = last.get(c.id) ?? [c.x, c.y];
-      // Übergabe an einem direkt angrenzenden Betrieb: der Karren steht an der gemeinsamen Kante und ist
-      // nicht zu sehen (render/carts.ts zeigt nie einen Karren auf einem Gebäudefeld) – kein Laufen durchs Gebäude
-      const still = Math.hypot(c.x - p[0], c.y - p[1]) < 1e-6 && !c.path.length;
-      if (!still) for (let f = 0; f <= 1; f += 0.25) {
-        const w = where(p[0] + (c.x - p[0]) * f, p[1] + (c.y - p[1]) * f);
-        if (w) { inside++; break; }
-      }
+      const mv = Math.hypot(c.x - p[0], c.y - p[1]);
+      if (mv > 1e-6) dir.set(c.id, [(c.x - p[0]) / mv, (c.y - p[1]) / mv]);
       last.set(c.id, [c.x, c.y]);
       if (c.state === 'zurueck' && st.get(c.id) === 'hin') trips++;
       st.set(c.id, c.state);
+      // Übergabe an einem direkt angrenzenden Betrieb: der Karren steht auf dem Gebäudefeld an der gemeinsamen
+      // Kante und ist nicht zu sehen (render/carts.ts zeigt nie einen Karren auf einem Gebäudefeld)
+      if (where(c.x, c.y) && mv < 1e-6 && !c.path.length) continue;
+      seen++;
+      if (where(c.x, c.y)) inside++;
+      // ganzes Modell: Zieher vorne (0,38), Karrenende hinten (0,364) in Fahrtrichtung – und in jeder Drehung
+      // (beim Wenden am Halteplatz) ein Kreis mit CART_REACH
+      const d = dir.get(c.id);
+      if (d && where(c.x + d[0] * 0.38, c.y + d[1] * 0.38)) front++;
+      if (d && where(c.x - d[0] * 0.364, c.y - d[1] * 0.364)) rear++;
+      for (let a = 0; a < 16; a++) if (where(c.x + Math.cos(a * Math.PI / 8) * CART_REACH, c.y + Math.sin(a * Math.PI / 8) * CART_REACH)) { body++; break; }
       const home = g.byId.get(c.home)!;
       const [hx, hy] = g.center(home);
       if (Math.abs(c.x - hx) < 0.6 && Math.abs(c.y - hy) < 0.6) atHome++;
     }
   }
   check('Testaufbau: Marktplatz und Betriebe mit Wegen', !!m && shops.length >= 2, `${shops.length} Betriebe`);
-  check('Karren waren unterwegs und haben abgeholt', seen > 50 && trips > 0, `${seen} Schritte, ${trips} Abholungen`);
+  check('Karren waren unterwegs und haben abgeholt', seen > 500 && trips > 0, `${seen} Schritte, ${trips} Abholungen`);
   check('kein Karren-Schritt in einem Gebäude (Stände, Brunnen, Wände)', inside === 0, `${inside} von ${seen}`);
+  check('Zieher (Vorderkante) nie in einem Gebäude', front === 0, `${front} von ${seen}`);
+  check('Karrenende (Hinterkante) nie in einem Gebäude', rear === 0, `${rear} von ${seen}`);
+  check('ganzes Modell in jeder Drehung außerhalb aller Gebäude', body === 0, `${body} von ${seen}`);
   check('kein Halt in der Mitte von Kontor oder Marktplatz', atHome === 0, `${atHome}`);
-  // Halteplatz vor einem Gebäude: auf dem Wegfeld, DOOR_GAP vor der Grundfläche
+  // Halteplatz vor einem Gebäude: auf dem Wegfeld, DOOR_GAP vor der Grundfläche (mehr als das Modell reicht)
   const [dx, dy] = g.door(m ?? k, (m ?? k).x + 1, (m ?? k).y - 1);
-  check('Halteplatz liegt vor der Hauswand, nicht darin', !where(dx, dy) && Math.abs(dy - (m ?? k).y) > 0.1 && Math.abs(dy - (m ?? k).y) <= 0.25, `${dx.toFixed(2)}, ${dy.toFixed(2)}`);
+  const gap = Math.abs(dy - (m ?? k).y);
+  check('Halteplatz liegt weiter vor der Hauswand, als der Karren reicht', !where(dx, dy) && gap > CART_REACH && gap < 0.5 && DOOR_GAP > CART_REACH, `${dx.toFixed(2)}, ${dy.toFixed(2)}, Abstand ${gap.toFixed(2)}`);
 }
 
 console.log(fails ? `\n${fails} Prüfung(en) fehlgeschlagen` : '\nAlle Prüfungen bestanden');
