@@ -8,7 +8,7 @@
 import './stats.css';
 import { BUILDINGS, BuildingId, GOODS, TIERS } from '../data';
 import { Building, HUMAN, Status } from '../game';
-import { Flow, LedgerRow, flows, ledger, popSummary, rates, rivals, rowSum, trend } from '../stats';
+import { Flow, LedgerRow, flows, houseVorrat, ledger, popSummary, rates, rivals, rowSum, trend } from '../stats';
 import type { UI } from '../ui';
 import { Part, fmt } from './util';
 import { Live, esc } from './live';
@@ -133,7 +133,7 @@ export class StatsWindow implements Part {
   /** fehlt dem Haus die Ware oder das Gebäude mit diesem Namen? (wie src/stats.ts zählt) */
   private lacks(h: Building, what: string): boolean {
     const gd = GOODS.find((x) => x.name === what);
-    if (gd) return !!h.short?.[gd.id];
+    if (gd) return houseVorrat(this.ui.g, h, gd.id) === 'fehlt';
     const s = Object.values(BUILDINGS).find((d) => d.name === what);
     return !!s && !(this.ui.g.coverage.get(h.id)?.has(s.id as BuildingId));
   }

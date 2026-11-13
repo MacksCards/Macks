@@ -83,7 +83,13 @@ fl.eff = 1; fl.active = 1;
 // ---------- Bevölkerung ----------
 {
   houses[0].short = { nahrung: true }; houses[1].short = { nahrung: true };
+  // „Es fehlt“ zählt nur, was wirklich nicht im Lager liegt (Regel 16): mit 30 t Nahrung fehlt nichts
+  check('Bevölkerung: Nahrung im Lager → fehlt nicht, auch wenn ein Haus zuletzt leer ausging',
+    !stats.popSummary(g, HUMAN, isl).tiers[0].missing.some((m) => m.what === 'Nahrung'));
+  const nahrung0 = l.nahrung;
+  l.nahrung = 0;
   const p = stats.popSummary(g, HUMAN, isl);
+  l.nahrung = nahrung0;
   check('Bevölkerung: 4 Pionierhäuser, 2 Siedlerhäuser', p.tiers[0].houses === 4 && p.tiers[1].houses === 2);
   check('Bevölkerung: Bewohner und Platz', p.tiers[0].residents === 12 && p.tiers[0].max === 12 && p.tiers[1].residents === 14);
   check('Bevölkerung: „Es fehlt“ Nahrung bei 2 Häusern', p.tiers[0].missing.some((m) => m.what === 'Nahrung' && m.houses === 2), JSON.stringify(p.tiers[0].missing));

@@ -2358,7 +2358,14 @@ export class Game {
         h.upT = 0;
         h.downT = 0;
         this.popCache.clear();
-        for (const g of Object.keys(TIERS[h.tier].consumes) as GoodId[]) if (h.need[g] === undefined) h.need[g] = 1;
+        // neue Bedürfnisse (z. B. Alkohol bei Siedlern): gleich die erste Tonne holen. Vorher galt eine neue Ware
+        // erst nach Minuten als „fehlt“ (erst, wenn das Haus eine ganze Tonne wollte) – so lange waren die
+        // Bewohner mit einer Ware zufrieden, die sie nie bekommen hatten. Jetzt zählt sofort, was wirklich da ist.
+        for (const g of Object.keys(TIERS[h.tier].consumes) as GoodId[]) {
+          if (h.need[g] !== undefined) continue;
+          h.need[g] = 1;
+          h.demand[g] = Math.max(h.demand[g] ?? 0, 1);
+        }
         this.ev.changed(h);
         if (h.owner === HUMAN && this.housesByTier()[h.tier] === 1) this.ev.message(`Deine ersten ${TIERS[h.tier].name} sind eingezogen! 🎉`, 'good', this.at(h));
       }

@@ -9,7 +9,7 @@ import { atWar, canTrain, train } from '../combat';
 import { Building, Game, HUMAN } from '../game';
 import { PFLANZEN, Pflanze, depositText } from '../world';
 import { infoLines as eventLines } from '../events';
-import { flows, ledger } from '../stats';
+import { VORRAT_ICON, flows, houseVorrat, ledger, vorrat } from '../stats';
 import { sound } from '../audio';
 import type { UI } from '../ui';
 import { $, costText, fmt, soft } from './util';
@@ -430,15 +430,19 @@ export class InfoPanel {
     let h = `<h3>🏠 Haus der ${tier.name}</h3>
       <div class="row hhead"><span>Bewohner <b>${L.v(`${b.residents}\u00a0/\u00a0${tier.maxResidents}`)}</b></span><span>${L.v(face)} Zufrieden <b>${L.v(`${Math.round(b.happy * 100)}\u00a0%`)}</b></span></div>
       ${L.bar(b.happy, b.happy > 0.85 ? '#6c3' : b.happy > 0.45 ? '#eb3' : '#d43')}
-      <div class="row"><span>🍖 Nahrung</span><b ${L.cls(hungry ? 'neg' : '')}>${L.v(hungry ? 'Hunger!' : `${Math.round(food * 100)} %`)}</b></div>
+      <div class="row"><span>🍖 Satt</span><b ${L.cls(hungry ? 'neg' : '')}>${L.v(hungry ? 'Hunger!' : `${Math.round(food * 100)} %`)}</b></div>
       ${L.bar(food, hungry ? '#e2553f' : food < 0.85 ? '#e8b93a' : '#7cc95a')}
       <h4>Bedürfnisse</h4><div class="chips">`;
-    // kompakt in zwei Spalten (Waren aus dem Lager, Gebäude in der Nähe)
-    const missG: GoodId[] = [], missS: BuildingId[] = [];
+    // kompakt in zwei Spalten (Waren aus dem Lager, Gebäude in der Nähe).
+    // Ehrlich (Regel 16): ✅ nur, wenn die Ware wirklich im Lager liegt und noch eine Weile reicht,
+    // ⚠️ wenn sie bald ausgeht (oder nur gerade so ankommt), ❌ wenn sie fehlt – unabhängig davon, wie zufrieden
+    // die Bewohner gerade noch sind (das zeigt der Balken oben).
+    const fl = flows(g, HUMAN, b.island);
+    const missG: GoodId[] = [], lowG: GoodId[] = [], missS: BuildingId[] = [];
     for (const gId of Object.keys(tier.consumes) as GoodId[]) {
-      const ok = (b.need[gId] ?? 1) > 0.6 && !b.short[gId];
-      if (!ok) missG.push(gId);
-      h += `<span title="${GOOD[gId].name}"><i>${GOOD[gId].icon} ${GOOD[gId].name}</i><b>${L.v(ok ? '✅' : '❌')}</b></span>`;
+      const st = houseVorrat(g, b, gId, fl);
+      if (st === 'fehlt') missG.push(gId); else if (st === 'knapp') lowG.push(gId);
+      h += `<span title="${GOOD[gId].name}"><i>${GOOD[gId].icon} ${GOOD[gId].name}</i><b>${L.v(VORRAT_ICON[st])}</b></span>`;
     }
     for (const s of tier.services) {
       const ok = cov.has(s);
@@ -446,8 +450,16 @@ export class InfoPanel {
       h += `<span title="${BUILDINGS[s].name} in der Nähe"><i>${BUILDINGS[s].icon} ${BUILDINGS[s].name}</i><b>${L.v(ok ? '✅' : '❌')}</b></span>`;
     }
     h += '</div>';
-    // was fehlt – mit „Wo?“: zum Hersteller springen oder das Baumenü öffnen
-    for (const gId of missG) h += `<div class="lackrow"><span>❌ ${GOOD[gId].icon} ${GOOD[gId].name} fehlt</span><button class="btn" data-wgood="${gId}" aria-label="Wo gibt es ${GOOD[gId].name}?">📍 Wo?</button></div>`;
+    // was fehlt oder knapp wird – mit „Wo?“: zum Hersteller springen oder das Baumenü öffnen
+    // (je ein wechselnder Block: kommt eine Ware an, wird nur der Text getauscht, das Fenster springt nicht)
+    let lack = '';
+    for (const gId of missG) lack += `<div class="lackrow"><span>❌ ${GOOD[gId].icon} ${GOOD[gId].name} fehlt im Lager</span><button class="btn" data-wgood="${gId}" aria-label="Wo gibt es ${GOOD[gId].name}?">📍 Wo?</button></div>`;
+    for (const gId of lowG) {
+      const v = vorrat(g, b.owner, b.island, gId, fl);
+      const why = v.have < 1 ? 'kommt nur knapp an' : `reicht nur noch ${v.minutes !== null && v.minutes < 1 ? 'unter 1' : Math.floor(v.minutes ?? 0)} Min`;
+      lack += `<div class="lackrow"><span>⚠️ ${GOOD[gId].icon} ${GOOD[gId].name} ${why}</span><button class="btn" data-wgood="${gId}" aria-label="Wo gibt es ${GOOD[gId].name}?">📍 Wo?</button></div>`;
+    }
+    h += lack;
     for (const s of missS) h += `<div class="lackrow"><span>❌ ${BUILDINGS[s].icon} ${BUILDINGS[s].name} fehlt</span><button class="btn" data-wsvc="${s}" aria-label="Wo ist ${BUILDINGS[s].name}?">📍 Wo?</button></div>`;
     const warn: string[] = [];
     if (hungry) warn.push('🍖 Hunger! Ohne Nahrung ziehen die Bewohner aus.');
