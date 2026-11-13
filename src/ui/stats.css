@@ -53,6 +53,7 @@
 .jrow > span { min-width: 0; }
 .jrow small { display: block; font-size: 12px; color: var(--pergament-2); }
 .jrow.bad { border-left: 3px solid #e2553f; }
+.jrow.low { border-left: 3px solid #e8b93a; }
 .jrow.upok { border-left: 3px solid #7cc95a; }
 .jrow i { font-style: normal; }
 /* Karte je Stufe */

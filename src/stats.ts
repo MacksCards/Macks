@@ -73,6 +73,8 @@ export interface TierSummary {
   ready: number;
   /** was fehlt, mit Anzahl betroffener Häuser */
   missing: { what: string; houses: number }[];
+  /** Waren, die knapp werden (⚠️: geht bald aus oder kommt bei leerem Lager nur gerade so an), mit Anzahl Häuser */
+  low: { what: string; houses: number }[];
   /** warum aufstiegsbereite Häuser nicht aufsteigen, mit Anzahl Häuser */
   blocked: { what: string; houses: number }[];
 }
@@ -451,12 +453,20 @@ function lacks(g: Game, h: Building, fl?: Partial<Record<GoodId, Flow>>): string
   return r;
 }
 
+/** Waren dieses Hauses, die knapp werden (⚠️ wie im Hausfenster) – Namen */
+function lows(g: Game, h: Building, fl?: Partial<Record<GoodId, Flow>>): string[] {
+  const tier = TIERS[h.tier];
+  if (!tier) return [];
+  fl ??= flows(g, h.owner, h.island);
+  return (Object.keys(tier.consumes) as GoodId[]).filter((gd) => houseVorrat(g, h, gd, fl) === 'knapp').map((gd) => GOOD[gd].name);
+}
+
 function countUp(m: Map<string, number>, k: string) { m.set(k, (m.get(k) ?? 0) + 1); }
 const sorted = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1]).map(([what, houses]) => ({ what, houses }));
 
 /** Bevölkerung je Stufe (Pioniere … Aristokraten); island = -1 für alle Inseln */
 export function popSummary(g: Game, owner = HUMAN, island = -1): PopSummary {
-  const acc = TIERS.map(() => ({ houses: 0, residents: 0, max: 0, happy: 0, ready: 0, miss: new Map<string, number>(), block: new Map<string, number>() }));
+  const acc = TIERS.map(() => ({ houses: 0, residents: 0, max: 0, happy: 0, ready: 0, miss: new Map<string, number>(), low: new Map<string, number>(), block: new Map<string, number>() }));
   const fls = new Map<number, Partial<Record<GoodId, Flow>>>();
   for (const h of g.buildings) {
     if (h.owner !== owner || h.type !== 'haus' || (island >= 0 && h.island !== island)) continue;
@@ -469,6 +479,7 @@ export function popSummary(g: Game, owner = HUMAN, island = -1): PopSummary {
     let fl = fls.get(h.island);
     if (!fl) { fl = flows(g, owner, h.island); fls.set(h.island, fl); }
     for (const w of lacks(g, h, fl)) countUp(a.miss, w);
+    for (const w of lows(g, h, fl)) countUp(a.low, w);
     if (h.tier < TIERS.length - 1 && h.residents >= tier.maxResidents && h.happy >= 0.85) {
       a.ready++;
       const why = g.upgradeBlocker(h);
@@ -477,7 +488,7 @@ export function popSummary(g: Game, owner = HUMAN, island = -1): PopSummary {
   }
   return {
     tiers: acc.map((a) => ({ houses: a.houses, residents: a.residents, max: a.max, happy: a.houses ? a.happy / a.houses : 0, ready: a.ready,
-      missing: sorted(a.miss), blocked: sorted(a.block) })),
+      missing: sorted(a.miss), low: sorted(a.low), blocked: sorted(a.block) })),
   };
 }
 

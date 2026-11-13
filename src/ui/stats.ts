@@ -112,6 +112,12 @@ export class StatsWindow implements Part {
       const b = this.firstHouse(Number(t), (h) => this.lacks(h, what));
       if (b) this.jump(b);
     }));
+    c.querySelectorAll<HTMLElement>('[data-low]').forEach((bt) => bt.addEventListener('click', () => {
+      const [t, what] = (bt.dataset.low ?? '').split('|');
+      const gd = GOODS.find((x) => x.name === what);
+      const b = gd && this.firstHouse(Number(t), (h) => houseVorrat(g, h, gd.id) === 'knapp');
+      if (b) this.jump(b);
+    }));
     c.querySelectorAll<HTMLElement>('[data-ready]').forEach((bt) => bt.addEventListener('click', () => {
       const t = Number(bt.dataset.ready);
       const b = this.firstHouse(t, (h) => h.residents >= TIERS[t].maxResidents && h.happy >= 0.85);
@@ -268,7 +274,11 @@ export class StatsWindow implements Part {
       for (const x of t.missing.slice(0, 4)) {
         h += `<button class="jrow bad" data-miss="${i}|${esc(x.what)}" aria-label="Erstes Haus ohne ${esc(x.what)} zeigen"><span>❌ Es fehlt: ${esc(x.what)}<small>${L.v(`bei ${x.houses} von ${t.houses} Häusern`)}</small></span><i>📍</i></button>`;
       }
-      if (!t.missing.length) h += `<p class="stnote ok">✅ Alles da, was sie brauchen.</p>`;
+      for (const x of t.low.slice(0, Math.max(0, 4 - t.missing.length))) {
+        h += `<button class="jrow low" data-low="${i}|${esc(x.what)}" aria-label="Erstes Haus zeigen, bei dem ${esc(x.what)} knapp wird"><span>⚠️ ${esc(x.what)} wird knapp<small>${L.v(`bei ${x.houses} von ${t.houses} Häusern`)}</small></span><i>📍</i></button>`;
+      }
+      // ✅ nur, wenn nichts fehlt und nichts knapp wird (Regel 16: nie grün bei leerem Lager)
+      if (!t.missing.length && !t.low.length) h += `<p class="stnote ok">✅ Alles da, was sie brauchen.</p>`;
       if (t.ready) {
         h += `<button class="jrow upok" data-ready="${i}" aria-label="Aufstiegsbereites Haus zeigen"><span>⬆️ ${L.v(`${t.ready} ${t.ready === 1 ? 'Haus' : 'Häuser'}`)} bereit zum Aufstieg${i < TIERS.length - 1 ? ` zu ${TIERS[i + 1].name}` : ''}<small>${L.v(t.blocked.length ? 'wartet noch: ' + t.blocked.slice(0, 2).map((b) => `${esc(b.what)} (${b.houses})`).join(', ') : 'steigen gleich auf')}</small></span><i>📍</i></button>`;
       }
