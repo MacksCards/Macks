@@ -318,6 +318,8 @@ const SHIP_SIGHT = 9;
 /** Nachwachsen je Sekunde (voller Bestand = 1): Baum ~5 min, Fischgrund ~2,5 min, Wild ~6,5 min, Weide ~1,5 min */
 const REGEN: Record<Res, number> = { baum: 1 / 300, fisch: 1 / 150, wild: 1 / 400, weide: 1 / 90, feld: 1 / 100 };
 const CART_SPEED = 1.8; // Felder pro Spielsekunde
+/** so weit hält ein Marktkarren vor der Grundfläche eines Gebäudes (Felder) – nie darin */
+export const DOOR_GAP = 0.2;
 const CART_CAP = 10; // Tonnen pro Fahrt
 /** Pflasterwege: so viel schneller kommen Marktkarren voran (wie im Vorbild etwa ein Drittel) */
 const PFLASTER_TEMPO = 1.3;
@@ -986,16 +988,26 @@ export class Game {
 
   /** Weg über Straßen (und eigene Tore) von Gebäude a zu Gebäude b (Feldmitten), null = keine Verbindung */
   roadPath(a: Building, b: Building): [number, number][] | null {
-    const N = this.size;
-    const goal = new Set<number>();
-    for (const [x, y] of this.ring(b)) if (this.inMap(x, y)) goal.add(this.idx(x, y));
     const startRing = this.ring(a).filter(([x, y]) => this.inMap(x, y)).map(([x, y]) => this.idx(x, y));
     // direkt benachbart?
     for (const k of startRing) if (this.occ[k] === b.id) return [];
+    return this.roadSearch(startRing, this.ringSet(b), a.owner);
+  }
+
+  /** Felder rund um ein Gebäude (ohne Ecken) als Menge von Feldnummern */
+  private ringSet(b: Building): Set<number> {
+    const goal = new Set<number>();
+    for (const [x, y] of this.ring(b)) if (this.inMap(x, y)) goal.add(this.idx(x, y));
+    return goal;
+  }
+
+  /** Breitensuche über Wege (und eigene Tore) von den Startfeldern bis zu einem Zielfeld (Feldmitten), null = keine */
+  private roadSearch(starts: number[], goal: Set<number>, owner: number): [number, number][] | null {
+    const N = this.size;
     const from = new Map<number, number>();
     const q: number[] = [];
-    const open = (k: number) => this.roadOpen(k, a.owner);
-    for (const k of startRing) if (open(k) && !from.has(k)) { from.set(k, -1); q.push(k); }
+    const open = (k: number) => this.roadOpen(k, owner);
+    for (const k of starts) if (open(k) && !from.has(k)) { from.set(k, -1); q.push(k); }
     for (let h = 0; h < q.length; h++) {
       const k = q[h];
       if (goal.has(k)) {
@@ -1012,6 +1024,28 @@ export class Game {
       }
     }
     return null;
+  }
+
+  /**
+   * Halteplatz eines Marktkarrens vor einem Gebäude: auf dem Wegfeld (cx, cy) neben dem Gebäude, ein Stück zur
+   * Hauswand hin – aber noch DOOR_GAP vor der Grundfläche. So läuft der Karren nie in Gebäude, Stände oder Zäune
+   * (früher ging er bis zur Gebäudemitte, am Marktplatz mitten durch die Stände und den Brunnen).
+   */
+  door(b: { type: BuildingId; x: number; y: number }, cx: number, cy: number): [number, number] {
+    const s = BUILDINGS[b.type].size;
+    const x = Math.floor(cx), y = Math.floor(cy);
+    const off = 0.5 - DOOR_GAP;
+    if (y === b.y - 1) return [x + 0.5, y + 0.5 + off];
+    if (y === b.y + s) return [x + 0.5, y + 0.5 - off];
+    if (x === b.x - 1) return [x + 0.5 + off, y + 0.5];
+    if (x === b.x + s) return [x + 0.5 - off, y + 0.5];
+    return [x + 0.5, y + 0.5];
+  }
+
+  /** Karren wird versteckt versetzt (zwischen zwei Fahrten): nicht durchs Bild gleiten lassen */
+  private cartJump(c: Cart, x: number, y: number) {
+    c.x = x; c.y = y;
+    this.prev.set(c.id, [x, y, 0]);
   }
 
   /** Abholweite der Marktkarren eines Kontors oder Marktplatzes (Felder) */
@@ -1031,8 +1065,19 @@ export class Game {
     for (const b of cands) {
       const path = this.roadPath(home, b);
       if (!path) continue;
-      const [bx, by] = this.center(b);
-      c.path = [...path, [bx, by]];
+      if (path.length) {
+        // los geht es am Halteplatz vor dem Heim (der Karren war bis eben unsichtbar), Ziel ist der Halteplatz vor dem Betrieb
+        const [sx, sy] = path[0], [ex, ey] = path[path.length - 1];
+        this.cartJump(c, ...this.door(home, sx, sy));
+        c.path = [...path, this.door(b, ex, ey)];
+      } else {
+        // Betrieb grenzt direkt ans Heim: Übergabe an der gemeinsamen Kante (dort ist der Karren nicht zu sehen)
+        const [hx2, hy2] = this.center(home), [bx, by] = this.center(b);
+        const hs = BUILDINGS[home.type].size / 2, bs = BUILDINGS[b.type].size / 2;
+        const t = hs / Math.max(1e-6, hs + bs);
+        this.cartJump(c, hx2 + (bx - hx2) * t, hy2 + (by - hy2) * t);
+        c.path = [];
+      }
       c.state = 'hin';
       c.target = b.id;
       return;
@@ -1101,8 +1146,14 @@ export class Game {
           b.stock -= take;
           if (take > 0) { c.g = g; c.n = take; }
         }
-        const back = b ? this.roadPath(home, b) : null;
-        c.path = [...(back ?? []).reverse(), this.center(home)];
+        // zurück über die Wege vom Halteplatz aus bis vor das Heim (nie quer durch Gebäude). Gibt es keinen Weg
+        // mehr (abgerissen) oder grenzt der Betrieb ans Heim, gilt der Karren gleich als daheim (unsichtbar)
+        const k = this.idx(Math.floor(c.x), Math.floor(c.y));
+        const back = this.inMap(Math.floor(c.x), Math.floor(c.y)) && this.roadOpen(k, home.owner) ? this.roadSearch([k], this.ringSet(home), home.owner) : null;
+        if (back && back.length) {
+          const [ex, ey] = back[back.length - 1];
+          c.path = [...back, this.door(home, ex, ey)];
+        } else c.path = [];
         c.state = 'zurueck';
       } else {
         this.cartUnload(c, home);

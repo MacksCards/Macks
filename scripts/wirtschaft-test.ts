@@ -363,5 +363,57 @@ const setHouse = (g: Game, h: Building, tier: number, residents = TIERS[tier].ma
   check('Stoffe kamen an: ✅ und zufrieden damit', houseVorrat(g, p, 'stoff') === 'da' && (p.need.stoff ?? 0) > 0.9);
 }
 
+// ---------- 13. Marktkarren laufen nie durch Gebäude (Regel 19) ----------
+{
+  const { g, k } = setup();
+  const m = put(g, 'markt', k, 6, 10);
+  if (m) connect(g, m);
+  const shops: Building[] = [];
+  for (const t of ['holzfaeller', 'weberei', 'schaffarm', 'jagdhuette'] as BuildingId[]) {
+    const b = m ? put(g, t, m, 5, 10) : null;
+    if (b) { connect(g, b); shops.push(b); }
+  }
+  g.recompute();
+  for (const b of shops) b.stock = 4;
+  let inside = 0, seen = 0, trips = 0, atHome = 0;
+  const where = (x: number, y: number) => {
+    const o = g.occ[g.idx(Math.floor(x), Math.floor(y))];
+    const b = o ? g.byId.get(o) : undefined;
+    return b && !BUILDINGS[b.type].gate ? b : undefined;
+  };
+  const last = new Map<number, [number, number]>();
+  const st = new Map<number, string>();
+  for (let t = 0; t < 120; t += 0.25) {
+    for (const b of shops) if (b.stock < 2) b.stock = 4;
+    g.tick(0.25);
+    for (const c of g.carts) {
+      if (c.state === 'idle') { last.delete(c.id); st.set(c.id, 'idle'); continue; }
+      seen++;
+      // auch zwischen zwei Schritten prüfen (der Karren läuft geradeaus von Punkt zu Punkt)
+      const p = last.get(c.id) ?? [c.x, c.y];
+      // Übergabe an einem direkt angrenzenden Betrieb: der Karren steht an der gemeinsamen Kante und ist
+      // nicht zu sehen (render/carts.ts zeigt nie einen Karren auf einem Gebäudefeld) – kein Laufen durchs Gebäude
+      const still = Math.hypot(c.x - p[0], c.y - p[1]) < 1e-6 && !c.path.length;
+      if (!still) for (let f = 0; f <= 1; f += 0.25) {
+        const w = where(p[0] + (c.x - p[0]) * f, p[1] + (c.y - p[1]) * f);
+        if (w) { inside++; break; }
+      }
+      last.set(c.id, [c.x, c.y]);
+      if (c.state === 'zurueck' && st.get(c.id) === 'hin') trips++;
+      st.set(c.id, c.state);
+      const home = g.byId.get(c.home)!;
+      const [hx, hy] = g.center(home);
+      if (Math.abs(c.x - hx) < 0.6 && Math.abs(c.y - hy) < 0.6) atHome++;
+    }
+  }
+  check('Testaufbau: Marktplatz und Betriebe mit Wegen', !!m && shops.length >= 2, `${shops.length} Betriebe`);
+  check('Karren waren unterwegs und haben abgeholt', seen > 50 && trips > 0, `${seen} Schritte, ${trips} Abholungen`);
+  check('kein Karren-Schritt in einem Gebäude (Stände, Brunnen, Wände)', inside === 0, `${inside} von ${seen}`);
+  check('kein Halt in der Mitte von Kontor oder Marktplatz', atHome === 0, `${atHome}`);
+  // Halteplatz vor einem Gebäude: auf dem Wegfeld, DOOR_GAP vor der Grundfläche
+  const [dx, dy] = g.door(m ?? k, (m ?? k).x + 1, (m ?? k).y - 1);
+  check('Halteplatz liegt vor der Hauswand, nicht darin', !where(dx, dy) && Math.abs(dy - (m ?? k).y) > 0.1 && Math.abs(dy - (m ?? k).y) <= 0.25, `${dx.toFixed(2)}, ${dy.toFixed(2)}`);
+}
+
 console.log(fails ? `\n${fails} Prüfung(en) fehlgeschlagen` : '\nAlle Prüfungen bestanden');
 if (fails) process.exitCode = 1;

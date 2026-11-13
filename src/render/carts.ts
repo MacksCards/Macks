@@ -1,5 +1,6 @@
 // Marktkarren: kleine Figur mit Handkarren, läuft über die Wege.
 import * as THREE from 'three';
+import { BUILDINGS } from '../data';
 import { Game } from '../game';
 import { Builder, M } from './kit';
 import { buildingMaterial } from './materials';
@@ -46,12 +47,21 @@ export class CartLayer {
         this.group.add(m);
         this.meshes.set(c.id, m);
       }
-      m.visible = c.state !== 'idle' && this.g.seen[this.g.idx(Math.floor(c.x), Math.floor(c.y))] === 1;
+      const was = m.visible;
+      const k = this.g.idx(Math.floor(c.x), Math.floor(c.y));
+      // nie in einem Gebäude zeigen (Übergabe an einem direkt angrenzenden Betrieb, abgerissener Weg …) – Tore sind offen
+      const occ = this.g.occ[k] ? this.g.byId.get(this.g.occ[k]) : undefined;
+      const inside = !!occ && !BUILDINGS[occ.type].gate;
+      m.visible = c.state !== 'idle' && !inside && this.g.seen[k] === 1;
       m.geometry = c.n > 0 ? this.geoFull : this.geoEmpty;
       const [cx, cy] = this.g.ip(c);
       const prev = this.last.get(c.id);
       let moving = false;
-      if (prev) {
+      if (m.visible && !was && c.path.length) {
+        // taucht (wieder) auf: gleich in Fahrtrichtung schauen statt sich erst herumzudrehen
+        const [tx, ty] = c.path[0];
+        if (Math.hypot(tx - c.x, ty - c.y) > 1e-3) m.rotation.y = Math.atan2(tx - c.x, ty - c.y);
+      } else if (prev) {
         const dx = cx - prev[0], dz = cy - prev[1];
         if (dx * dx + dz * dz > 1e-7) {
           moving = true;
