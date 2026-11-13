@@ -21,6 +21,11 @@ Arbeitstitel: **Neue Ufer** – ein Aufbau-Strategiespiel, inhaltlich so nah wie
 
 15. **Geplante Wege lassen sich formen:** Bei gleichem Anfang und Ende muss man den Verlauf einfach anpassen können – Ziehpunkte auf dem geplanten Weg (ziehen = Weg biegen, Knickpunkt antippen = entfernen, Ziel verschieben). Gebaut wird erst mit ✓; Wischen auf der Karte verschiebt weiter nur die Karte. *(Wunsch vom 02.11.2026)*
 
+16. **Ehrliche Anzeigen:** Ein grüner Haken bei Bedürfnissen (und überall sonst) nur, wenn die Ware wirklich da ist bzw. das Gebäude wirklich wirkt – nie „grün“ bei leerem Lager. Das Lager der Insel ist auch am Marktplatz einsehbar. *(Korrektur vom 13.11.2026)*
+17. **Inseln erkunden wie 1602:** Fährt ein Schiff zum ersten Mal nah an eine Insel, erscheint eine kleine Inselkarte (Größe, Pflanzen mit Balken, Vorkommen im Berg); jede entdeckte Insel lässt sich danach antippen (auch an der Küste); Erz und Gold sind am Berg mit einem kleinen Zeichen markiert. *(Wunsch vom 13.11.2026)*
+18. **Gebäude drehen:** Beim Platzieren ⟳ neben ✓/✕ (Vierteldrehung, Richtung wird je Gebäudeart gemerkt); fertige Gebäude kostenlos im Infofenster drehen, wenn der Platz frei ist. Kontor, Werft und Fischer bleiben zum Wasser ausgerichtet. *(Wunsch vom 13.11.2026)*
+19. **Echte Modelle überall:** Die Vorschau beim Platzieren zeigt das echte (Meshy-)Modell, nie ein altes Ersatzmodell. Figuren und Tiere kommen von Meshy mit echten Bewegungen (Skelett, Laufen, Arbeiten) statt Plastik-Figuren aus dem Code – zuerst eine Probe (2 Figuren, 1 Tier) zur Freigabe. Figuren und Karren laufen nie durch Gebäude, Stände oder Zäune. *(Korrektur vom 13.11.2026)*
+
 ## Feste Projektentscheidungen
 - Ziel: zuerst ein Spiel für den Nutzer selbst, Launch später möglich.
 - Rechtlich sauber: **kein** Code, keine Grafiken, Sounds, Texte oder Namen aus Anno 1602 oder Reverse-Engineering-Projekten. Nur allgemeine Spielmechaniken (nicht geschützt) als Inspiration. Das Wort „Anno“ kommt im Spiel nicht vor.
@@ -36,7 +41,7 @@ Arbeitstitel: **Neue Ufer** – ein Aufbau-Strategiespiel, inhaltlich so nah wie
 - **Felder:** Farm/Plantage legt beim Bau automatisch sichtbare Felder an (5 Taler je Feld, sie reifen erst); Feld-Werkzeug zum Nachbessern.
 - **Grafik:** sichtbare Fehler sofort im Code beheben, dann Meshy-Probe mit 3 Modellen (Wohnhaus, Kontor, Schaf); nach Freigabe alle Modelle mit Meshy, im Code nur nachbauen, was Meshy nicht liefert. Schlüssel MESHY_API_KEY legt der Nutzer in den Umgebungs-Einstellungen an (nie im Chat).
 - **Schwierigkeit wählbar** (leicht/normal/schwer, Startgeld 20 000/15 000/10 000); Standard „normal“: Gegner wachsen bis Kaufleute, besiedeln 2–3 Inseln, greifen nach Vorwarnung an; Katastrophen standardmäßig „mild“.
-- **Inselgrößen wie 1602** (fünf Größenklassen, größere Welt, beim Start wählbar) – erst nach der Grafik-Leistungsarbeit und einem Test auf dem iPhone des Nutzers.
+- **Inselgrößen wie 1602, jetzt umsetzen** *(Entscheidung vom 13.11.2026)*: fünf Größenklassen und größere Welt; die großen Inseln bekommen etwa doppelt so viel Fläche wie bisher, auch kleine Inseln werden größer. Es muss auf dem iPhone flüssig bleiben.
 
 ## Arbeitsweise
 - Vor jeder Lieferung prüft ein separater Agent ohne Vorwissen das Ergebnis gegen `docs/ANFORDERUNGEN.md` und diese Regeln.
