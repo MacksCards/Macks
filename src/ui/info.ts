@@ -338,7 +338,7 @@ export class InfoPanel {
     if (b.type === 'haus') h += this.houseHtml(L, b);
     else {
       // Marktplatz: kurz die Eckdaten, dann gleich das Lager der Insel (wie am Kontor, Reiter Lager)
-      if (b.type === 'markt') h += `<h3>${d.icon} ${d.name}</h3><p class="sub">Reichweite ${d.radius} Felder · Lager +${d.storage} t je Ware · Karren holt bis ${d.pickup} Felder weit ab</p>`;
+      if (b.type === 'markt') h += `<h3>${d.icon} ${d.name}</h3><p class="sub">Reichweite ${d.radius} · Lager +${d.storage} t · Karren bis ${d.pickup} Felder</p>`;
       else h += `<h3>${d.icon} ${d.name}</h3><p class="sub">${d.desc}</p>`;
       if (d.prod) {
         const r = this.prodHtml(L, b);
@@ -467,7 +467,7 @@ export class InfoPanel {
     // was fehlt oder knapp wird – mit „Wo?“: zum Hersteller springen oder das Baumenü öffnen
     // (je ein wechselnder Block: kommt eine Ware an, wird nur der Text getauscht, das Fenster springt nicht)
     let lack = '';
-    for (const gId of missG) lack += `<div class="lackrow"><span>❌ ${GOOD[gId].icon} ${GOOD[gId].name} fehlt im Lager</span><button class="btn" data-wgood="${gId}" aria-label="Wo gibt es ${GOOD[gId].name}?">📍 Wo?</button></div>`;
+    for (const gId of missG) lack += `<div class="lackrow"><span>❌ ${GOOD[gId].icon} ${GOOD[gId].name} fehlt</span><button class="btn" data-wgood="${gId}" aria-label="Wo gibt es ${GOOD[gId].name}?">📍 Wo?</button></div>`;
     for (const gId of lowG) {
       const v = vorrat(g, b.owner, b.island, gId, fl);
       const why = v.have < 1 ? 'kommt nur knapp an' : `reicht nur noch ${v.minutes !== null && v.minutes < 1 ? 'unter 1' : Math.floor(v.minutes ?? 0)} Min`;
